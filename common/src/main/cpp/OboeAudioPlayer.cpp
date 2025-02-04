@@ -1,0 +1,88 @@
+#include "OboeAudioPlayer.h"
+#include <utility>
+#include "AudioSource.h"
+#include "Log.h"
+
+using namespace oboe;
+
+namespace equalizer {
+    OboeAudioPlayer::OboeAudioPlayer(
+            std::shared_ptr<AudioSource> source) : _source(std::move(source)) {}
+
+    OboeAudioPlayer::~OboeAudioPlayer() {
+        OboeAudioPlayer::stop();
+    }
+
+    int32_t OboeAudioPlayer::play(int32_t _samplingRate,uint16_t channelCount_) {
+        // Create an AudioStream using the Oboe's builder
+        AudioStreamBuilder builder;
+        const auto result =
+                builder.setPerformanceMode(PerformanceMode::None)
+                                // we don't want to record the sound, just play back
+                        ->setDirection(Direction::Output)
+                        ->setSampleRate(_samplingRate)
+                                // pass this instance as the audio callback
+                                // this ensures that onAudioReady is called at regular intervals
+                                // to generate audio
+                        ->setDataCallback(this)
+                                // no other app should play back sound simultaneously
+                        ->setSharingMode(SharingMode::Exclusive)
+                        ->setFormat(oboe::AudioFormat::I16 /*AudioFormat::I16*/)
+                        ->setDeviceId((int32_t)300 )
+                        ->setChannelCount(channelCount_ /*oboe::ChannelCount::Stereo*/)
+                                // if the audio device does not support the requested sampling
+                                // rate natively, it will have to resample the output;
+                                // the better the resampling quality the larger the workload
+                        ->setSampleRateConversionQuality(SampleRateConversionQuality::Fastest)
+                                // open the stream for playback
+                        ->openStream(_stream);
+        this->channelCount=channelCount_;
+        if (result != Result::OK) {
+            // indicate that stream creation has failed
+            return static_cast<int32_t>(result);
+        }
+
+        // request a playback start but don't wait for it to actually start
+        const auto playResult = _stream->requestStart();
+
+        return static_cast<int32_t>(playResult);
+    }
+
+    void OboeAudioPlayer::stop() {
+        // if there is an active stream, stop, close, and destroy it
+        if (_stream) {
+            _stream->stop();
+            _stream->close();
+            _stream.reset();
+        }
+        // notify the AudioSource that the playback stopped
+        _source->onPlaybackStopped();
+    }
+
+    DataCallbackResult
+    OboeAudioPlayer::onAudioReady(oboe::AudioStream* audioStream,
+                                  void* audioData,
+                                  int32_t framesCount) {
+        // we requested floating-point processing, thus, we treat the given
+        // memory block as an array of floats
+        // WARNING: the sample format may differ from the requested one.
+        // Please, refer to Oboe's documentation for details.
+        auto* floatData = reinterpret_cast<int16_t *>(audioData);
+
+        // Let's fill the array with samples.
+        // This code works for any number of interleaved channels
+        // and any number of frames.
+        for (auto frame = 0; frame < framesCount; ++frame) {
+            // retrieve a sample from the AudioSource
+            // (in our case, it's a WavetableOscillator)
+            // copy the samples to all channels of this frame
+            for (auto channel = 0; channel < channelCount; ++channel) {
+                //const auto sample = _source->getSample();
+                auto sample = _source->getSample();
+                floatData[frame * channelCount + channel] = sample;
+            }
+        }
+        // indicate to the Oboe library that the playback should continue
+        return oboe::DataCallbackResult::Continue;
+    }
+}
