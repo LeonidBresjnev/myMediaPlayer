@@ -1,5 +1,6 @@
 package com.equalizer.mymediaplayer
 
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -8,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.car.app.connection.CarConnection
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,36 +25,36 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeDown
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.livedata.observeAsState
-import androidx.compose.ui.Modifier
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
-import com.equalizer.mymediaplayer.ui.theme.MyMediaPlayerTheme
-import java.io.File
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import com.equalizer.mymediaplayer.ui.theme.MyMediaPlayerTheme
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
@@ -94,6 +97,33 @@ class MainActivity : ComponentActivity() {
                     }
                     Column(modifier = Modifier.padding(innerPadding)) {
 
+                        val carConnectionType by CarConnection(this@MainActivity).type.observeAsState(initial = -1)
+
+                            Button(
+                                        modifier = Modifier
+                                            .height(40.dp)
+                                            .width(100.dp),
+                                onClick = {
+
+                                    val audioManager: AudioManager =  this@MainActivity.getSystemService(AUDIO_SERVICE) as (AudioManager)
+                                    val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                                    Log.d("audio device","antal device: ${devices.size}")
+                                    for (device in devices) {
+                                        // Set the audio output to the car's audio system
+
+                                        Log.d("audio device"," ${device.id}, ${device.type}, ${device.productName}, ${device.sampleRates.joinToString(";")}")
+
+                                    }
+                                }
+                                ) {
+                                Text("devices")
+                                }
+                        ProjectionState(
+                            carConnectionType = carConnectionType,
+                            modifier = Modifier.padding(8.dp)
+                        )
+
+
                         Column(modifier = Modifier
                             .padding(innerPadding)
                             .fillMaxSize()) {
@@ -119,6 +149,21 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+@Composable
+fun ProjectionState(carConnectionType: Int, modifier: Modifier = Modifier) {
+    val text = when (carConnectionType) {
+        CarConnection.CONNECTION_TYPE_NOT_CONNECTED -> "Not projecting"
+        CarConnection.CONNECTION_TYPE_NATIVE -> "Running on Android Automotive OS"
+        CarConnection.CONNECTION_TYPE_PROJECTION -> "Projecting"
+        else -> "Unknown connection type"
+    }
+
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = modifier
+    )
 }
 
 @Composable

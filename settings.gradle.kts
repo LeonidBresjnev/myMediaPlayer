@@ -23,3 +23,4 @@ rootProject.name = "myMediaPlayer"
 include(":app")
 //include(":common")
 include(":common")
+include(":carservice")

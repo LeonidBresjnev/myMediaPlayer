@@ -1,6 +1,7 @@
 [versions]
 accompanistPermissions = "0.36.0"
 agp = "8.8.0"
+appProjected = "1.4.0"
 kotlin = "2.1.0"
 coreKtx = "1.15.0"
 junit = "4.13.2"
@@ -16,10 +17,13 @@ appcompat = "1.7.0"
 material = "1.12.0"
 runtimeLivedata = "1.7.7"
 oboe = "1.9.3"
+app = "1.4.0"
+lifecycleViewmodelAndroid = "2.8.7"
+koinAndroidxNavigation = "3.4.3"
 
 [libraries]
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanistPermissions" }
-
+androidx-app-projected = { module = "androidx.car.app:app-projected", version.ref = "appProjected" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-material-icons-extended = { module = "androidx.compose.material:material-icons-extended", version.ref = "materialIconsExtendedVersion" }
 androidx-media3-common = { module = "androidx.media3:media3-common", version.ref = "media3SessionVersion" }
@@ -42,6 +46,10 @@ androidx-material3 = { group = "androidx.compose.material3", name = "material3" 
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 oboe = { module = "com.google.oboe:oboe", version.ref = "oboe" }
+
+androidx-app = { module = "androidx.car.app:app", version.ref = "app" }
+androidx-lifecycle-viewmodel-android = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-android", version.ref = "lifecycleViewmodelAndroid" }
+koin-android = { module = "io.insert-koin:koin-android", version.ref = "koinAndroidxNavigation" }
 
 
 [plugins]

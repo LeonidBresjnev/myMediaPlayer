@@ -51,7 +51,6 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
 
-    /*implementation(libs.androidx.media3.exoplayer)*/
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.common)
 
@@ -60,6 +59,10 @@ dependencies {
     implementation(libs.accompanist.permissions)
 
     implementation(project(":common"))
+    implementation(project(":carservice"))
+    implementation(libs.androidx.app)
+    implementation(libs.androidx.app.projected)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
