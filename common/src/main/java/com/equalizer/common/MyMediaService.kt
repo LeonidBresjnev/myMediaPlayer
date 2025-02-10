@@ -49,7 +49,7 @@ class MyMediaService : MediaSessionService() {
         mediaSession = MediaSession
             .Builder(this, player)
             .setCallback(object: MediaSession.Callback {
-
+/*
                 override fun onSetMediaItems(
                     mediaSession: MediaSession,
                     controller: MediaSession.ControllerInfo,
@@ -66,7 +66,7 @@ class MyMediaService : MediaSessionService() {
                         startIndex,
                         startPositionMs
                     )
-                }
+                }*/
 
 
                 override fun onConnect(
@@ -86,7 +86,7 @@ class MyMediaService : MediaSessionService() {
 
                 }
 
-
+/*
                 override fun onAddMediaItems(
                     mediaSession: MediaSession,
                     controller: MediaSession.ControllerInfo,
@@ -94,7 +94,7 @@ class MyMediaService : MediaSessionService() {
                 ): ListenableFuture<MutableList<MediaItem>> {
                     Log.d("My Media Service","onAddMediaItems: ${mediaItems.map { it.mediaId}}")
                     return super.onAddMediaItems(mediaSession, controller, mediaItems)
-                }
+                }*/
 
                 override fun onPlaybackResumption(
                     mediaSession: MediaSession, controller: MediaSession.ControllerInfo
@@ -117,17 +117,21 @@ class MyMediaService : MediaSessionService() {
                     command: SessionCommand,
                     args: Bundle
                 ): ListenableFuture<SessionResult> {
+
                     if (command.customAction == "setVolOnFreq") {
                         val index = args.getInt("KEY_INDEX")
                         val volume = args.getFloat("KEY_VOLUME")
                         player.setVolOnFreq(volume,index)
+                        Log.i("Media Service","setVolOnFreq $index $volume")
                     }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
             })
             .build()
 
-
+        mediaSession?.sessionExtras=Bundle().apply {
+            putInt("Interval", 123)
+        }
 /*
         player.addListener(object : Player.Listener {
 
@@ -167,6 +171,7 @@ class MyMediaService : MediaSessionService() {
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
+
 
 
 

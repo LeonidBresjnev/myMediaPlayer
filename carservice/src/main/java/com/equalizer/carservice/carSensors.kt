@@ -12,10 +12,8 @@ import androidx.car.app.hardware.info.CarSensors
 import androidx.car.app.hardware.info.Compass
 import androidx.car.app.hardware.info.EnergyLevel
 import androidx.car.app.hardware.info.Gyroscope
-import androidx.car.app.hardware.info.Mileage
 import androidx.car.app.hardware.info.Model
 import androidx.car.app.hardware.info.Speed
-import com.google.android.material.animation.AnimatableView.Listener
 
 @ExperimentalCarApi
 class CarSensors(carContext: CarContext) {

@@ -27,7 +27,6 @@ import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -99,25 +98,25 @@ class MainActivity : ComponentActivity() {
 
                         val carConnectionType by CarConnection(this@MainActivity).type.observeAsState(initial = -1)
 
-                            Button(
-                                        modifier = Modifier
-                                            .height(40.dp)
-                                            .width(100.dp),
-                                onClick = {
-
-                                    val audioManager: AudioManager =  this@MainActivity.getSystemService(AUDIO_SERVICE) as (AudioManager)
-                                    val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-                                    Log.d("audio device","antal device: ${devices.size}")
-                                    for (device in devices) {
+                        Button(
+                            modifier = Modifier
+                                .height(40.dp)
+                                .width(100.dp),
+                            onClick = {
+                                val audioManager: AudioManager =  this@MainActivity.getSystemService(AUDIO_SERVICE) as (AudioManager)
+                                val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                                Log.d("audio device","antal device: ${devices.size}")
+                                for (device in devices) {
                                         // Set the audio output to the car's audio system
 
-                                        Log.d("audio device"," ${device.id}, ${device.type}, ${device.productName}, ${device.sampleRates.joinToString(";")}")
+                                    Log.d("audio device"," ${device.id}, ${device.type}, ${device.productName}, ${device.sampleRates.joinToString(";")}")
 
-                                    }
                                 }
-                                ) {
-                                Text("devices")
-                                }
+                            }
+                        ) {
+                            Text("devices")
+                        }
+
                         ProjectionState(
                             carConnectionType = carConnectionType,
                             modifier = Modifier.padding(8.dp)
@@ -352,7 +351,7 @@ private fun PlayControl( modifier: Modifier,
     // State<Int?> is used because the label is the id value of the resource string.
     // Thanks to the fact that the composable observes the label,
     // the composable will be recomposed (redrawn) when the observed state changes.
-    val playButtonLabel = equalizerViewModel.playButtonLabel.observeAsState()
+    //val playButtonLabel = equalizerViewModel.playButtonLabel.observeAsState()
 //Log.d("PlayButtonLabel", file?.absolutePath?:"nul")
     Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
         PlayControlContent(
@@ -376,7 +375,7 @@ private fun PlayControlContent(audioModel: AudioModel,
 
     val playIcon =  Icons.Filled.PlayArrow
     val pauseIcon = Icons.Filled.Pause
-    val stopIcon = Icons.Filled.Stop
+    //val stopIcon = Icons.Filled.Stop
 
     val isPlaying by audioModel.isPlaying.observeAsState()
 

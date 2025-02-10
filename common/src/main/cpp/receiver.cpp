@@ -29,8 +29,7 @@ Java_com_equalizer_common_Equalizer_nativeCreate(JNIEnv *env, jobject thiz) {
     if (not equalizer) {
         LOGD("FAILED TO CREATE THE SYNTHESIZER");
         equalizer.reset(nullptr);
-    }
-    else {
+    } else {
         LOGD("I am created");
     }
 
@@ -39,7 +38,7 @@ Java_com_equalizer_common_Equalizer_nativeCreate(JNIEnv *env, jobject thiz) {
 
 JNIEXPORT void JNICALL
 Java_com_equalizer_common_Equalizer_nativeDelete(JNIEnv *env, jobject thiz,
-                                                  jlong equalizer_handle) {
+                                                 jlong equalizer_handle) {
     auto *equalizer =
             reinterpret_cast<equalizer::Equalizer *>(equalizer_handle);
     if (not equalizer) {
@@ -50,7 +49,7 @@ Java_com_equalizer_common_Equalizer_nativeDelete(JNIEnv *env, jobject thiz,
 }
 JNIEXPORT void JNICALL
 Java_com_equalizer_common_Equalizer_nativeStop(JNIEnv *env, jobject thiz,
-                                                jlong equalizer_handle) {
+                                               jlong equalizer_handle) {
     auto *equalizer = reinterpret_cast<equalizer::Equalizer *>(equalizer_handle);
     if (equalizer) {
         equalizer->stop();
@@ -62,21 +61,22 @@ Java_com_equalizer_common_Equalizer_nativeStop(JNIEnv *env, jobject thiz,
 
 JNIEXPORT void JNICALL
 Java_com_equalizer_common_Equalizer_nativeSetVolumenLow(JNIEnv *env, jobject thiz,
-                                                         jlong equalizer_handle,
-                                                         jfloat volume_in_db,
-                                                         jint freqInterval) {
+                                                        jlong equalizer_handle,
+                                                        jfloat volume_in_db,
+                                                        jint freqInterval) {
     auto *equalizer = reinterpret_cast<equalizer::Equalizer *>(equalizer_handle);
     if (equalizer) {
-        equalizer->setVolumenLow(static_cast<float>(volume_in_db),static_cast<int>(freqInterval));
+        equalizer->setVolumenLow(static_cast<float>(volume_in_db), static_cast<int>(freqInterval));
     } else {
         LOGD("Synthesize not create");
     }
 }
 
 JNIEXPORT void JNICALL
-Java_com_equalizer_common_Equalizer_nativePlay(JNIEnv *env, jobject thiz,
-                                                jlong synthesizer_handle,
-                                                jstring jFileName) {
+Java_com_equalizer_common_Equalizer_nativePlay(JNIEnv *env,
+                                               jobject thiz,
+                                               jlong synthesizer_handle,
+                                               jstring jFileName) {
 
     std::string fileName = jstringToString(env, jFileName);
 
@@ -88,9 +88,40 @@ Java_com_equalizer_common_Equalizer_nativePlay(JNIEnv *env, jobject thiz,
     }
 }
 
+JNIEXPORT void JNICALL
+Java_com_equalizer_common_Equalizer_nativePlayWithVol(JNIEnv *env,
+                                                      jobject thiz,
+                                                      jlong synthesizer_handle,
+                                                      jstring jFileName,
+
+                                                      jfloatArray vol) {
+    std::string fileName = jstringToString(env, jFileName);
+
+    jint size = env->GetArrayLength(vol);
+    jfloat *elements = env->GetFloatArrayElements(vol, nullptr);
+/*
+    std::array<float, 8> carray;
+    for (int i = 0; i < size; ++i) {
+        carray[i] = elements[i];
+        equalizer->setVolumenLow(elements[i], i);
+
+    }*/
+
+
+    auto *equalizer = reinterpret_cast<equalizer::Equalizer *>(synthesizer_handle);
+    if (equalizer) {
+        for (int i = 0; i < 8; i++) {
+            equalizer->setVolumenLow(elements[i], i);
+        }
+        equalizer->play(fileName);
+    } else {
+        LOGD("synthesizer not created. please first create()");
+    }
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_equalizer_common_Equalizer_nativeIsPlaying(JNIEnv *env, jobject thiz,
-                                                     jlong equalizer_handle) {
+                                                    jlong equalizer_handle) {
     auto *equalizer = reinterpret_cast<equalizer::Equalizer *>(equalizer_handle);
     if (equalizer) {
         LOGD("isPlaying = %d", equalizer->isPlaying());

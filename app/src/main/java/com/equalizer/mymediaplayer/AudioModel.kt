@@ -10,11 +10,11 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
-import com.equalizer.common.Equalizer
 import com.equalizer.common.MyMediaService
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
@@ -97,6 +97,13 @@ class AudioModel: ViewModel() {
                 _volumenLow.value = _volumenLow.value!!.mapIndexed { i, v -> if (i==currentSlider) volume else v }
 //                log((controller as Equalizer).getVolOnFreqs().joinToString(", "))
                 super.onVolumeChanged(volume)
+            }
+
+            @OptIn(UnstableApi::class)
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                _volumenLow.value = _volumenLow.value!!.mapIndexed { i, v -> if (i==videoSize.width) videoSize.pixelWidthHeightRatio else v }
+//                log((controller as Equalizer).getVolOnFreqs().joinToString(", "))
+                super.onVideoSizeChanged(videoSize)
             }
 
 

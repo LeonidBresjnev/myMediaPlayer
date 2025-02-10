@@ -39,7 +39,8 @@ dependencies {
     implementation(libs.androidx.app)
     implementation(libs.androidx.lifecycle.viewmodel.android)
     testImplementation(libs.junit)
-    //implementation("androidx.car.app:app-automotive:1.4.0")
+
+    implementation(libs.androidx.media3.session)
 
     implementation (libs.koin.android)
     //implementation (libs.koin.androidx.workmanager) // For WorkManager

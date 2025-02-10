@@ -54,8 +54,18 @@ class Equalizer(
     private external fun nativeDelete(synthesizerHandle: Long)
     private external fun nativeStop(synthesizerHandle: Long)
     private external fun nativePlay(synthesizerHandle: Long, name: String)
+    private external fun nativePlayWithVol(synthesizerHandle: Long,
+                                           name: String,
+                                           vol: FloatArray)
     private external fun nativeIsPlaying(synthesizerHandle: Long): Boolean
     private external fun nativeSetVolumenLow(synthesizerHandle: Long,volumeInDb: Float, freqInterval: Int)
+
+/*
+    var onVolArrayChanged: (volPerFreq: List<Float>) -> Unit = {}
+
+    fun setOnVolArrayChanged(listener: (List<Float>) -> Unit) {
+       onVolArrayChanged = listener
+    }*/
 
     private val volPerFreq = MutableList(8) { 1f }
     fun setVolOnFreq(volumeInDb: Float, freqInterval: Int) {
@@ -65,9 +75,16 @@ class Equalizer(
         }
         volPerFreq[freqInterval] = volumeInDb
         listeners.sendEvent(1
-        ) { listener: Player.Listener -> listener.onVolumeChanged(volumeInDb)
+        ) {
+           // listener: Player.Listener -> listener.onVolumeChanged(volumeInDb)
+            listener: Player.Listener -> listener.onVideoSizeChanged(
+            VideoSize(freqInterval, 0, volumeInDb))
         }
+
+       // onVolArrayChanged(volPerFreq)
+       // myListeners.onVolArrayChanged()
     }
+
 
     fun getVolOnFreqs(): List<Float> = volPerFreq
 
@@ -138,7 +155,9 @@ class Equalizer(
                             synchronized(equalizerMutex) {
                                 createNativeHandleIfNotExists()
                                 log("play: ${file.absolutePath}")
-                                nativePlay(equalizerHandle, file.absolutePath)
+                                nativePlayWithVol(equalizerHandle,
+                                    file.absolutePath,
+                                    volPerFreq.toFloatArray())
                             }
                         }
                     }
