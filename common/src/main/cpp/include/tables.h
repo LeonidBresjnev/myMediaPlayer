@@ -5069,7 +5069,7 @@ static const int degroup10[1024][3] = {
 };
 
 static const int (*degroup[6])[3] = {
-        degroup5, NULL, degroup7, NULL, NULL, degroup10};
+        degroup5, nullptr, degroup7, nullptr, nullptr, degroup10};
 
 static const short int sw[] = {
         4, 4, 4, 4, 4, 4, 6, 6, 8, 8, 10, 12, 16, 20, 24, 28, 34, 42, 50, 54, 76, 158,

@@ -498,8 +498,7 @@ public:
         this->byte_pointer = byte_pointer - ((huffman_cache_size + this->bit_offset) / 8);
     }
 
-    void
-    decode_very_big ( short int *u, int k, int n)
+    void   decode_very_big ( short int *u, int k, int n)
     {                                                                    /* 311 */
         short int *htab = huffman_tables[k].h;
 
@@ -640,10 +639,9 @@ public:
                              sizeof (double) * (WINDOWBLOCKS - 1) * SUBBANDS);
                 }
                 v = this->w[ch] + this->offset[ch];
-                if (this->options.equalizer != nullptr) {                            /* 445 */
-                    int sb;
+                if (this->options.equalizer != nullptr) {
 
-                    for (sb = 0; sb < SUBBANDS; sb++) {
+                    for (int sb = 0; sb < SUBBANDS; sb++) {
                         int m = this->options.equalizer[ch][sb];
 
                         if (m == 0)
@@ -666,10 +664,9 @@ public:
                              sizeof (double) * (WINDOWBLOCKS - 1) * SUBBANDS);
                 }
                 v = this->w[ch] + this->offset[ch];
-                if (this->options.equalizer != nullptr) {                            /* 445 */
-                    int sb;
+                if (this->options.equalizer != nullptr) {
 
-                    for (sb = 0; sb < SUBBANDS; sb++) {
+                    for (int sb = 0; sb < SUBBANDS; sb++) {
                         int m = this->options.equalizer[ch][sb];
 
                         if (m == 0)
@@ -3279,8 +3276,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                 }
                             }
                         }
-                        else { {
-                                int region;                                            /* 351 */
+                        else { {                                         /* 351 */
 
                                 s->block_type[gr][ch] = LONG_BLOCK;
                                 s->mixed_block[gr][ch] = 0;
@@ -3290,14 +3286,12 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                                 mixed_block
                                         [gr][ch]]
                                         [s->block_type[gr][ch] == SHORT_BLOCK];
-                                for (region = 0; region < REGIONS; region++)
+                                for (int region = 0; region < REGIONS; region++)
                                     s->bigtable[gr][ch][region] = s->getbit ( 5);
                             }
                             {
-                                int region0, region1;                                    /* 354 */
+                                int region0= s->getbit ( 4) + 1, region1=s->getbit ( 3) + 1;                                    /* 354 */
 
-                                region0 = s->getbit ( 4) + 1;
-                                region1 = s->getbit ( 3) + 1;
                                 {
                                     int *pairs = s->bigpairs[gr][ch];                      /* 355 */
 
@@ -3393,46 +3387,27 @@ mp3_read (int id, mp3_sample * buffer, int size)
 
                                     if (!(s->share[ch][0]))
                                         for (band = 0; band < 6; band++) {
-                                            int m;                                           /* 368 */
-
-                                            if (slen == 0)
-                                                m = 0;
-                                            else
-                                                m = s->getbit ( slen);
+                                            int m=(slen == 0)?0:  s->getbit ( slen);
                                             s->sfimax[ch][band] = (2 << slen) - 1;
                                             s->sfi[ch][band] = m;
                                         }
                                     if (!(s->share[ch][1]))
                                         for (band = 6; band < 11; band++) {
-                                            int m;                                           /* 368 */
-
-                                            if (slen == 0)
-                                                m = 0;
-                                            else
-                                                m = s->getbit ( slen);
+                                            int m=(slen == 0)?0:  s->getbit ( slen);
                                             s->sfimax[ch][band] = (2 << slen) - 1;
                                             s->sfi[ch][band] = m;
                                         }
                                     slen = slength[1];
                                     if (!(s->share[ch][2]))
                                         for (band = 11; band < 16; band++) {
-                                            int m;                                           /* 368 */
+                                            int m=(slen == 0)?0:  s->getbit ( slen);                                        /* 368 */
 
-                                            if (slen == 0)
-                                                m = 0;
-                                            else
-                                                m = s->getbit ( slen);
                                             s->sfimax[ch][band] = (2 << slen) - 1;
                                             s->sfi[ch][band] = m;
                                         }
                                     if (!(s->share[ch][3]))
                                         for (band = 16; band < 21; band++) {
-                                            int m;                                           /* 368 */
-
-                                            if (slen == 0)
-                                                m = 0;
-                                            else
-                                                m = s->getbit ( slen);
+                                            int m=(slen == 0)?0:  s->getbit ( slen);
                                             s->sfimax[ch][band] = (2 << slen) - 1;
                                             s->sfi[ch][band] = m;
                                         }
@@ -3441,9 +3416,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                             {
                                 short int *u = uv[ch];                                   /* 369 */
 
-                                int region;
-
-                                for (region = 0; region < REGIONS; region++) {
+                                for (int region = 0; region < REGIONS; region++) {
                                     int k = s->bigtable[gr][ch][region];                   /* 370 */
 
                                     if (k == 0) {
@@ -3733,9 +3706,8 @@ mp3_read (int id, mp3_sample * buffer, int size)
                         for (ch = 0; ch < s->info.channels; ch++) {                /* 297 */
                             s->sblimit[ch] = (ulimit[ch] + SUBFREQUENCIES - 1) / SUBFREQUENCIES;        /* 292 */
                             {
-                                int i;
 
-                                for (i = ulimit[ch]; i < s->sblimit[ch] * SUBFREQUENCIES; i++)
+                                for (int i = ulimit[ch]; i < s->sblimit[ch] * SUBFREQUENCIES; i++)
                                     z[ch][i] = 0.0;
                             }
                             if (s->block_type[gr][ch] != SHORT_BLOCK || s->mixed_block[gr][ch]) {
