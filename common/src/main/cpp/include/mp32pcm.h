@@ -21,7 +21,7 @@
 
 */
 #include <fstream>
-#include <stdlib.h>                                                  /*  10 */
+#include <cstdlib>                                                  /*  10 */
 #define MP3_MIN_BUFFER (2*1152)                                      /*  15 */
 #define MP3_CONTINUE 0                                               /*  26 */
 #define MP3_SKIP   0x0100

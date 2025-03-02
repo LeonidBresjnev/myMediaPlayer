@@ -22,7 +22,7 @@
 */
 #include <fstream>
 #include "mp32pcm.h"                                                 /*   9 */
-#include <string.h>                                                  /*  49 */
+#include <cstring>                                                  /*  49 */
 #include "tables.h"                                                  /* 128 */
 #include "huffman.h"                                                 /* 304 */
 #define WINDOWBLOCKS 16                                              /*   1 */
@@ -97,8 +97,80 @@ extern void dct6 (const double *z, double *t);                  /* 227 */
 #define M_PI 3.14159265358979323846264338328
 #endif
 #define twotom32th(m)  power132[m]                                   /* 449 */
+
+
+static double y[BLOCKS][CHANNELS][SUBBANDS];                         /*  67 */
+
+static const short int *width[GRANULES][CHANNELS];                   /* 244 */
+
+static unsigned char global_gain[GRANULES][CHANNELS];                /* 246 */
+
+static const int *preemphasis[GRANULES][CHANNELS];                   /* 258 */
+
+
+static int scale_shift[GRANULES][CHANNELS];                          /* 253 */
+
+
+static short int uv[CHANNELS][FREQUENCIES] = { {0} };                /* 236 */
+
+static double z[CHANNELS][FREQUENCIES];                              /* 241 */
+
+
+static char subblock_gain[GRANULES][CHANNELS][SUBBLOCKS];            /* 263 */
+
+static int decode_header (mp3_info * , unsigned char *);
+
+static void
+qs_band (const int ch, int i, int j, int width, int m, int step)
+{                                                                    /* 243 */
+    const double f = twotomquarter (m);
+
+    while (width-- > 0) {
+        z[ch][j] = utothreequarter (ch, i) * f;
+        i = i + 1;
+        j = j + step;
+    }
+}
+
+static void
+qs_intensity_band (int i, int j, int width, int m, int sp, int step)
+{                                                                    /* 273 */
+    double fL, fR;
+
+    const double p = intensity_factor[sp];                             /* 277 */
+
+    {
+        double f = twotomquarter (m);                                    /* 271 */
+
+        fL = f * (1 - p);
+        fR = f * p;
+    }
+    while (width-- > 0) { {
+            double u = utothreequarter (0, i);                             /* 272 */
+
+            z[0][j] = u * fL;
+            z[1][j] = u * fR;
+        }
+        i = i + 1;
+        j = j + step;
+    }
+}
+
 typedef struct
 {
+    char bit_allocation;                                          /* 105 */
+    double mfactor[GROUPS];                                       /* 110 */
+    char scfi;                                                    /* 204 */
+} side_information;
+
+static side_information side_info[SUBBANDS][CHANNELS];               /* 102 */
+
+class stream {
+public:
+
+
+
+
     double w[CHANNELS][SHIFTSIZE];                                /*   2 */
     int offset[CHANNELS];                                         /*   3 */
     mp3_info info;                                                /*  24 */
@@ -131,40 +203,1300 @@ typedef struct
     char sfi[CHANNELS][BANDS];                                    /* 366 */
     char sfimax[CHANNELS][BANDS];
     std::ifstream *myFile;
-} stream;
-typedef struct
-{
-    char bit_allocation;                                          /* 105 */
-    double mfactor[GROUPS];                                       /* 110 */
-    char scfi;                                                    /* 204 */
-} side_information;
-static stream *streams[STREAMS] = { NULL };                     /*  43 */
+
+    void  output_silence (mp3_sample * buffer, int n)
+    {                                                                    /*  74 */
+        int i;
+
+        for (i = 0; i < n; i++) {
+            double *v;                                                       /*  75 */
+
+            {
+                int sb, ch = 0;
+
+                this->offset[ch] = this->offset[ch] - SUBBANDS;                      /*   4 */
+                if (this->offset[ch] < 0) {
+                    this->offset[ch] = SHIFTSIZE - WINDOWBLOCKS * SUBBANDS;
+                    memmove (&(this->w[ch][this->offset[ch] + SUBBANDS]),
+                             &(this->w[ch][0]),
+                             sizeof (double) * (WINDOWBLOCKS - 1) * SUBBANDS);
+                }
+                v = this->w[ch] + this->offset[ch];
+                for (sb = SUBBANDS - 1; sb >= 0; sb--)
+                    v[sb] = 0.0;
+                windowing (v, buffer);
+            }
+            if (this->info.channels > 1) {
+                int sb, ch = 1;
+
+                this->offset[ch] = this->offset[ch] - SUBBANDS;                      /*   4 */
+                if (this->offset[ch] < 0) {
+                    this->offset[ch] = SHIFTSIZE - WINDOWBLOCKS * SUBBANDS;
+                    memmove (&(this->w[ch][this->offset[ch] + SUBBANDS]),
+                             &(this->w[ch][0]),
+                             sizeof (double) * (WINDOWBLOCKS - 1) * SUBBANDS);
+                }
+                v = this->w[ch] + this->offset[ch];
+                for (sb = SUBBANDS - 1; sb >= 0; sb--)
+                    v[sb] = 0.0;
+                windowing (v, buffer + 1);
+                buffer = buffer + 2 * SUBBANDS;
+            }
+            else {
+                int sb;                                                        /*  71 */
+
+                if (this->options.flags & MP3_TWO_CHANNEL_MONO) {
+                    for (sb = 0; sb < SUBBANDS; sb++)
+                        buffer[2 * sb + 1] = buffer[2 * sb];
+                    buffer = buffer + 2 * SUBBANDS;
+                }
+                else {
+                    for (sb = 0; sb < SUBBANDS; sb++)
+                        buffer[sb] = buffer[2 * sb];
+                    buffer = buffer + SUBBANDS;
+                }
+            }
+        }
+        if (this->options.flags & MP3_TWO_CHANNEL_MONO)
+            this->info.samples += n * 2 * SUBBANDS;
+        else
+            this->info.samples += n * this->info.channels * SUBBANDS;
+    }
+
+
+    void    output_repeat ( mp3_sample * buffer, int n, int d)
+    {                                                                    /* 406 */
+        int i;
+
+        for (i = 0; i < n; i++) {
+            int ch;                                                          /* 408 */
+
+            double *v;
+
+            {
+                ch = 0;
+                this->offset[ch] = this->offset[ch] - SUBBANDS;                      /*   4 */
+                if (this->offset[ch] < 0) {
+                    this->offset[ch] = SHIFTSIZE - WINDOWBLOCKS * SUBBANDS;
+                    memmove (&(this->w[ch][this->offset[ch] + SUBBANDS]),
+                             &(this->w[ch][0]),
+                             sizeof (double) * (WINDOWBLOCKS - 1) * SUBBANDS);
+                }
+                v = this->w[ch] + this->offset[ch];
+                {
+                    int previous_offset;                                         /* 407 */
+
+                    previous_offset = this->offset[ch] + d * SUBBANDS;
+                    if (previous_offset >= SHIFTSIZE)
+                        previous_offset =
+                                previous_offset - SHIFTSIZE + (WINDOWBLOCKS - 1) * SUBBANDS;
+                    memmove (v, this->w[ch] + previous_offset, sizeof (double) * SUBBANDS);
+                }
+                windowing (v, buffer);
+            }
+            if (this->info.channels > 1) {
+                ch = 1;
+                this->offset[ch] = this->offset[ch] - SUBBANDS;                      /*   4 */
+                if (this->offset[ch] < 0) {
+                    this->offset[ch] = SHIFTSIZE - WINDOWBLOCKS * SUBBANDS;
+                    memmove (&(this->w[ch][this->offset[ch] + SUBBANDS]),
+                             &(this->w[ch][0]),
+                             sizeof (double) * (WINDOWBLOCKS - 1) * SUBBANDS);
+                }
+                v = this->w[ch] + this->offset[ch];
+                {
+                    int previous_offset;                                         /* 407 */
+
+                    previous_offset = this->offset[ch] + d * SUBBANDS;
+                    if (previous_offset >= SHIFTSIZE)
+                        previous_offset =
+                                previous_offset - SHIFTSIZE + (WINDOWBLOCKS - 1) * SUBBANDS;
+                    memmove (v, this->w[ch] + previous_offset, sizeof (double) * SUBBANDS);
+                }
+                windowing (v, buffer + 1);
+                buffer = buffer + 2 * SUBBANDS;
+            }
+            else {
+                int sb;                                                        /*  71 */
+
+                if (this->options.flags & MP3_TWO_CHANNEL_MONO) {
+                    for (sb = 0; sb < SUBBANDS; sb++)
+                        buffer[2 * sb + 1] = buffer[2 * sb];
+                    buffer = buffer + 2 * SUBBANDS;
+                }
+                else {
+                    for (sb = 0; sb < SUBBANDS; sb++)
+                        buffer[sb] = buffer[2 * sb];
+                    buffer = buffer + SUBBANDS;
+                }
+            }
+        }
+        if (this->options.flags & MP3_TWO_CHANNEL_MONO)
+            this->info.samples += n * 2 * SUBBANDS;
+        else
+            this->info.samples += n * this->info.channels * SUBBANDS;
+    }
+
+    short int *
+    decode_small_A ( short int *u, int bits_available, int n) const
+    {                                                                    /* 302 */
+        unsigned char *byte_pointer = this->byte_pointer;                     /* 313 */
+
+        int huffman_cache_size = 8 - this->bit_offset;
+
+        int huffman_cache =
+                (*byte_pointer++) << (sizeof (int) * 8 - huffman_cache_size);
+        bits_available = bits_available - huffman_cache_size;
+        while (n >= 4) {
+            unsigned char code;
+
+            if ((16 - huffman_cache_size > 0)                                /* 315 */
+                    ) {
+                {
+                    int tmp = (*byte_pointer << 8) | (*(byte_pointer + 1) & 0xFF);  /* 316 */
+
+                    byte_pointer = byte_pointer + 2;
+                    huffman_cache = huffman_cache | (tmp << (16 - huffman_cache_size));
+                    huffman_cache_size = huffman_cache_size + 16;
+                }
+                bits_available = bits_available - 16;                          /* 318 */
+                if (bits_available < 0) {
+                    huffman_cache_size = huffman_cache_size + bits_available;
+                    bits_available = 0;
+                    if (huffman_cache_size <= 0)
+                        break;
+                }
+            }
+            code = htabA[((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 6)];   /* 299 */
+            huffman_cache = huffman_cache << (code & 0xF);
+            huffman_cache_size = huffman_cache_size - (code & 0xF);
+            code = (code & 0xF0) | (((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 4));        /* 300 */
+            *u++ = signed_small_values[code].u0;
+            *u++ = signed_small_values[code].u1;
+            *u++ = signed_small_values[code].u2;
+            *u++ = signed_small_values[code].u3;
+            huffman_cache = huffman_cache << (signed_small_values[code].n);
+            huffman_cache_size = huffman_cache_size - (signed_small_values[code].n);
+            n = n - 4;
+        }
+        return u;
+    }
+
+    short int *
+    decode_small_B ( short int *u, int bits_available, int n) const
+    {                                                                    /* 303 */
+        unsigned char *byte_pointer = this->byte_pointer;                     /* 313 */
+
+        int huffman_cache_size = 8 - this->bit_offset;
+
+        int huffman_cache =
+                (*byte_pointer++) << (sizeof (int) * 8 - huffman_cache_size);
+        bits_available = bits_available - huffman_cache_size;
+        while (n >= 4) {
+            unsigned char code;
+
+            if ((16 - huffman_cache_size > 0)                                /* 315 */
+                    ) {
+                {
+                    int tmp = (*byte_pointer << 8) | (*(byte_pointer + 1) & 0xFF);  /* 316 */
+
+                    byte_pointer = byte_pointer + 2;
+                    huffman_cache = huffman_cache | (tmp << (16 - huffman_cache_size));
+                    huffman_cache_size = huffman_cache_size + 16;
+                }
+                bits_available = bits_available - 16;                          /* 318 */
+                if (bits_available < 0) {
+                    huffman_cache_size = huffman_cache_size + bits_available;
+                    bits_available = 0;
+                    if (huffman_cache_size <= 0)
+                        break;
+                }
+            }
+            code = ~(huffman_cache >> (HUFFMAN_CACHE_SIZE - 4));             /* 301 */
+            huffman_cache = huffman_cache << 4;
+            huffman_cache_size = huffman_cache_size - 4;
+            code = code << 4;
+            code = (code & 0xF0) | (((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 4));        /* 300 */
+            *u++ = signed_small_values[code].u0;
+            *u++ = signed_small_values[code].u1;
+            *u++ = signed_small_values[code].u2;
+            *u++ = signed_small_values[code].u3;
+            huffman_cache = huffman_cache << (signed_small_values[code].n);
+            huffman_cache_size = huffman_cache_size - (signed_small_values[code].n);
+            n = n - 4;
+        }
+        return u;
+    }
+
+    void
+    decode_big ( short int *u, int k, int n)
+    {                                                                    /* 310 */
+        short int *htab = huffman_tables[k].h;
+
+        unsigned char *byte_pointer = this->byte_pointer;                     /* 313 */
+
+        int huffman_cache_size = 8 - this->bit_offset;
+
+        int huffman_cache =
+                (*byte_pointer++) << (sizeof (int) * 8 - huffman_cache_size);
+        while (n-- > 0) {
+            int code;
+
+            if ((16 - huffman_cache_size > 0)                                /* 315 */
+                    ) {
+                int tmp = (*byte_pointer << 8) | (*(byte_pointer + 1) & 0xFF); /* 316 */
+
+                byte_pointer = byte_pointer + 2;
+                huffman_cache = huffman_cache | (tmp << (16 - huffman_cache_size));
+                huffman_cache_size = huffman_cache_size + 16;
+            }
+            {
+                int width = HWIDTH;                                            /* 305 */
+
+                short int *h = htab;
+
+                code = h[((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - width)];
+                while (code < 0) {
+                    huffman_cache = huffman_cache << width;
+                    huffman_cache_size = huffman_cache_size - width;
+                    h = h - (code >> 4);
+                    width = code & 0x0F;
+                    code =
+                            h[((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - width)];
+                }
+            }
+            huffman_cache = huffman_cache << (code >> 8);                    /* 306 */
+            huffman_cache_size = huffman_cache_size - (code >> 8);
+            code = code & 0xFF;
+            {
+                short int value = code >> 4;                                   /* 307 */
+
+                if (value != 0) {
+                    int tmp = ((signed int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 1);     /* 308 */
+
+                    value = (value ^ tmp) - tmp;
+                    huffman_cache = huffman_cache << 1;
+                    huffman_cache_size--;
+                }
+                *u++ = value;
+            }
+            code = (code << 4) & 0xFF;
+            {
+                short int value = code >> 4;                                   /* 307 */
+
+                if (value != 0) {
+                    int tmp = ((signed int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 1);     /* 308 */
+
+                    value = (value ^ tmp) - tmp;
+                    huffman_cache = huffman_cache << 1;
+                    huffman_cache_size--;
+                }
+                *u++ = value;
+            }
+            code = (code << 4) & 0xFF;
+        }
+        this->bit_offset = (8 - (huffman_cache_size % 8)) & 0x7;              /* 314 */
+        this->byte_pointer = byte_pointer - ((huffman_cache_size + this->bit_offset) / 8);
+    }
+
+    void
+    decode_very_big ( short int *u, int k, int n)
+    {                                                                    /* 311 */
+        short int *htab = huffman_tables[k].h;
+
+        int linbits = huffman_tables[k].linbits;
+
+        unsigned char *byte_pointer = this->byte_pointer;                     /* 313 */
+
+        int huffman_cache_size = 8 - this->bit_offset;
+
+        int huffman_cache =
+                (*byte_pointer++) << (sizeof (int) * 8 - huffman_cache_size);
+        while (n-- > 0) {
+            int code;
+
+            if ((16 - huffman_cache_size > 0)                                /* 315 */
+                    ) {
+                int tmp = (*byte_pointer << 8) | (*(byte_pointer + 1) & 0xFF); /* 316 */
+
+                byte_pointer = byte_pointer + 2;
+                huffman_cache = huffman_cache | (tmp << (16 - huffman_cache_size));
+                huffman_cache_size = huffman_cache_size + 16;
+            }
+            if (huffman_cache_size < 24) {                                   /* 317 */
+                huffman_cache =
+                        huffman_cache | (byte_pointer[0] << (24 - huffman_cache_size));
+                byte_pointer++;
+                huffman_cache_size = huffman_cache_size + 8;
+            }
+            {
+                int width = HWIDTH;                                            /* 305 */
+
+                short int *h = htab;
+
+                code = h[((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - width)];
+                while (code < 0) {
+                    huffman_cache = huffman_cache << width;
+                    huffman_cache_size = huffman_cache_size - width;
+                    h = h - (code >> 4);
+                    width = code & 0x0F;
+                    code =
+                            h[((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - width)];
+                }
+            }
+            huffman_cache = huffman_cache << (code >> 8);                    /* 306 */
+            huffman_cache_size = huffman_cache_size - (code >> 8);
+            code = code & 0xFF;
+            if ((16 - huffman_cache_size > 0)                                /* 315 */
+                    ) {
+                int tmp = (*byte_pointer << 8) | (*(byte_pointer + 1) & 0xFF); /* 316 */
+
+                byte_pointer = byte_pointer + 2;
+                huffman_cache = huffman_cache | (tmp << (16 - huffman_cache_size));
+                huffman_cache_size = huffman_cache_size + 16;
+            }
+            {
+                short int value = code >> 4;                                   /* 309 */
+
+                if (value == 15 && linbits > 0) {
+                    value =
+                            value +
+                            (((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - linbits));
+                    huffman_cache = huffman_cache << linbits;
+                    huffman_cache_size = huffman_cache_size - linbits;
+                    {
+                        int tmp = ((signed int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 1);   /* 308 */
+
+                        value = (value ^ tmp) - tmp;
+                        huffman_cache = huffman_cache << 1;
+                        huffman_cache_size--;
+                    }
+                }
+                else if (value != 0) {
+                    int tmp = ((signed int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 1);     /* 308 */
+
+                    value = (value ^ tmp) - tmp;
+                    huffman_cache = huffman_cache << 1;
+                    huffman_cache_size--;
+                }
+                *u++ = value;
+                code = (code << 4) & 0xFF;
+            }
+            if ((16 - huffman_cache_size > 0)                                /* 315 */
+                    ) {
+                int tmp = (*byte_pointer << 8) | (*(byte_pointer + 1) & 0xFF); /* 316 */
+
+                byte_pointer = byte_pointer + 2;
+                huffman_cache = huffman_cache | (tmp << (16 - huffman_cache_size));
+                huffman_cache_size = huffman_cache_size + 16;
+            }
+            {
+                short int value = code >> 4;                                   /* 309 */
+
+                if (value == 15 && linbits > 0) {
+                    value =
+                            value +
+                            (((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - linbits));
+                    huffman_cache = huffman_cache << linbits;
+                    huffman_cache_size = huffman_cache_size - linbits;
+                    {
+                        int tmp = ((signed int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 1);   /* 308 */
+
+                        value = (value ^ tmp) - tmp;
+                        huffman_cache = huffman_cache << 1;
+                        huffman_cache_size--;
+                    }
+                }
+                else if (value != 0) {
+                    int tmp = ((signed int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 1);     /* 308 */
+
+                    value = (value ^ tmp) - tmp;
+                    huffman_cache = huffman_cache << 1;
+                    huffman_cache_size--;
+                }
+                *u++ = value;
+                code = (code << 4) & 0xFF;
+            }
+        }
+        this->bit_offset = (8 - (huffman_cache_size % 8)) & 0x7;              /* 314 */
+        this->byte_pointer = byte_pointer - ((huffman_cache_size + this->bit_offset) / 8);
+    }
+
+    void output_blocks ( mp3_sample * buffer, int n                /*  69 */
+    )
+    {
+        int i;
+
+        for (i = 0; i < n; i++) {
+            double *v;                                                       /*  70 */
+
+            {
+                int ch = 0;
+
+                this->offset[ch] = this->offset[ch] - SUBBANDS;                      /*   4 */
+                if (this->offset[ch] < 0) {
+                    this->offset[ch] = SHIFTSIZE - WINDOWBLOCKS * SUBBANDS;
+                    memmove (&(this->w[ch][this->offset[ch] + SUBBANDS]),
+                             &(this->w[ch][0]),
+                             sizeof (double) * (WINDOWBLOCKS - 1) * SUBBANDS);
+                }
+                v = this->w[ch] + this->offset[ch];
+                if (this->options.equalizer != nullptr) {                            /* 445 */
+                    int sb;
+
+                    for (sb = 0; sb < SUBBANDS; sb++) {
+                        int m = this->options.equalizer[ch][sb];
+
+                        if (m == 0)
+                            y[i][ch][sb] = 0.0;
+                        else
+                            y[i][ch][sb] *= twotom32th (m);
+                    }
+                }
+                dct32 (y[i][ch], v);
+                windowing (v, buffer);
+            }
+            if (this->info.channels > 1) {
+                int ch = 1;
+
+                this->offset[ch] = this->offset[ch] - SUBBANDS;                      /*   4 */
+                if (this->offset[ch] < 0) {
+                    this->offset[ch] = SHIFTSIZE - WINDOWBLOCKS * SUBBANDS;
+                    memmove (&(this->w[ch][this->offset[ch] + SUBBANDS]),
+                             &(this->w[ch][0]),
+                             sizeof (double) * (WINDOWBLOCKS - 1) * SUBBANDS);
+                }
+                v = this->w[ch] + this->offset[ch];
+                if (this->options.equalizer != nullptr) {                            /* 445 */
+                    int sb;
+
+                    for (sb = 0; sb < SUBBANDS; sb++) {
+                        int m = this->options.equalizer[ch][sb];
+
+                        if (m == 0)
+                            y[i][ch][sb] = 0.0;
+                        else
+                            y[i][ch][sb] *= twotom32th (m);
+                    }
+                }
+                dct32 (y[i][ch], v);
+                windowing (v, buffer + 1);
+                buffer = buffer + 2 * SUBBANDS;
+            }
+            else {
+                int sb;                                                        /*  71 */
+
+                if (this->options.flags & MP3_TWO_CHANNEL_MONO) {
+                    for (sb = 0; sb < SUBBANDS; sb++)
+                        buffer[2 * sb + 1] = buffer[2 * sb];
+                    buffer = buffer + 2 * SUBBANDS;
+                }
+                else {
+                    for (sb = 0; sb < SUBBANDS; sb++)
+                        buffer[sb] = buffer[2 * sb];
+                    buffer = buffer + SUBBANDS;
+                }
+            }
+        }
+        if (this->options.flags & MP3_TWO_CHANNEL_MONO)
+            this->info.samples += n * 2 * SUBBANDS;
+        else
+            this->info.samples += n * this->info.channels * SUBBANDS;
+    }
+
+    int
+    qs ( const int gr, const int ch, int band, int i, const int limit)
+    {                                                                    /* 268 */
+        while (i < limit) {
+            qs_band (ch, i, i, width[gr][ch][band], (4 * OUTPUT_EXPONENT     /* 262 */
+                                                     + (global_gain[gr][ch] - 210)      /* 251 */
+                                                     +(-((this->sfi[ch][band]   /* 252 */
+                                                          +preemphasis[gr][ch][band])
+                             << scale_shift[gr][ch] /* 256 */
+                     ))
+                     )
+                    , 1);
+            i = i + width[gr][ch][band];
+            band++;
+        }
+        return band;
+    }
+
+    int
+    qs_short ( const int gr, const int ch, int band, int i,
+              const int limit)
+    {                                                                    /* 269 */
+        while (i < limit) {
+            int k, j = i;
+
+            int size = width[gr][ch][band];
+
+            for (k = 0; k < SUBBLOCKS; k++, j++, i = i + size, band++)
+                qs_band (ch, i, j, size, (4 * OUTPUT_EXPONENT                  /* 265 */
+                                          + (global_gain[gr][ch] - 210)        /* 251 */
+                                          -8 * subblock_gain[gr][ch][k]
+                                          - ((this->sfi[ch][band]                 /* 252 */
+                         ) << scale_shift[gr][ch]          /* 256 */
+                                          )
+                         )
+                        , 3);
+        }
+        return band;
+    }
+
+    unsigned char *
+    next_frame ()
+    {                                                                    /* 166 */
+        int previous_free_format;
+
+        this->frame = this->frame + this->info.frame_size;
+        this->info.frame++;
+        while (this->frame + HEADER_SIZE > this->finish)
+            if (this->state & END_OF_INPUT)
+                return nullptr;
+            else
+                fill_input_buffer ();
+        previous_free_format = this->info.free_format;
+        if (!decode_header (&this->info, this->frame))
+            return nullptr;
+        this->byte_pointer = this->frame;
+        this->bit_offset = 0;
+        if (this->info.free_format && !previous_free_format)
+            return nullptr;
+        if (this->info.layer != 3)                                            /* 159 */
+            this->start = this->frame;
+        else if (this->frame - this->start > MAX_RESERVOIR)                      /* 160 */
+            this->start = this->frame - MAX_RESERVOIR;
+        while (this->frame + this->info.frame_size > this->finish)                  /* 162 */
+            if (this->state & END_OF_INPUT) {
+                if (this->info.layer == 3 && (this->frame + this->info.fixed_size < this->finish &&   /* 331 */
+                                           !(this->options.flags & MP3_NO_PARTIAL_FRAME))
+                        )
+                    return this->frame;
+                else
+                    return nullptr;
+            }
+            else
+                fill_input_buffer ();
+        return this->frame;
+    }
+
+
+    void
+    layer_II_decode_samples ( int g)
+    {                                                                    /* 217 */
+        char bit_offset = this->bit_offset;                          /* 146 */
+
+        unsigned char *byte_pointer = this->byte_pointer;
+
+        {
+            int i;                                                           /* 218 */
+
+            for (i = 0; i < 12; i = i + 3) {
+                int sb, ch;
+
+                for (sb = 0; sb < this->info.bound; sb++)
+                    for (ch = 0; ch < this->info.channels; ch++) {
+                        double f = side_info[sb][ch].mfactor[g];
+
+                        int n = side_info[sb][ch].bit_allocation;
+
+                        {
+                            int sample;                                              /* 201 */
+
+                            if (n > 0) {
+                                {
+                                    unsigned int bits;                                   /* 125 */
+
+                                    bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);     /* 142 */
+                                    bits |=
+                                            ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
+                                    bits |=
+                                            ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
+                                    bits <<= bit_offset;                                 /* 143 */
+                                    bit_offset += n;
+                                    byte_pointer += (bit_offset >> 3);
+                                    bit_offset = bit_offset & 0x07;
+                                    bits = bits ^ (((unsigned int) -1) >> 1)             /* 123 */
+                                            ;
+                                    bits = bits & ~(((unsigned int) -1) >> n)            /* 124 */
+                                            ;
+                                    sample = (int) bits;
+                                }
+                                y[i][ch][sb] = sample * f;
+                                {
+                                    unsigned int bits;                                   /* 125 */
+
+                                    bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);     /* 142 */
+                                    bits |=
+                                            ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
+                                    bits |=
+                                            ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
+                                    bits <<= bit_offset;                                 /* 143 */
+                                    bit_offset += n;
+                                    byte_pointer += (bit_offset >> 3);
+                                    bit_offset = bit_offset & 0x07;
+                                    bits = bits ^ (((unsigned int) -1) >> 1)             /* 123 */
+                                            ;
+                                    bits = bits & ~(((unsigned int) -1) >> n)            /* 124 */
+                                            ;
+                                    sample = (int) bits;
+                                }
+                                y[i + 1][ch][sb] = sample * f;
+                                {
+                                    unsigned int bits;                                   /* 125 */
+
+                                    bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);     /* 142 */
+                                    bits |=
+                                            ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
+                                    bits |=
+                                            ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
+                                    bits <<= bit_offset;                                 /* 143 */
+                                    bit_offset += n;
+                                    byte_pointer += (bit_offset >> 3);
+                                    bit_offset = bit_offset & 0x07;
+                                    bits = bits ^ (((unsigned int) -1) >> 1)             /* 123 */
+                                            ;
+                                    bits = bits & ~(((unsigned int) -1) >> n)            /* 124 */
+                                            ;
+                                    sample = (int) bits;
+                                }
+                                y[i + 2][ch][sb] = sample * f;
+                            }
+                            else if (n < 0) {                                        /* 424 */
+                                int c;
+
+                                {
+                                    unsigned int bits;
+
+                                    n = -n;
+                                    bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);     /* 142 */
+                                    bits |=
+                                            ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
+                                    bits |=
+                                            ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
+                                    bits <<= bit_offset;                                 /* 143 */
+                                    bit_offset += n;
+                                    byte_pointer += (bit_offset >> 3);
+                                    bit_offset = bit_offset & 0x07;
+                                    bits = (bits >> (sizeof (bits) * 8 - n));
+                                    n = -n;
+                                    c = bits;
+                                }
+                                {
+                                    const int (*table)[3];                               /* 425 */
+
+                                    table = degroup[-n - 5];
+                                    y[i][ch][sb] = table[c][0] * f;                      /* 426 */
+                                    y[i + 1][ch][sb] = table[c][1] * f;
+                                    y[i + 2][ch][sb] = table[c][2] * f;
+                                }}
+                            else
+                                y[i][ch][sb] = y[i + 1][ch][sb] = y[i + 2][ch][sb] = 0.0;
+                        }
+                    }
+                for (sb = this->info.bound; sb < this->sblimit[0]; sb++) {
+                    const double f = side_info[sb][0].mfactor[g];
+
+                    const double r = side_info[sb][1].mfactor[g] / f;
+
+                    int n = side_info[sb][0].bit_allocation;
+
+                    ch = 0;
+                    {
+                        int sample;                                                /* 201 */
+
+                        if (n > 0) {
+                            {
+                                unsigned int bits;                                     /* 125 */
+
+                                bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
+                                bits |=
+                                        ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
+                                bits |=
+                                        ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
+                                bits <<= bit_offset;                                   /* 143 */
+                                bit_offset += n;
+                                byte_pointer += (bit_offset >> 3);
+                                bit_offset = bit_offset & 0x07;
+                                bits = bits ^ (((unsigned int) -1) >> 1)               /* 123 */
+                                        ;
+                                bits = bits & ~(((unsigned int) -1) >> n)              /* 124 */
+                                        ;
+                                sample = (int) bits;
+                            }
+                            y[i][ch][sb] = sample * f;
+                            {
+                                unsigned int bits;                                     /* 125 */
+
+                                bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
+                                bits |=
+                                        ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
+                                bits |=
+                                        ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
+                                bits <<= bit_offset;                                   /* 143 */
+                                bit_offset += n;
+                                byte_pointer += (bit_offset >> 3);
+                                bit_offset = bit_offset & 0x07;
+                                bits = bits ^ (((unsigned int) -1) >> 1)               /* 123 */
+                                        ;
+                                bits = bits & ~(((unsigned int) -1) >> n)              /* 124 */
+                                        ;
+                                sample = (int) bits;
+                            }
+                            y[i + 1][ch][sb] = sample * f;
+                            {
+                                unsigned int bits;                                     /* 125 */
+
+                                bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
+                                bits |=
+                                        ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
+                                bits |=
+                                        ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
+                                bits <<= bit_offset;                                   /* 143 */
+                                bit_offset += n;
+                                byte_pointer += (bit_offset >> 3);
+                                bit_offset = bit_offset & 0x07;
+                                bits = bits ^ (((unsigned int) -1) >> 1)               /* 123 */
+                                        ;
+                                bits = bits & ~(((unsigned int) -1) >> n)              /* 124 */
+                                        ;
+                                sample = (int) bits;
+                            }
+                            y[i + 2][ch][sb] = sample * f;
+                        }
+                        else if (n < 0) {                                          /* 424 */
+                            int c;
+
+                            {
+                                unsigned int bits;
+
+                                n = -n;
+                                bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
+                                bits |=
+                                        ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
+                                bits |=
+                                        ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
+                                bits <<= bit_offset;                                   /* 143 */
+                                bit_offset += n;
+                                byte_pointer += (bit_offset >> 3);
+                                bit_offset = bit_offset & 0x07;
+                                bits = (bits >> (sizeof (bits) * 8 - n));
+                                n = -n;
+                                c = bits;
+                            }
+                            {
+                                const int (*table)[3];                                 /* 425 */
+
+                                table = degroup[-n - 5];
+                                y[i][ch][sb] = table[c][0] * f;                        /* 426 */
+                                y[i + 1][ch][sb] = table[c][1] * f;
+                                y[i + 2][ch][sb] = table[c][2] * f;
+                            }}
+                        else
+                            y[i][ch][sb] = y[i + 1][ch][sb] = y[i + 2][ch][sb] = 0.0;
+                    }
+                    if (this->info.channels > 1) {
+                        y[i][1][sb] = y[i][0][sb] * r;
+                        y[i + 1][1][sb] = y[i + 1][0][sb] * r;
+                        y[i + 2][1][sb] = y[i + 2][0][sb] * r;
+                    }
+                }
+                for (sb = this->sblimit[0]; sb < SUBBANDS; sb++) {
+                    y[i][0][sb] = y[i + 1][0][sb]
+                            = y[i + 2][0][sb] = 0.0;
+                    if (this->info.channels > 1)
+                        y[i][1][sb] = y[i + 1][1][sb]
+                                = y[i + 2][1][sb] = 0.0;
+                }
+            }
+        }
+        this->bit_offset = bit_offset;                                        /* 147 */
+        this->byte_pointer = byte_pointer;
+    }
+
+
+
+    void
+    fill_input_buffer ()
+    {                                                                    /* 157 */
+        int size = this->finish - this->start;
+
+        if (size > 0) {                                                    /* 158 */
+            int distance = this->start - this->buffer;
+
+            if (distance > 0) {
+                memmove (this->buffer, this->start, size);
+                this->start = this->buffer;
+                if (this->frame != nullptr)
+                    this->frame = this->frame - distance;
+                this->byte_pointer = this->byte_pointer - distance;
+                this->finish = this->finish - distance;
+                this->buffer_position = this->buffer_position + distance;
+            }
+        }
+        size = this->input_read (this->info.id, this->myFile, this->finish, BUFFERSIZE - size);
+        if (size <= 0)
+            this->state = this->state | END_OF_INPUT;
+        else
+            this->finish = this->finish + size;
+    }
+
+    short unsigned int
+    crc_check ()
+    {                                                                    /* 101 */
+        short unsigned int crc;
+
+        unsigned char *byte_pointer;
+
+        int n;
+
+        crc = 0xFFFF;
+        byte_pointer = this->frame + 2;                                       /* 100 */
+        crc = (crc << 8) ^ crc_table[(crc >> 8) ^ *byte_pointer++]         /* 441 */
+                ;
+        crc = (crc << 8) ^ crc_table[(crc >> 8) ^ *byte_pointer++]         /* 441 */
+                ;
+        byte_pointer++;
+        byte_pointer++;
+        if (this->info.layer == 1) {
+            n = 16;
+            if (this->info.channels > 1)
+                n = n + this->info.bound / 2;
+            while (n-- > 0)
+                crc = (crc << 8) ^ crc_table[(crc >> 8) ^ *byte_pointer++]     /* 441 */
+                        ;
+        }
+        else if (this->info.layer == 2) {
+            char bit_offset = 0;                                             /* 215 */
+
+            unsigned int bits;
+
+            int sb, ch, nsf;
+
+            nsf = 0;                                                         /* 213 */
+            for (sb = 0; sb < this->info.bound; sb++)
+                for (ch = 0; ch < this->info.channels; ch++) {
+                    n = this->nbal[sb];
+                    if (n > 0) {
+                        bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);   /* 142 */
+                        bits |= ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
+                        bits |= ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
+                        bits <<= bit_offset;                                       /* 143 */
+                        bit_offset += n;
+                        byte_pointer += (bit_offset >> 3);
+                        bit_offset = bit_offset & 0x07;
+                        bits = (bits >> (sizeof (bits) * 8 - n));
+                        crc = bitcrc (crc, (unsigned short int) bits, n);
+                        if (bits != 0)
+                            nsf++;
+                    }
+                }
+            for (; sb < this->sblimit[0]; sb++) {
+                n = this->nbal[sb];
+                if (n > 0) {
+                    bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);     /* 142 */
+                    bits |= ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
+                    bits |= ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
+                    bits <<= bit_offset;                                         /* 143 */
+                    bit_offset += n;
+                    byte_pointer += (bit_offset >> 3);
+                    bit_offset = bit_offset & 0x07;
+                    bits = (bits >> (sizeof (bits) * 8 - n));
+                    crc = bitcrc (crc, (unsigned short int) bits, n);
+                    if (bits != 0)
+                        nsf = nsf + this->info.channels;
+                }
+            }
+            {
+                int sfbit = nsf * 2;                                           /* 214 */
+
+                if (bit_offset > 0) {
+                    n = min (8 - bit_offset, sfbit);
+                    bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);     /* 142 */
+                    bits |= ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
+                    bits |= ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
+                    bits <<= bit_offset;                                         /* 143 */
+                    bit_offset += n;
+                    byte_pointer += (bit_offset >> 3);
+                    bit_offset = bit_offset & 0x07;
+                    bits = (bits >> (sizeof (bits) * 8 - n));
+                    crc = bitcrc (crc, (unsigned short int) bits, n);
+                    sfbit = sfbit - n;
+                }
+                while (sfbit >= 8) {
+                    crc = (crc << 8) ^ crc_table[(crc >> 8) ^ *byte_pointer++]   /* 441 */
+                            ;
+                    sfbit = sfbit - 8;
+                }
+                if (sfbit > 0) {
+                    n = sfbit;
+                    bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);     /* 142 */
+                    bits |= ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
+                    bits |= ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
+                    bits <<= bit_offset;                                         /* 143 */
+                    bit_offset += n;
+                    byte_pointer += (bit_offset >> 3);
+                    bit_offset = bit_offset & 0x07;
+                    bits = (bits >> (sizeof (bits) * 8 - n));
+                    crc = bitcrc (crc, (unsigned short int) bits, n);
+                }
+            }
+        }
+        else {
+            n = this->info.fixed_size - HEADER_SIZE - 2;
+            while (n-- > 0)
+                crc = (crc << 8) ^ crc_table[(crc >> 8) ^ *byte_pointer++]     /* 441 */
+                        ;
+        }
+        return crc;
+    }
+
+    void
+    layer_I_decode_samples ()
+    {                                                                    /* 122 */
+        char bit_offset = this->bit_offset;                          /* 146 */
+
+        unsigned char *byte_pointer = this->byte_pointer;
+
+        {
+            int i;                                                           /* 116 */
+
+            if (this->info.channels > 1)
+                for (i = 0; i < 12; i++) {
+                    int sb;                                                      /* 120 */
+
+                    for (sb = 0; sb < this->info.bound; sb++) {
+                        int sample;                                                /* 118 */
+
+                        {
+                            int n = side_info[sb][0].bit_allocation;
+
+                            if (n == 0)                                              /* 121 */
+                                sample = 0;
+                            else {
+                                unsigned int bits;                                     /* 125 */
+
+                                bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
+                                bits |=
+                                        ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
+                                bits |=
+                                        ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
+                                bits <<= bit_offset;                                   /* 143 */
+                                bit_offset += n;
+                                byte_pointer += (bit_offset >> 3);
+                                bit_offset = bit_offset & 0x07;
+                                bits = bits ^ (((unsigned int) -1) >> 1)               /* 123 */
+                                        ;
+                                bits = bits & ~(((unsigned int) -1) >> n)              /* 124 */
+                                        ;
+                                sample = (int) bits;
+                            }
+                            y[i][0][sb] = sample * side_info[sb][0].mfactor[0];
+                        }
+                        {
+                            int n = side_info[sb][1].bit_allocation;                 /* 119 */
+
+                            if (n == 0)                                              /* 121 */
+                                sample = 0;
+                            else {
+                                unsigned int bits;                                     /* 125 */
+
+                                bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
+                                bits |=
+                                        ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
+                                bits |=
+                                        ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
+                                bits <<= bit_offset;                                   /* 143 */
+                                bit_offset += n;
+                                byte_pointer += (bit_offset >> 3);
+                                bit_offset = bit_offset & 0x07;
+                                bits = bits ^ (((unsigned int) -1) >> 1)               /* 123 */
+                                        ;
+                                bits = bits & ~(((unsigned int) -1) >> n)              /* 124 */
+                                        ;
+                                sample = (int) bits;
+                            }
+                            y[i][1][sb] = sample * side_info[sb][1].mfactor[0];
+                        }
+                    }
+                    for (; sb < SUBBANDS; sb++) {
+                        int sample;                                                /* 118 */
+
+                        {
+                            int n = side_info[sb][0].bit_allocation;
+
+                            if (n == 0)                                              /* 121 */
+                                sample = 0;
+                            else {
+                                unsigned int bits;                                     /* 125 */
+
+                                bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
+                                bits |=
+                                        ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
+                                bits |=
+                                        ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
+                                bits <<= bit_offset;                                   /* 143 */
+                                bit_offset += n;
+                                byte_pointer += (bit_offset >> 3);
+                                bit_offset = bit_offset & 0x07;
+                                bits = bits ^ (((unsigned int) -1) >> 1)               /* 123 */
+                                        ;
+                                bits = bits & ~(((unsigned int) -1) >> n)              /* 124 */
+                                        ;
+                                sample = (int) bits;
+                            }
+                            y[i][0][sb] = sample * side_info[sb][0].mfactor[0];
+                        }
+                        y[i][1][sb] = sample * side_info[sb][1].mfactor[0];
+                    }
+                }
+            else
+                for (i = 0; i < 12; i++) {
+                    int sb;                                                      /* 117 */
+
+                    for (sb = 0; sb < SUBBANDS; sb++) {
+                        int sample;                                                /* 118 */
+
+                        {
+                            int n = side_info[sb][0].bit_allocation;
+
+                            if (n == 0)                                              /* 121 */
+                                sample = 0;
+                            else {
+                                unsigned int bits;                                     /* 125 */
+
+                                bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
+                                bits |=
+                                        ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
+                                bits |=
+                                        ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
+                                bits <<= bit_offset;                                   /* 143 */
+                                bit_offset += n;
+                                byte_pointer += (bit_offset >> 3);
+                                bit_offset = bit_offset & 0x07;
+                                bits = bits ^ (((unsigned int) -1) >> 1)               /* 123 */
+                                        ;
+                                bits = bits & ~(((unsigned int) -1) >> n)              /* 124 */
+                                        ;
+                                sample = (int) bits;
+                            }
+                            y[i][0][sb] = sample * side_info[sb][0].mfactor[0];
+                        }
+                    }
+                }
+        }
+        this->bit_offset = bit_offset;                                        /* 147 */
+        this->byte_pointer = byte_pointer;
+    }
+
+    unsigned int
+    getbit (const int n)
+    {                                                                    /* 144 */
+        unsigned int bits;
+
+        char bit_offset = this->bit_offset;                          /* 146 */
+
+        unsigned char *byte_pointer = this->byte_pointer;
+
+        bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);   /* 142 */
+        bits |= ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
+        bits |= ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
+        bits <<= bit_offset;                                               /* 143 */
+        bit_offset += n;
+        byte_pointer += (bit_offset >> 3);
+        bit_offset = bit_offset & 0x07;
+        bits = (bits >> (sizeof (bits) * 8 - n));
+        this->bit_offset = bit_offset;                                        /* 147 */
+        this->byte_pointer = byte_pointer;
+        return bits;
+    }
+
+
+
+    unsigned char *
+    synchronize ()
+    {                                                                    /* 161 */
+        if (this->bit_offset > 0) {
+            this->byte_pointer++;
+            this->bit_offset = 0;
+        }
+        do {
+            while (this->byte_pointer + HEADER_SIZE > this->finish)
+                if (this->state & END_OF_INPUT)
+                    return NULL;
+                else
+                    this->fill_input_buffer ();
+            if (decode_header (&this->info, this->byte_pointer)) {
+                this->frame = this->byte_pointer;
+                {
+                    if (this->info.free_format) {                                   /* 164 */
+                        int frame_size = HEADER_SIZE;                              /* 167 */
+
+                        do {
+                            if (++frame_size > MAX_FRAME)
+                                break;
+                            while (this->frame + frame_size + HEADER_SIZE > this->finish)  /* 169 */
+                                if (this->state & END_OF_INPUT)
+                                    return NULL;
+                                else
+                                    this->fill_input_buffer ();
+                            if (!(this->frame[frame_size] == 0xFF &&                    /* 168 */
+                                  (this->frame[frame_size + 1] & 0xFE) == (this->frame[1] & 0xFE) &&
+                                  (this->frame[frame_size + 2] & 0xFC) == (this->frame[2] & 0xFC))
+                                    )
+                                continue;
+                            {
+                                mp3_info i = { 0 }
+                                , *info = &i;                                          /* 171 */
+                                if (!decode_header (info, this->frame + frame_size))
+                                    continue;
+                                this->info.frame_size = frame_size;
+                                {
+                                    if (this->info.layer == 1)                              /*  91 */
+                                        this->info.bit_rate =
+                                                ((this->info.frame_size / 4 -
+                                                  this->info.padding) * this->info.sample_rate + 11) / 12;
+                                    else
+                                        this->info.bit_rate =
+                                                ((this->info.frame_size -
+                                                  this->info.padding) * this->info.sample_rate + 143) / 144;
+                                }
+                                if (this->info.layer == 3 && this->info.version != MP3_V1_0) /* 376 */
+                                    this->info.bit_rate =
+                                            ((this->info.frame_size -
+                                              this->info.padding) * this->info.sample_rate + 71) / 72;
+                                if (this->options.flags & MP3_SYNC_3) {
+                                    info->bit_rate = this->info.bit_rate;
+                                    {
+                                        if (info->layer == 1)                              /*  90 */
+                                            info->frame_size =
+                                                    4 * (info->padding +
+                                                         (384 / (8 * 4)) * info->bit_rate /
+                                                         info->sample_rate);
+                                        else
+                                            info->frame_size =
+                                                    info->padding +
+                                                    (1152 / 8) * info->bit_rate / info->sample_rate;
+                                    }
+                                    if (info->layer == 3 && info->version != MP3_V1_0)   /* 375 */
+                                        info->frame_size =
+                                                1 * (info->padding +
+                                                     72 * info->bit_rate / info->sample_rate);
+                                    while (this->frame + this->info.frame_size + info->frame_size +
+                                           HEADER_SIZE > this->finish)
+                                        if (this->state & END_OF_INPUT)
+                                            return this->frame;
+                                        else
+                                            this->fill_input_buffer ();
+                                    if (decode_header
+                                            (info, this->frame + this->info.frame_size + info->frame_size))
+                                        return this->frame;
+                                    else
+                                        break;
+                                }
+                                else
+                                    return this->frame;
+                            }
+                        } while (1);
+                    }
+                    else {
+                        while (this->frame + this->info.frame_size > this->finish)          /* 162 */
+                            if (this->state & END_OF_INPUT) {
+                                if (this->info.layer == 3 && (this->frame + this->info.fixed_size < this->finish &&   /* 331 */
+                                                           !(this->options.
+                                                                   flags & MP3_NO_PARTIAL_FRAME))
+                                        )
+                                    return this->frame;
+                                else
+                                    return NULL;
+                            }
+                            else
+                                this->fill_input_buffer ();
+                        if (this->options.flags & MP3_SYNC_1)
+                            return this->frame;
+                        else {
+                            mp3_info i = { 0 };                                      /* 165 */
+                            while (this->frame + this->info.frame_size + HEADER_SIZE > this->finish)
+                                if (this->state & END_OF_INPUT)
+                                    return this->frame;
+                                else
+                                    this->fill_input_buffer ();
+                            if (decode_header (&i, this->frame + this->info.frame_size)) {
+                                if (this->options.flags & MP3_SYNC_3) {
+                                    while (this->frame + this->info.frame_size + i.frame_size +
+                                           HEADER_SIZE > this->finish)
+                                        if (this->state & END_OF_INPUT)
+                                            return this->frame;
+                                        else
+                                            this->fill_input_buffer ();
+                                    if (i.free_format)
+                                        return this->frame;
+                                    else
+                                    if (decode_header
+                                            (&i, this->frame + this->info.frame_size + i.frame_size))
+                                        return this->frame;
+                                }
+                                else
+                                    return this->frame;
+                            }
+                        }
+                    }
+                    this->frame = NULL;
+                    this->byte_pointer++;
+                }
+            }
+            else {
+                if (this->options.tag_handler != NULL) {                          /* 172 */
+                    this->tag_size = 0;                                             /* 174 */
+                    this->options.tag_handler (this->info.id, tag_read);
+                    if (this->tag_size <= 0)
+                        this->byte_pointer++;
+                    else {
+                        int post = this->finish - this->byte_pointer - this->tag_size;      /* 179 */
+
+                        int pre = this->byte_pointer - this->start;
+
+                        if (post > 0) {
+                            if (pre > 0)
+                                memmove (this->start + this->tag_size, this->start, pre);
+                            this->byte_pointer = this->byte_pointer + this->tag_size;
+                            this->start = this->start + this->tag_size;
+                            if (this->frame != NULL)
+                                this->frame = this->frame + this->tag_size;
+                        }
+                        else
+                            this->finish = this->byte_pointer;
+                    }
+                }
+                else
+                    this->byte_pointer++;
+            }
+            if (this->byte_pointer - this->start > MAX_RESERVOIR)
+                this->start = this->byte_pointer - MAX_RESERVOIR;
+        } while (1);
+        return NULL;
+    }
+
+
+} ;
+
+
+
+static stream *streams[STREAMS] = { nullptr };                     /*  43 */
 
 static int output_mode;                                              /*  63 */
 
-static double y[BLOCKS][CHANNELS][SUBBANDS];                         /*  67 */
-
-static side_information side_info[SUBBANDS][CHANNELS];               /* 102 */
-static short int uv[CHANNELS][FREQUENCIES] = { {0} };                /* 236 */
-
-static double z[CHANNELS][FREQUENCIES];                              /* 241 */
-
-static const short int *width[GRANULES][CHANNELS];                   /* 244 */
-
 static const short int *start[GRANULES][CHANNELS];
 
-static unsigned char global_gain[GRANULES][CHANNELS];                /* 246 */
 
-static int scale_shift[GRANULES][CHANNELS];                          /* 253 */
 
 static const int                                                     /* 257 */
 
 preemphasis_table[BANDS] =
         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3, 3, 2, 0 };
-static const int *preemphasis[GRANULES][CHANNELS];                   /* 258 */
 static const int zero_table[BANDS] = { 0 };
 
-static char subblock_gain[GRANULES][CHANNELS][SUBBLOCKS];            /* 263 */
 
 static int ulimit[CHANNELS];                                         /* 284 */
 
@@ -247,148 +1579,9 @@ static const signed char slength_v1[16][4] =                                /* 4
 static const char slimit_v1[2][2][4] =                               /* 436 */
         { {{11, 21, 22, 0}, {11, 21, 22, 0}}, {{18, 36, 39, 0}, {17, 35, 38, 0}} };
 
-static void
-output_blocks (stream * s, mp3_sample * buffer, int n                /*  69 */
-)
-{
-    int i;
 
-    for (i = 0; i < n; i++) {
-        double *v;                                                       /*  70 */
 
-        {
-            int ch = 0;
 
-            s->offset[ch] = s->offset[ch] - SUBBANDS;                      /*   4 */
-            if (s->offset[ch] < 0) {
-                s->offset[ch] = SHIFTSIZE - WINDOWBLOCKS * SUBBANDS;
-                memmove (&(s->w[ch][s->offset[ch] + SUBBANDS]),
-                         &(s->w[ch][0]),
-                         sizeof (double) * (WINDOWBLOCKS - 1) * SUBBANDS);
-            }
-            v = s->w[ch] + s->offset[ch];
-            if (s->options.equalizer != NULL) {                            /* 445 */
-                int sb;
-
-                for (sb = 0; sb < SUBBANDS; sb++) {
-                    int m = s->options.equalizer[ch][sb];
-
-                    if (m == 0)
-                        y[i][ch][sb] = 0.0;
-                    else
-                        y[i][ch][sb] *= twotom32th (m);
-                }
-            }
-            dct32 (y[i][ch], v);
-            windowing (v, buffer);
-        }
-        if (s->info.channels > 1) {
-            int ch = 1;
-
-            s->offset[ch] = s->offset[ch] - SUBBANDS;                      /*   4 */
-            if (s->offset[ch] < 0) {
-                s->offset[ch] = SHIFTSIZE - WINDOWBLOCKS * SUBBANDS;
-                memmove (&(s->w[ch][s->offset[ch] + SUBBANDS]),
-                         &(s->w[ch][0]),
-                         sizeof (double) * (WINDOWBLOCKS - 1) * SUBBANDS);
-            }
-            v = s->w[ch] + s->offset[ch];
-            if (s->options.equalizer != NULL) {                            /* 445 */
-                int sb;
-
-                for (sb = 0; sb < SUBBANDS; sb++) {
-                    int m = s->options.equalizer[ch][sb];
-
-                    if (m == 0)
-                        y[i][ch][sb] = 0.0;
-                    else
-                        y[i][ch][sb] *= twotom32th (m);
-                }
-            }
-            dct32 (y[i][ch], v);
-            windowing (v, buffer + 1);
-            buffer = buffer + 2 * SUBBANDS;
-        }
-        else {
-            int sb;                                                        /*  71 */
-
-            if (s->options.flags & MP3_TWO_CHANNEL_MONO) {
-                for (sb = 0; sb < SUBBANDS; sb++)
-                    buffer[2 * sb + 1] = buffer[2 * sb];
-                buffer = buffer + 2 * SUBBANDS;
-            }
-            else {
-                for (sb = 0; sb < SUBBANDS; sb++)
-                    buffer[sb] = buffer[2 * sb];
-                buffer = buffer + SUBBANDS;
-            }
-        }
-    }
-    if (s->options.flags & MP3_TWO_CHANNEL_MONO)
-        s->info.samples += n * 2 * SUBBANDS;
-    else
-        s->info.samples += n * s->info.channels * SUBBANDS;
-}
-
-static void
-output_silence (stream * s, mp3_sample * buffer, int n)
-{                                                                    /*  74 */
-    int i;
-
-    for (i = 0; i < n; i++) {
-        double *v;                                                       /*  75 */
-
-        {
-            int sb, ch = 0;
-
-            s->offset[ch] = s->offset[ch] - SUBBANDS;                      /*   4 */
-            if (s->offset[ch] < 0) {
-                s->offset[ch] = SHIFTSIZE - WINDOWBLOCKS * SUBBANDS;
-                memmove (&(s->w[ch][s->offset[ch] + SUBBANDS]),
-                         &(s->w[ch][0]),
-                         sizeof (double) * (WINDOWBLOCKS - 1) * SUBBANDS);
-            }
-            v = s->w[ch] + s->offset[ch];
-            for (sb = SUBBANDS - 1; sb >= 0; sb--)
-                v[sb] = 0.0;
-            windowing (v, buffer);
-        }
-        if (s->info.channels > 1) {
-            int sb, ch = 1;
-
-            s->offset[ch] = s->offset[ch] - SUBBANDS;                      /*   4 */
-            if (s->offset[ch] < 0) {
-                s->offset[ch] = SHIFTSIZE - WINDOWBLOCKS * SUBBANDS;
-                memmove (&(s->w[ch][s->offset[ch] + SUBBANDS]),
-                         &(s->w[ch][0]),
-                         sizeof (double) * (WINDOWBLOCKS - 1) * SUBBANDS);
-            }
-            v = s->w[ch] + s->offset[ch];
-            for (sb = SUBBANDS - 1; sb >= 0; sb--)
-                v[sb] = 0.0;
-            windowing (v, buffer + 1);
-            buffer = buffer + 2 * SUBBANDS;
-        }
-        else {
-            int sb;                                                        /*  71 */
-
-            if (s->options.flags & MP3_TWO_CHANNEL_MONO) {
-                for (sb = 0; sb < SUBBANDS; sb++)
-                    buffer[2 * sb + 1] = buffer[2 * sb];
-                buffer = buffer + 2 * SUBBANDS;
-            }
-            else {
-                for (sb = 0; sb < SUBBANDS; sb++)
-                    buffer[sb] = buffer[2 * sb];
-                buffer = buffer + SUBBANDS;
-            }
-        }
-    }
-    if (s->options.flags & MP3_TWO_CHANNEL_MONO)
-        s->info.samples += n * 2 * SUBBANDS;
-    else
-        s->info.samples += n * s->info.channels * SUBBANDS;
-}
 
 static int
 decode_header (mp3_info * info, unsigned char *frame)
@@ -550,513 +1743,18 @@ decode_header (mp3_info * info, unsigned char *frame)
     return 1;
 }
 
-static short unsigned int
-crc_check (stream * s)
-{                                                                    /* 101 */
-    short unsigned int crc;
-
-    unsigned char *byte_pointer;
-
-    int n;
-
-    crc = 0xFFFF;
-    byte_pointer = s->frame + 2;                                       /* 100 */
-    crc = (crc << 8) ^ crc_table[(crc >> 8) ^ *byte_pointer++]         /* 441 */
-            ;
-    crc = (crc << 8) ^ crc_table[(crc >> 8) ^ *byte_pointer++]         /* 441 */
-            ;
-    byte_pointer++;
-    byte_pointer++;
-    if (s->info.layer == 1) {
-        n = 16;
-        if (s->info.channels > 1)
-            n = n + s->info.bound / 2;
-        while (n-- > 0)
-            crc = (crc << 8) ^ crc_table[(crc >> 8) ^ *byte_pointer++]     /* 441 */
-                    ;
-    }
-    else if (s->info.layer == 2) {
-        char bit_offset = 0;                                             /* 215 */
-
-        unsigned int bits;
-
-        int sb, ch, nsf;
-
-        nsf = 0;                                                         /* 213 */
-        for (sb = 0; sb < s->info.bound; sb++)
-            for (ch = 0; ch < s->info.channels; ch++) {
-                n = s->nbal[sb];
-                if (n > 0) {
-                    bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);   /* 142 */
-                    bits |= ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
-                    bits |= ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
-                    bits <<= bit_offset;                                       /* 143 */
-                    bit_offset += n;
-                    byte_pointer += (bit_offset >> 3);
-                    bit_offset = bit_offset & 0x07;
-                    bits = (bits >> (sizeof (bits) * 8 - n));
-                    crc = bitcrc (crc, (unsigned short int) bits, n);
-                    if (bits != 0)
-                        nsf++;
-                }
-            }
-        for (; sb < s->sblimit[0]; sb++) {
-            n = s->nbal[sb];
-            if (n > 0) {
-                bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);     /* 142 */
-                bits |= ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
-                bits |= ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
-                bits <<= bit_offset;                                         /* 143 */
-                bit_offset += n;
-                byte_pointer += (bit_offset >> 3);
-                bit_offset = bit_offset & 0x07;
-                bits = (bits >> (sizeof (bits) * 8 - n));
-                crc = bitcrc (crc, (unsigned short int) bits, n);
-                if (bits != 0)
-                    nsf = nsf + s->info.channels;
-            }
-        }
-        {
-            int sfbit = nsf * 2;                                           /* 214 */
-
-            if (bit_offset > 0) {
-                n = min (8 - bit_offset, sfbit);
-                bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);     /* 142 */
-                bits |= ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
-                bits |= ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
-                bits <<= bit_offset;                                         /* 143 */
-                bit_offset += n;
-                byte_pointer += (bit_offset >> 3);
-                bit_offset = bit_offset & 0x07;
-                bits = (bits >> (sizeof (bits) * 8 - n));
-                crc = bitcrc (crc, (unsigned short int) bits, n);
-                sfbit = sfbit - n;
-            }
-            while (sfbit >= 8) {
-                crc = (crc << 8) ^ crc_table[(crc >> 8) ^ *byte_pointer++]   /* 441 */
-                        ;
-                sfbit = sfbit - 8;
-            }
-            if (sfbit > 0) {
-                n = sfbit;
-                bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);     /* 142 */
-                bits |= ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
-                bits |= ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
-                bits <<= bit_offset;                                         /* 143 */
-                bit_offset += n;
-                byte_pointer += (bit_offset >> 3);
-                bit_offset = bit_offset & 0x07;
-                bits = (bits >> (sizeof (bits) * 8 - n));
-                crc = bitcrc (crc, (unsigned short int) bits, n);
-            }
-        }
-    }
-    else {
-        n = s->info.fixed_size - HEADER_SIZE - 2;
-        while (n-- > 0)
-            crc = (crc << 8) ^ crc_table[(crc >> 8) ^ *byte_pointer++]     /* 441 */
-                    ;
-    }
-    return crc;
-}
-
-static void
-layer_I_decode_samples (stream * s)
-{                                                                    /* 122 */
-    char bit_offset = s->bit_offset;                          /* 146 */
-
-    unsigned char *byte_pointer = s->byte_pointer;
-
-    {
-        int i;                                                           /* 116 */
-
-        if (s->info.channels > 1)
-            for (i = 0; i < 12; i++) {
-                int sb;                                                      /* 120 */
-
-                for (sb = 0; sb < s->info.bound; sb++) {
-                    int sample;                                                /* 118 */
-
-                    {
-                        int n = side_info[sb][0].bit_allocation;
-
-                        if (n == 0)                                              /* 121 */
-                            sample = 0;
-                        else {
-                            unsigned int bits;                                     /* 125 */
-
-                            bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
-                            bits |=
-                                    ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
-                            bits |=
-                                    ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
-                            bits <<= bit_offset;                                   /* 143 */
-                            bit_offset += n;
-                            byte_pointer += (bit_offset >> 3);
-                            bit_offset = bit_offset & 0x07;
-                            bits = bits ^ (((unsigned int) -1) >> 1)               /* 123 */
-                                    ;
-                            bits = bits & ~(((unsigned int) -1) >> n)              /* 124 */
-                                    ;
-                            sample = (int) bits;
-                        }
-                        y[i][0][sb] = sample * side_info[sb][0].mfactor[0];
-                    }
-                    {
-                        int n = side_info[sb][1].bit_allocation;                 /* 119 */
-
-                        if (n == 0)                                              /* 121 */
-                            sample = 0;
-                        else {
-                            unsigned int bits;                                     /* 125 */
-
-                            bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
-                            bits |=
-                                    ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
-                            bits |=
-                                    ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
-                            bits <<= bit_offset;                                   /* 143 */
-                            bit_offset += n;
-                            byte_pointer += (bit_offset >> 3);
-                            bit_offset = bit_offset & 0x07;
-                            bits = bits ^ (((unsigned int) -1) >> 1)               /* 123 */
-                                    ;
-                            bits = bits & ~(((unsigned int) -1) >> n)              /* 124 */
-                                    ;
-                            sample = (int) bits;
-                        }
-                        y[i][1][sb] = sample * side_info[sb][1].mfactor[0];
-                    }
-                }
-                for (; sb < SUBBANDS; sb++) {
-                    int sample;                                                /* 118 */
-
-                    {
-                        int n = side_info[sb][0].bit_allocation;
-
-                        if (n == 0)                                              /* 121 */
-                            sample = 0;
-                        else {
-                            unsigned int bits;                                     /* 125 */
-
-                            bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
-                            bits |=
-                                    ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
-                            bits |=
-                                    ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
-                            bits <<= bit_offset;                                   /* 143 */
-                            bit_offset += n;
-                            byte_pointer += (bit_offset >> 3);
-                            bit_offset = bit_offset & 0x07;
-                            bits = bits ^ (((unsigned int) -1) >> 1)               /* 123 */
-                                    ;
-                            bits = bits & ~(((unsigned int) -1) >> n)              /* 124 */
-                                    ;
-                            sample = (int) bits;
-                        }
-                        y[i][0][sb] = sample * side_info[sb][0].mfactor[0];
-                    }
-                    y[i][1][sb] = sample * side_info[sb][1].mfactor[0];
-                }
-            }
-        else
-            for (i = 0; i < 12; i++) {
-                int sb;                                                      /* 117 */
-
-                for (sb = 0; sb < SUBBANDS; sb++) {
-                    int sample;                                                /* 118 */
-
-                    {
-                        int n = side_info[sb][0].bit_allocation;
-
-                        if (n == 0)                                              /* 121 */
-                            sample = 0;
-                        else {
-                            unsigned int bits;                                     /* 125 */
-
-                            bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
-                            bits |=
-                                    ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
-                            bits |=
-                                    ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
-                            bits <<= bit_offset;                                   /* 143 */
-                            bit_offset += n;
-                            byte_pointer += (bit_offset >> 3);
-                            bit_offset = bit_offset & 0x07;
-                            bits = bits ^ (((unsigned int) -1) >> 1)               /* 123 */
-                                    ;
-                            bits = bits & ~(((unsigned int) -1) >> n)              /* 124 */
-                                    ;
-                            sample = (int) bits;
-                        }
-                        y[i][0][sb] = sample * side_info[sb][0].mfactor[0];
-                    }
-                }
-            }
-    }
-    s->bit_offset = bit_offset;                                        /* 147 */
-    s->byte_pointer = byte_pointer;
-}
-
-static unsigned int
-getbit (stream * s, const int n)
-{                                                                    /* 144 */
-    unsigned int bits;
-
-    char bit_offset = s->bit_offset;                          /* 146 */
-
-    unsigned char *byte_pointer = s->byte_pointer;
-
-    bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);   /* 142 */
-    bits |= ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
-    bits |= ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
-    bits <<= bit_offset;                                               /* 143 */
-    bit_offset += n;
-    byte_pointer += (bit_offset >> 3);
-    bit_offset = bit_offset & 0x07;
-    bits = (bits >> (sizeof (bits) * 8 - n));
-    s->bit_offset = bit_offset;                                        /* 147 */
-    s->byte_pointer = byte_pointer;
-    return bits;
-}
-
-static void
-fill_input_buffer (stream * s)
-{                                                                    /* 157 */
-    int size = s->finish - s->start;
-
-    if (size > 0) {                                                    /* 158 */
-        int distance = s->start - s->buffer;
-
-        if (distance > 0) {
-            memmove (s->buffer, s->start, size);
-            s->start = s->buffer;
-            if (s->frame != NULL)
-                s->frame = s->frame - distance;
-            s->byte_pointer = s->byte_pointer - distance;
-            s->finish = s->finish - distance;
-            s->buffer_position = s->buffer_position + distance;
-        }
-    }
-    size = s->input_read (s->info.id, s->myFile, s->finish, BUFFERSIZE - size);
-    if (size <= 0)
-        s->state = s->state | END_OF_INPUT;
-    else
-        s->finish = s->finish + size;
-}
-
-static unsigned char *
-synchronize (stream * s)
-{                                                                    /* 161 */
-    if (s->bit_offset > 0) {
-        s->byte_pointer++;
-        s->bit_offset = 0;
-    }
-    do {
-        while (s->byte_pointer + HEADER_SIZE > s->finish)
-            if (s->state & END_OF_INPUT)
-                return NULL;
-            else
-                fill_input_buffer (s);
-        if (decode_header (&s->info, s->byte_pointer)) {
-            s->frame = s->byte_pointer;
-            {
-                if (s->info.free_format) {                                   /* 164 */
-                    int frame_size = HEADER_SIZE;                              /* 167 */
-
-                    do {
-                        if (++frame_size > MAX_FRAME)
-                            break;
-                        while (s->frame + frame_size + HEADER_SIZE > s->finish)  /* 169 */
-                            if (s->state & END_OF_INPUT)
-                                return NULL;
-                            else
-                                fill_input_buffer (s);
-                        if (!(s->frame[frame_size] == 0xFF &&                    /* 168 */
-                              (s->frame[frame_size + 1] & 0xFE) == (s->frame[1] & 0xFE) &&
-                              (s->frame[frame_size + 2] & 0xFC) == (s->frame[2] & 0xFC))
-                                )
-                            continue;
-                        {
-                            mp3_info i = { 0 }
-                            , *info = &i;                                          /* 171 */
-                            if (!decode_header (info, s->frame + frame_size))
-                                continue;
-                            s->info.frame_size = frame_size;
-                            {
-                                if (s->info.layer == 1)                              /*  91 */
-                                    s->info.bit_rate =
-                                            ((s->info.frame_size / 4 -
-                                              s->info.padding) * s->info.sample_rate + 11) / 12;
-                                else
-                                    s->info.bit_rate =
-                                            ((s->info.frame_size -
-                                              s->info.padding) * s->info.sample_rate + 143) / 144;
-                            }
-                            if (s->info.layer == 3 && s->info.version != MP3_V1_0) /* 376 */
-                                s->info.bit_rate =
-                                        ((s->info.frame_size -
-                                          s->info.padding) * s->info.sample_rate + 71) / 72;
-                            if (s->options.flags & MP3_SYNC_3) {
-                                info->bit_rate = s->info.bit_rate;
-                                {
-                                    if (info->layer == 1)                              /*  90 */
-                                        info->frame_size =
-                                                4 * (info->padding +
-                                                     (384 / (8 * 4)) * info->bit_rate /
-                                                     info->sample_rate);
-                                    else
-                                        info->frame_size =
-                                                info->padding +
-                                                (1152 / 8) * info->bit_rate / info->sample_rate;
-                                }
-                                if (info->layer == 3 && info->version != MP3_V1_0)   /* 375 */
-                                    info->frame_size =
-                                            1 * (info->padding +
-                                                 72 * info->bit_rate / info->sample_rate);
-                                while (s->frame + s->info.frame_size + info->frame_size +
-                                       HEADER_SIZE > s->finish)
-                                    if (s->state & END_OF_INPUT)
-                                        return s->frame;
-                                    else
-                                        fill_input_buffer (s);
-                                if (decode_header
-                                        (info, s->frame + s->info.frame_size + info->frame_size))
-                                    return s->frame;
-                                else
-                                    break;
-                            }
-                            else
-                                return s->frame;
-                        }
-                    } while (1);
-                }
-                else {
-                    while (s->frame + s->info.frame_size > s->finish)          /* 162 */
-                        if (s->state & END_OF_INPUT) {
-                            if (s->info.layer == 3 && (s->frame + s->info.fixed_size < s->finish &&   /* 331 */
-                                                       !(s->options.
-                                                               flags & MP3_NO_PARTIAL_FRAME))
-                                    )
-                                return s->frame;
-                            else
-                                return NULL;
-                        }
-                        else
-                            fill_input_buffer (s);
-                    if (s->options.flags & MP3_SYNC_1)
-                        return s->frame;
-                    else {
-                        mp3_info i = { 0 };                                      /* 165 */
-                        while (s->frame + s->info.frame_size + HEADER_SIZE > s->finish)
-                            if (s->state & END_OF_INPUT)
-                                return s->frame;
-                            else
-                                fill_input_buffer (s);
-                        if (decode_header (&i, s->frame + s->info.frame_size)) {
-                            if (s->options.flags & MP3_SYNC_3) {
-                                while (s->frame + s->info.frame_size + i.frame_size +
-                                       HEADER_SIZE > s->finish)
-                                    if (s->state & END_OF_INPUT)
-                                        return s->frame;
-                                    else
-                                        fill_input_buffer (s);
-                                if (i.free_format)
-                                    return s->frame;
-                                else
-                                if (decode_header
-                                        (&i, s->frame + s->info.frame_size + i.frame_size))
-                                    return s->frame;
-                            }
-                            else
-                                return s->frame;
-                        }
-                    }
-                }
-                s->frame = NULL;
-                s->byte_pointer++;
-            }
-        }
-        else {
-            if (s->options.tag_handler != NULL) {                          /* 172 */
-                s->tag_size = 0;                                             /* 174 */
-                s->options.tag_handler (s->info.id, tag_read);
-                if (s->tag_size <= 0)
-                    s->byte_pointer++;
-                else {
-                    int post = s->finish - s->byte_pointer - s->tag_size;      /* 179 */
-
-                    int pre = s->byte_pointer - s->start;
-
-                    if (post > 0) {
-                        if (pre > 0)
-                            memmove (s->start + s->tag_size, s->start, pre);
-                        s->byte_pointer = s->byte_pointer + s->tag_size;
-                        s->start = s->start + s->tag_size;
-                        if (s->frame != NULL)
-                            s->frame = s->frame + s->tag_size;
-                    }
-                    else
-                        s->finish = s->byte_pointer;
-                }
-            }
-            else
-                s->byte_pointer++;
-        }
-        if (s->byte_pointer - s->start > MAX_RESERVOIR)
-            s->start = s->byte_pointer - MAX_RESERVOIR;
-    } while (1);
-    return NULL;
-}
-
-static unsigned char *
-next_frame (stream * s)
-{                                                                    /* 166 */
-    int previous_free_format;
-
-    s->frame = s->frame + s->info.frame_size;
-    s->info.frame++;
-    while (s->frame + HEADER_SIZE > s->finish)
-        if (s->state & END_OF_INPUT)
-            return NULL;
-        else
-            fill_input_buffer (s);
-    previous_free_format = s->info.free_format;
-    if (!decode_header (&s->info, s->frame))
-        return NULL;
-    s->byte_pointer = s->frame;
-    s->bit_offset = 0;
-    if (s->info.free_format && !previous_free_format)
-        return NULL;
-    if (s->info.layer != 3)                                            /* 159 */
-        s->start = s->frame;
-    else if (s->frame - s->start > MAX_RESERVOIR)                      /* 160 */
-        s->start = s->frame - MAX_RESERVOIR;
-    while (s->frame + s->info.frame_size > s->finish)                  /* 162 */
-        if (s->state & END_OF_INPUT) {
-            if (s->info.layer == 3 && (s->frame + s->info.fixed_size < s->finish &&   /* 331 */
-                                       !(s->options.flags & MP3_NO_PARTIAL_FRAME))
-                    )
-                return s->frame;
-            else
-                return NULL;
-        }
-        else
-            fill_input_buffer (s);
-    return s->frame;
-}
 
 static int
 tag_read (int id, void *buffer, int count)
 {                                                                    /*  38 */
     stream *s;
 
-    if (buffer == NULL)
+    if (buffer == nullptr)
         return MP3_ERROR_NO_BUFFER;
     if (id >= STREAMS || id < 0)                                       /*  52 */
         return MP3_ERROR_NO_ID;
     s = streams[id];
-    if (s == NULL)
+    if (s == nullptr)
         return MP3_ERROR_NOT_OPEN;
     if (count > 0) {
         int available = s->finish - s->byte_pointer - s->tag_size;       /* 177 */
@@ -1086,7 +1784,7 @@ tag_read (int id, void *buffer, int count)
                 if (distance > 0) {
                     memmove (s->buffer, s->start, size);
                     s->start = s->buffer;
-                    if (s->frame != NULL)
+                    if (s->frame != nullptr)
                         s->frame = s->frame - distance;
                     s->byte_pointer = s->byte_pointer - distance;
                     s->finish = s->finish - distance;
@@ -1106,290 +1804,6 @@ tag_read (int id, void *buffer, int count)
     return count;
 }
 
-static void
-layer_II_decode_samples (stream * s, int g)
-{                                                                    /* 217 */
-    char bit_offset = s->bit_offset;                          /* 146 */
-
-    unsigned char *byte_pointer = s->byte_pointer;
-
-    {
-        int i;                                                           /* 218 */
-
-        for (i = 0; i < 12; i = i + 3) {
-            int sb, ch;
-
-            for (sb = 0; sb < s->info.bound; sb++)
-                for (ch = 0; ch < s->info.channels; ch++) {
-                    double f = side_info[sb][ch].mfactor[g];
-
-                    int n = side_info[sb][ch].bit_allocation;
-
-                    {
-                        int sample;                                              /* 201 */
-
-                        if (n > 0) {
-                            {
-                                unsigned int bits;                                   /* 125 */
-
-                                bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);     /* 142 */
-                                bits |=
-                                        ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
-                                bits |=
-                                        ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
-                                bits <<= bit_offset;                                 /* 143 */
-                                bit_offset += n;
-                                byte_pointer += (bit_offset >> 3);
-                                bit_offset = bit_offset & 0x07;
-                                bits = bits ^ (((unsigned int) -1) >> 1)             /* 123 */
-                                        ;
-                                bits = bits & ~(((unsigned int) -1) >> n)            /* 124 */
-                                        ;
-                                sample = (int) bits;
-                            }
-                            y[i][ch][sb] = sample * f;
-                            {
-                                unsigned int bits;                                   /* 125 */
-
-                                bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);     /* 142 */
-                                bits |=
-                                        ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
-                                bits |=
-                                        ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
-                                bits <<= bit_offset;                                 /* 143 */
-                                bit_offset += n;
-                                byte_pointer += (bit_offset >> 3);
-                                bit_offset = bit_offset & 0x07;
-                                bits = bits ^ (((unsigned int) -1) >> 1)             /* 123 */
-                                        ;
-                                bits = bits & ~(((unsigned int) -1) >> n)            /* 124 */
-                                        ;
-                                sample = (int) bits;
-                            }
-                            y[i + 1][ch][sb] = sample * f;
-                            {
-                                unsigned int bits;                                   /* 125 */
-
-                                bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);     /* 142 */
-                                bits |=
-                                        ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
-                                bits |=
-                                        ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
-                                bits <<= bit_offset;                                 /* 143 */
-                                bit_offset += n;
-                                byte_pointer += (bit_offset >> 3);
-                                bit_offset = bit_offset & 0x07;
-                                bits = bits ^ (((unsigned int) -1) >> 1)             /* 123 */
-                                        ;
-                                bits = bits & ~(((unsigned int) -1) >> n)            /* 124 */
-                                        ;
-                                sample = (int) bits;
-                            }
-                            y[i + 2][ch][sb] = sample * f;
-                        }
-                        else if (n < 0) {                                        /* 424 */
-                            int c;
-
-                            {
-                                unsigned int bits;
-
-                                n = -n;
-                                bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);     /* 142 */
-                                bits |=
-                                        ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
-                                bits |=
-                                        ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
-                                bits <<= bit_offset;                                 /* 143 */
-                                bit_offset += n;
-                                byte_pointer += (bit_offset >> 3);
-                                bit_offset = bit_offset & 0x07;
-                                bits = (bits >> (sizeof (bits) * 8 - n));
-                                n = -n;
-                                c = bits;
-                            }
-                            {
-                                const int (*table)[3];                               /* 425 */
-
-                                table = degroup[-n - 5];
-                                y[i][ch][sb] = table[c][0] * f;                      /* 426 */
-                                y[i + 1][ch][sb] = table[c][1] * f;
-                                y[i + 2][ch][sb] = table[c][2] * f;
-                            }}
-                        else
-                            y[i][ch][sb] = y[i + 1][ch][sb] = y[i + 2][ch][sb] = 0.0;
-                    }
-                }
-            for (sb = s->info.bound; sb < s->sblimit[0]; sb++) {
-                const double f = side_info[sb][0].mfactor[g];
-
-                const double r = side_info[sb][1].mfactor[g] / f;
-
-                int n = side_info[sb][0].bit_allocation;
-
-                ch = 0;
-                {
-                    int sample;                                                /* 201 */
-
-                    if (n > 0) {
-                        {
-                            unsigned int bits;                                     /* 125 */
-
-                            bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
-                            bits |=
-                                    ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
-                            bits |=
-                                    ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
-                            bits <<= bit_offset;                                   /* 143 */
-                            bit_offset += n;
-                            byte_pointer += (bit_offset >> 3);
-                            bit_offset = bit_offset & 0x07;
-                            bits = bits ^ (((unsigned int) -1) >> 1)               /* 123 */
-                                    ;
-                            bits = bits & ~(((unsigned int) -1) >> n)              /* 124 */
-                                    ;
-                            sample = (int) bits;
-                        }
-                        y[i][ch][sb] = sample * f;
-                        {
-                            unsigned int bits;                                     /* 125 */
-
-                            bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
-                            bits |=
-                                    ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
-                            bits |=
-                                    ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
-                            bits <<= bit_offset;                                   /* 143 */
-                            bit_offset += n;
-                            byte_pointer += (bit_offset >> 3);
-                            bit_offset = bit_offset & 0x07;
-                            bits = bits ^ (((unsigned int) -1) >> 1)               /* 123 */
-                                    ;
-                            bits = bits & ~(((unsigned int) -1) >> n)              /* 124 */
-                                    ;
-                            sample = (int) bits;
-                        }
-                        y[i + 1][ch][sb] = sample * f;
-                        {
-                            unsigned int bits;                                     /* 125 */
-
-                            bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
-                            bits |=
-                                    ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
-                            bits |=
-                                    ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
-                            bits <<= bit_offset;                                   /* 143 */
-                            bit_offset += n;
-                            byte_pointer += (bit_offset >> 3);
-                            bit_offset = bit_offset & 0x07;
-                            bits = bits ^ (((unsigned int) -1) >> 1)               /* 123 */
-                                    ;
-                            bits = bits & ~(((unsigned int) -1) >> n)              /* 124 */
-                                    ;
-                            sample = (int) bits;
-                        }
-                        y[i + 2][ch][sb] = sample * f;
-                    }
-                    else if (n < 0) {                                          /* 424 */
-                        int c;
-
-                        {
-                            unsigned int bits;
-
-                            n = -n;
-                            bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
-                            bits |=
-                                    ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
-                            bits |=
-                                    ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
-                            bits <<= bit_offset;                                   /* 143 */
-                            bit_offset += n;
-                            byte_pointer += (bit_offset >> 3);
-                            bit_offset = bit_offset & 0x07;
-                            bits = (bits >> (sizeof (bits) * 8 - n));
-                            n = -n;
-                            c = bits;
-                        }
-                        {
-                            const int (*table)[3];                                 /* 425 */
-
-                            table = degroup[-n - 5];
-                            y[i][ch][sb] = table[c][0] * f;                        /* 426 */
-                            y[i + 1][ch][sb] = table[c][1] * f;
-                            y[i + 2][ch][sb] = table[c][2] * f;
-                        }}
-                    else
-                        y[i][ch][sb] = y[i + 1][ch][sb] = y[i + 2][ch][sb] = 0.0;
-                }
-                if (s->info.channels > 1) {
-                    y[i][1][sb] = y[i][0][sb] * r;
-                    y[i + 1][1][sb] = y[i + 1][0][sb] * r;
-                    y[i + 2][1][sb] = y[i + 2][0][sb] * r;
-                }
-            }
-            for (sb = s->sblimit[0]; sb < SUBBANDS; sb++) {
-                y[i][0][sb] = y[i + 1][0][sb]
-                        = y[i + 2][0][sb] = 0.0;
-                if (s->info.channels > 1)
-                    y[i][1][sb] = y[i + 1][1][sb]
-                            = y[i + 2][1][sb] = 0.0;
-            }
-        }
-    }
-    s->bit_offset = bit_offset;                                        /* 147 */
-    s->byte_pointer = byte_pointer;
-}
-
-static void
-qs_band (const int ch, int i, int j, int width, int m, int step)
-{                                                                    /* 243 */
-    const double f = twotomquarter (m);
-
-    while (width-- > 0) {
-        z[ch][j] = utothreequarter (ch, i) * f;
-        i = i + 1;
-        j = j + step;
-    }
-}
-
-static int
-qs (stream * s, const int gr, const int ch, int band, int i, const int limit)
-{                                                                    /* 268 */
-    while (i < limit) {
-        qs_band (ch, i, i, width[gr][ch][band], (4 * OUTPUT_EXPONENT     /* 262 */
-                                                 + (global_gain[gr][ch] - 210)      /* 251 */
-                                                 +(-((s->sfi[ch][band]   /* 252 */
-                                                      +preemphasis[gr][ch][band])
-                         << scale_shift[gr][ch] /* 256 */
-                 ))
-                 )
-                , 1);
-        i = i + width[gr][ch][band];
-        band++;
-    }
-    return band;
-}
-
-static int
-qs_short (stream * s, const int gr, const int ch, int band, int i,
-          const int limit)
-{                                                                    /* 269 */
-    while (i < limit) {
-        int k, j = i;
-
-        int size = width[gr][ch][band];
-
-        for (k = 0; k < SUBBLOCKS; k++, j++, i = i + size, band++)
-            qs_band (ch, i, j, size, (4 * OUTPUT_EXPONENT                  /* 265 */
-                                      + (global_gain[gr][ch] - 210)        /* 251 */
-                                      -8 * subblock_gain[gr][ch][k]
-                                      - ((s->sfi[ch][band]                 /* 252 */
-                     ) << scale_shift[gr][ch]          /* 256 */
-                                      )
-                     )
-                    , 3);
-    }
-    return band;
-}
 
 static void
 qs_mid_side_band (int i, int j, int width, int mM, int mS, int step)
@@ -1406,314 +1820,8 @@ qs_mid_side_band (int i, int j, int width, int mM, int mS, int step)
     }
 }
 
-static void
-qs_intensity_band (int i, int j, int width, int m, int sp, int step)
-{                                                                    /* 273 */
-    double fL, fR;
 
-    const double p = intensity_factor[sp];                             /* 277 */
 
-    {
-        double f = twotomquarter (m);                                    /* 271 */
-
-        fL = f * (1 - p);
-        fR = f * p;
-    }
-    while (width-- > 0) { {
-            double u = utothreequarter (0, i);                             /* 272 */
-
-            z[0][j] = u * fL;
-            z[1][j] = u * fR;
-        }
-        i = i + 1;
-        j = j + step;
-    }
-}
-
-static short int *
-decode_small_A (stream * s, short int *u, int bits_available, int n)
-{                                                                    /* 302 */
-    unsigned char *byte_pointer = s->byte_pointer;                     /* 313 */
-
-    int huffman_cache_size = 8 - s->bit_offset;
-
-    int huffman_cache =
-            (*byte_pointer++) << (sizeof (int) * 8 - huffman_cache_size);
-    bits_available = bits_available - huffman_cache_size;
-    while (n >= 4) {
-        unsigned char code;
-
-        if ((16 - huffman_cache_size > 0)                                /* 315 */
-                ) {
-            {
-                int tmp = (*byte_pointer << 8) | (*(byte_pointer + 1) & 0xFF);  /* 316 */
-
-                byte_pointer = byte_pointer + 2;
-                huffman_cache = huffman_cache | (tmp << (16 - huffman_cache_size));
-                huffman_cache_size = huffman_cache_size + 16;
-            }
-            bits_available = bits_available - 16;                          /* 318 */
-            if (bits_available < 0) {
-                huffman_cache_size = huffman_cache_size + bits_available;
-                bits_available = 0;
-                if (huffman_cache_size <= 0)
-                    break;
-            }
-        }
-        code = htabA[((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 6)];   /* 299 */
-        huffman_cache = huffman_cache << (code & 0xF);
-        huffman_cache_size = huffman_cache_size - (code & 0xF);
-        code = (code & 0xF0) | (((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 4));        /* 300 */
-        *u++ = signed_small_values[code].u0;
-        *u++ = signed_small_values[code].u1;
-        *u++ = signed_small_values[code].u2;
-        *u++ = signed_small_values[code].u3;
-        huffman_cache = huffman_cache << (signed_small_values[code].n);
-        huffman_cache_size = huffman_cache_size - (signed_small_values[code].n);
-        n = n - 4;
-    }
-    return u;
-}
-
-static short int *
-decode_small_B (stream * s, short int *u, int bits_available, int n)
-{                                                                    /* 303 */
-    unsigned char *byte_pointer = s->byte_pointer;                     /* 313 */
-
-    int huffman_cache_size = 8 - s->bit_offset;
-
-    int huffman_cache =
-            (*byte_pointer++) << (sizeof (int) * 8 - huffman_cache_size);
-    bits_available = bits_available - huffman_cache_size;
-    while (n >= 4) {
-        unsigned char code;
-
-        if ((16 - huffman_cache_size > 0)                                /* 315 */
-                ) {
-            {
-                int tmp = (*byte_pointer << 8) | (*(byte_pointer + 1) & 0xFF);  /* 316 */
-
-                byte_pointer = byte_pointer + 2;
-                huffman_cache = huffman_cache | (tmp << (16 - huffman_cache_size));
-                huffman_cache_size = huffman_cache_size + 16;
-            }
-            bits_available = bits_available - 16;                          /* 318 */
-            if (bits_available < 0) {
-                huffman_cache_size = huffman_cache_size + bits_available;
-                bits_available = 0;
-                if (huffman_cache_size <= 0)
-                    break;
-            }
-        }
-        code = ~(huffman_cache >> (HUFFMAN_CACHE_SIZE - 4));             /* 301 */
-        huffman_cache = huffman_cache << 4;
-        huffman_cache_size = huffman_cache_size - 4;
-        code = code << 4;
-        code = (code & 0xF0) | (((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 4));        /* 300 */
-        *u++ = signed_small_values[code].u0;
-        *u++ = signed_small_values[code].u1;
-        *u++ = signed_small_values[code].u2;
-        *u++ = signed_small_values[code].u3;
-        huffman_cache = huffman_cache << (signed_small_values[code].n);
-        huffman_cache_size = huffman_cache_size - (signed_small_values[code].n);
-        n = n - 4;
-    }
-    return u;
-}
-
-static void
-decode_big (stream * s, short int *u, int k, int n)
-{                                                                    /* 310 */
-    short int *htab = huffman_tables[k].h;
-
-    unsigned char *byte_pointer = s->byte_pointer;                     /* 313 */
-
-    int huffman_cache_size = 8 - s->bit_offset;
-
-    int huffman_cache =
-            (*byte_pointer++) << (sizeof (int) * 8 - huffman_cache_size);
-    while (n-- > 0) {
-        int code;
-
-        if ((16 - huffman_cache_size > 0)                                /* 315 */
-                ) {
-            int tmp = (*byte_pointer << 8) | (*(byte_pointer + 1) & 0xFF); /* 316 */
-
-            byte_pointer = byte_pointer + 2;
-            huffman_cache = huffman_cache | (tmp << (16 - huffman_cache_size));
-            huffman_cache_size = huffman_cache_size + 16;
-        }
-        {
-            int width = HWIDTH;                                            /* 305 */
-
-            short int *h = htab;
-
-            code = h[((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - width)];
-            while (code < 0) {
-                huffman_cache = huffman_cache << width;
-                huffman_cache_size = huffman_cache_size - width;
-                h = h - (code >> 4);
-                width = code & 0x0F;
-                code =
-                        h[((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - width)];
-            }
-        }
-        huffman_cache = huffman_cache << (code >> 8);                    /* 306 */
-        huffman_cache_size = huffman_cache_size - (code >> 8);
-        code = code & 0xFF;
-        {
-            short int value = code >> 4;                                   /* 307 */
-
-            if (value != 0) {
-                int tmp = ((signed int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 1);     /* 308 */
-
-                value = (value ^ tmp) - tmp;
-                huffman_cache = huffman_cache << 1;
-                huffman_cache_size--;
-            }
-            *u++ = value;
-        }
-        code = (code << 4) & 0xFF;
-        {
-            short int value = code >> 4;                                   /* 307 */
-
-            if (value != 0) {
-                int tmp = ((signed int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 1);     /* 308 */
-
-                value = (value ^ tmp) - tmp;
-                huffman_cache = huffman_cache << 1;
-                huffman_cache_size--;
-            }
-            *u++ = value;
-        }
-        code = (code << 4) & 0xFF;
-    }
-    s->bit_offset = (8 - (huffman_cache_size % 8)) & 0x7;              /* 314 */
-    s->byte_pointer = byte_pointer - ((huffman_cache_size + s->bit_offset) / 8);
-}
-
-static void
-decode_very_big (stream * s, short int *u, int k, int n)
-{                                                                    /* 311 */
-    short int *htab = huffman_tables[k].h;
-
-    int linbits = huffman_tables[k].linbits;
-
-    unsigned char *byte_pointer = s->byte_pointer;                     /* 313 */
-
-    int huffman_cache_size = 8 - s->bit_offset;
-
-    int huffman_cache =
-            (*byte_pointer++) << (sizeof (int) * 8 - huffman_cache_size);
-    while (n-- > 0) {
-        int code;
-
-        if ((16 - huffman_cache_size > 0)                                /* 315 */
-                ) {
-            int tmp = (*byte_pointer << 8) | (*(byte_pointer + 1) & 0xFF); /* 316 */
-
-            byte_pointer = byte_pointer + 2;
-            huffman_cache = huffman_cache | (tmp << (16 - huffman_cache_size));
-            huffman_cache_size = huffman_cache_size + 16;
-        }
-        if (huffman_cache_size < 24) {                                   /* 317 */
-            huffman_cache =
-                    huffman_cache | (byte_pointer[0] << (24 - huffman_cache_size));
-            byte_pointer++;
-            huffman_cache_size = huffman_cache_size + 8;
-        }
-        {
-            int width = HWIDTH;                                            /* 305 */
-
-            short int *h = htab;
-
-            code = h[((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - width)];
-            while (code < 0) {
-                huffman_cache = huffman_cache << width;
-                huffman_cache_size = huffman_cache_size - width;
-                h = h - (code >> 4);
-                width = code & 0x0F;
-                code =
-                        h[((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - width)];
-            }
-        }
-        huffman_cache = huffman_cache << (code >> 8);                    /* 306 */
-        huffman_cache_size = huffman_cache_size - (code >> 8);
-        code = code & 0xFF;
-        if ((16 - huffman_cache_size > 0)                                /* 315 */
-                ) {
-            int tmp = (*byte_pointer << 8) | (*(byte_pointer + 1) & 0xFF); /* 316 */
-
-            byte_pointer = byte_pointer + 2;
-            huffman_cache = huffman_cache | (tmp << (16 - huffman_cache_size));
-            huffman_cache_size = huffman_cache_size + 16;
-        }
-        {
-            short int value = code >> 4;                                   /* 309 */
-
-            if (value == 15 && linbits > 0) {
-                value =
-                        value +
-                        (((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - linbits));
-                huffman_cache = huffman_cache << linbits;
-                huffman_cache_size = huffman_cache_size - linbits;
-                {
-                    int tmp = ((signed int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 1);   /* 308 */
-
-                    value = (value ^ tmp) - tmp;
-                    huffman_cache = huffman_cache << 1;
-                    huffman_cache_size--;
-                }
-            }
-            else if (value != 0) {
-                int tmp = ((signed int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 1);     /* 308 */
-
-                value = (value ^ tmp) - tmp;
-                huffman_cache = huffman_cache << 1;
-                huffman_cache_size--;
-            }
-            *u++ = value;
-            code = (code << 4) & 0xFF;
-        }
-        if ((16 - huffman_cache_size > 0)                                /* 315 */
-                ) {
-            int tmp = (*byte_pointer << 8) | (*(byte_pointer + 1) & 0xFF); /* 316 */
-
-            byte_pointer = byte_pointer + 2;
-            huffman_cache = huffman_cache | (tmp << (16 - huffman_cache_size));
-            huffman_cache_size = huffman_cache_size + 16;
-        }
-        {
-            short int value = code >> 4;                                   /* 309 */
-
-            if (value == 15 && linbits > 0) {
-                value =
-                        value +
-                        (((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - linbits));
-                huffman_cache = huffman_cache << linbits;
-                huffman_cache_size = huffman_cache_size - linbits;
-                {
-                    int tmp = ((signed int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 1);   /* 308 */
-
-                    value = (value ^ tmp) - tmp;
-                    huffman_cache = huffman_cache << 1;
-                    huffman_cache_size--;
-                }
-            }
-            else if (value != 0) {
-                int tmp = ((signed int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 1);     /* 308 */
-
-                value = (value ^ tmp) - tmp;
-                huffman_cache = huffman_cache << 1;
-                huffman_cache_size--;
-            }
-            *u++ = value;
-            code = (code << 4) & 0xFF;
-        }
-    }
-    s->bit_offset = (8 - (huffman_cache_size % 8)) & 0x7;              /* 314 */
-    s->byte_pointer = byte_pointer - ((huffman_cache_size + s->bit_offset) / 8);
-}
 
 static void
 qs_intensity_v2_band (int i, int j, int width, int m, int sp, int step)
@@ -1758,79 +1866,6 @@ is_zero_band (int band)
     return 1;
 }
 
-static void
-output_repeat (stream * s, mp3_sample * buffer, int n, int d)
-{                                                                    /* 406 */
-    int i;
-
-    for (i = 0; i < n; i++) {
-        int ch;                                                          /* 408 */
-
-        double *v;
-
-        {
-            ch = 0;
-            s->offset[ch] = s->offset[ch] - SUBBANDS;                      /*   4 */
-            if (s->offset[ch] < 0) {
-                s->offset[ch] = SHIFTSIZE - WINDOWBLOCKS * SUBBANDS;
-                memmove (&(s->w[ch][s->offset[ch] + SUBBANDS]),
-                         &(s->w[ch][0]),
-                         sizeof (double) * (WINDOWBLOCKS - 1) * SUBBANDS);
-            }
-            v = s->w[ch] + s->offset[ch];
-            {
-                int previous_offset;                                         /* 407 */
-
-                previous_offset = s->offset[ch] + d * SUBBANDS;
-                if (previous_offset >= SHIFTSIZE)
-                    previous_offset =
-                            previous_offset - SHIFTSIZE + (WINDOWBLOCKS - 1) * SUBBANDS;
-                memmove (v, s->w[ch] + previous_offset, sizeof (double) * SUBBANDS);
-            }
-            windowing (v, buffer);
-        }
-        if (s->info.channels > 1) {
-            ch = 1;
-            s->offset[ch] = s->offset[ch] - SUBBANDS;                      /*   4 */
-            if (s->offset[ch] < 0) {
-                s->offset[ch] = SHIFTSIZE - WINDOWBLOCKS * SUBBANDS;
-                memmove (&(s->w[ch][s->offset[ch] + SUBBANDS]),
-                         &(s->w[ch][0]),
-                         sizeof (double) * (WINDOWBLOCKS - 1) * SUBBANDS);
-            }
-            v = s->w[ch] + s->offset[ch];
-            {
-                int previous_offset;                                         /* 407 */
-
-                previous_offset = s->offset[ch] + d * SUBBANDS;
-                if (previous_offset >= SHIFTSIZE)
-                    previous_offset =
-                            previous_offset - SHIFTSIZE + (WINDOWBLOCKS - 1) * SUBBANDS;
-                memmove (v, s->w[ch] + previous_offset, sizeof (double) * SUBBANDS);
-            }
-            windowing (v, buffer + 1);
-            buffer = buffer + 2 * SUBBANDS;
-        }
-        else {
-            int sb;                                                        /*  71 */
-
-            if (s->options.flags & MP3_TWO_CHANNEL_MONO) {
-                for (sb = 0; sb < SUBBANDS; sb++)
-                    buffer[2 * sb + 1] = buffer[2 * sb];
-                buffer = buffer + 2 * SUBBANDS;
-            }
-            else {
-                for (sb = 0; sb < SUBBANDS; sb++)
-                    buffer[sb] = buffer[2 * sb];
-                buffer = buffer + SUBBANDS;
-            }
-        }
-    }
-    if (s->options.flags & MP3_TWO_CHANNEL_MONO)
-        s->info.samples += n * 2 * SUBBANDS;
-    else
-        s->info.samples += n * s->info.channels * SUBBANDS;
-}
 
 static unsigned short int
 bitcrc (unsigned short int crc, unsigned short int bits, int n)
@@ -1857,23 +1892,23 @@ mp3_open (std::ifstream* myFile_ ,                                              
 
     stream *s;
 
-    if (input_read == NULL)
+    if (input_read == nullptr)
         return MP3_ERROR_NO_INPUT;
     id = 0;                                                            /*  44 */
-    while (streams[id] != NULL) {
+    while (streams[id] != nullptr) {
         id++;
         if (id >= STREAMS)
             return MP3_ERROR_TOO_MANY;
     }
     s = (stream *) malloc (sizeof (stream));                           /*  46 */
-    if (s == NULL)
+    if (s == nullptr)
         return MP3_ERROR_MEMORY;
     streams[id] = s;
     memset (s, 0, sizeof (*s));                                        /*  48 */
     s->info.id = id;                                                   /*  25 */
     s->info.bit_per_sample = sizeof (mp3_sample) * 8;                  /*  34 */
     s->input_read = input_read;                                        /*  51 */
-    if (option_pointer != NULL)
+    if (option_pointer != nullptr)
         s->options = *option_pointer;
     s->byte_pointer = s->buffer;                                       /* 150 */
     s->start = s->buffer;                                              /* 152 */
@@ -1891,10 +1926,10 @@ mp3_close (int id)
     if (id >= STREAMS || id < 0)                                       /*  52 */
         return MP3_ERROR_NO_ID;
     s = streams[id];
-    if (s == NULL)
+    if (s == nullptr)
         return MP3_ERROR_NOT_OPEN;
     free (s);
-    streams[id] = NULL;
+    streams[id] = nullptr;
     return 0;
 }
 
@@ -1906,13 +1941,13 @@ mp3_read (int id, mp3_sample * buffer, int size)
     if (id >= STREAMS || id < 0)                                       /*  52 */
         return MP3_ERROR_NO_ID;
     s = streams[id];
-    if (s == NULL)
+    if (s == nullptr)
         return MP3_ERROR_NOT_OPEN;
     if (s->state & END_OF_OUTPUT)                                      /*  56 */
         return MP3_ERROR_DONE;
-    if (!(buffer == NULL && size == 0 && s->options.info_callback != NULL)        /*  30 */
+    if (!(buffer == nullptr && size == 0 && s->options.info_callback != nullptr)        /*  30 */
             ) {
-        if (buffer == NULL)
+        if (buffer == nullptr)
             return MP3_ERROR_NO_BUFFER;
         if (size < MP3_MIN_BUFFER)
             return MP3_ERROR_NO_SIZE;
@@ -1920,9 +1955,9 @@ mp3_read (int id, mp3_sample * buffer, int size)
     s->info.changes |= MP3_INFO_READ;
     s->info.samples = 0;
     do {
-        if (s->frame == NULL) {                                          /*  62 */
-            s->frame = synchronize (s);
-            if (s->frame == NULL) {
+        if (s->frame == nullptr) {                                          /*  62 */
+            s->frame = s->synchronize ();
+            if (s->frame == nullptr) {
                 if (!(s->options.flags & MP3_DONT_FLUSH)) {                  /*  72 */
                     int n;
 
@@ -1941,7 +1976,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                     }
                         }
                     }
-                    output_silence (s, buffer + s->info.samples, n);
+                    s->output_silence ( buffer + s->info.samples, n);
                 }
                 s->state = s->state | END_OF_OUTPUT;                         /*  60 */
                 return s->info.samples;
@@ -2117,7 +2152,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                  side_info_size[s->info.version == MP3_V1_0][s->info.mode == MP3_MONO];
         }
         if (s->info.crc_protected) {                                     /*  99 */
-            if (getbit (s, 16) != crc_check (s)) {
+            if (s->getbit ( 16) != s->crc_check ()) {
                 output_mode = REPAIR | SKIP;
                 s->info.changes |= MP3_INFO_CRC;
             }
@@ -2126,17 +2161,17 @@ mp3_read (int id, mp3_sample * buffer, int size)
             int reservoir_size;
 
             if (s->info.version == MP3_V1_0)                               /* 320 */
-                reservoir_size = getbit (s, 9);
+                reservoir_size = s->getbit ( 9);
             if (s->info.version != MP3_V1_0)                               /* 373 */
-                reservoir_size = getbit (s, 8);
+                reservoir_size = s->getbit ( 8);
             s->main_data_start = s->frame - reservoir_size;
             if (s->main_data_start < s->start) {
                 s->main_data_start = s->start;                               /* 323 */
                 output_mode = SKIP;
             }
         }
-        if (s->options.info_callback != NULL) {                          /*  61 */
-            if ((buffer == NULL && size == 0 && s->options.info_callback != NULL)     /*  30 */
+        if (s->options.info_callback != nullptr) {                          /*  61 */
+            if ((buffer == nullptr && size == 0 && s->options.info_callback != nullptr)     /*  30 */
                     ) {
                 int result = s->options.info_callback (&(s->info));          /* 180 */
 
@@ -2187,7 +2222,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                             int n;
 
                             {
-                                int a = getbit (s, 4);                               /* 108 */
+                                int a = s->getbit ( 4);                               /* 108 */
 
                                 if (a == 15) {
                                     s->state = s->state | BITALLOCATION_ERROR;
@@ -2208,7 +2243,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                         int n;
 
                         {
-                            int a = getbit (s, 4);                                   /* 108 */
+                            int a = s->getbit (4);                                   /* 108 */
 
                             if (a == 15) {
                                 s->state = s->state | BITALLOCATION_ERROR;
@@ -2237,7 +2272,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                 if (n != 0) {
                                     int i;
 
-                                    i = getbit (s, 6);                                   /* 113 */
+                                    i = s->getbit ( 6);                                   /* 113 */
                                     if (i >= 63) {
                                         s->state = s->state | SCALEFACTOR_ERROR;
                                         i = 62;
@@ -2248,9 +2283,9 @@ mp3_read (int id, mp3_sample * buffer, int size)
                         }
                 }
             }
-                layer_I_decode_samples (s);
-                output_blocks (s, buffer + s->info.samples, 12);
-                s->frame = next_frame (s);
+                s->layer_I_decode_samples ();
+                s->output_blocks ( buffer + s->info.samples, 12);
+                s->frame = s->next_frame ();
                 break;
             case LAYER_II:                                                  /* 216 */
             { {
@@ -2263,7 +2298,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                             if (nbal > 0) {
                                 int i;
 
-                                i = getbit (s, nbal);
+                                i = s->getbit ( nbal);
                                 n = s->nbit[sb][i];
                             }
                             else
@@ -2278,7 +2313,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                             if (nbal > 0) {
                                 int i;
 
-                                i = getbit (s, nbal);
+                                i = s->getbit ( nbal);
                                 n = s->nbit[sb][i];
                             }
                             else
@@ -2294,7 +2329,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                     for (sb = 0; sb < s->sblimit[0]; sb++)
                         for (ch = 0; ch < s->info.channels; ch++)
                             if (side_info[sb][ch].bit_allocation != 0)
-                                side_info[sb][ch].scfi = getbit (s, 2);
+                                side_info[sb][ch].scfi = s->getbit ( 2);
                 }
                 {
                     int sb, ch;                                                  /* 206 */
@@ -2320,19 +2355,19 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                     int i;                                               /* 205 */
 
                                     if (scfi == 0) {
-                                        i = getbit (s, 6);                                 /* 113 */
+                                        i = s->getbit ( 6);                                 /* 113 */
                                         if (i >= 63) {
                                             s->state = s->state | SCALEFACTOR_ERROR;
                                             i = 62;
                                         }
                                         si->mfactor[0] = mfactors[n][i];
-                                        i = getbit (s, 6);                                 /* 113 */
+                                        i = s->getbit ( 6);                                 /* 113 */
                                         if (i >= 63) {
                                             s->state = s->state | SCALEFACTOR_ERROR;
                                             i = 62;
                                         }
                                         si->mfactor[1] = mfactors[n][i];
-                                        i = getbit (s, 6);                                 /* 113 */
+                                        i = s->getbit ( 6);                                 /* 113 */
                                         if (i >= 63) {
                                             s->state = s->state | SCALEFACTOR_ERROR;
                                             i = 62;
@@ -2340,13 +2375,13 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                         si->mfactor[2] = mfactors[n][i];
                                     }
                                     else if (scfi == 1) {
-                                        i = getbit (s, 6);                                 /* 113 */
+                                        i = s->getbit ( 6);                                 /* 113 */
                                         if (i >= 63) {
                                             s->state = s->state | SCALEFACTOR_ERROR;
                                             i = 62;
                                         }
                                         si->mfactor[1] = si->mfactor[0] = mfactors[n][i];
-                                        i = getbit (s, 6);                                 /* 113 */
+                                        i = s->getbit ( 6);                                 /* 113 */
                                         if (i >= 63) {
                                             s->state = s->state | SCALEFACTOR_ERROR;
                                             i = 62;
@@ -2354,7 +2389,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                         si->mfactor[2] = mfactors[n][i];
                                     }
                                     else if (scfi == 2) {
-                                        i = getbit (s, 6);                                 /* 113 */
+                                        i = s->getbit ( 6);                                 /* 113 */
                                         if (i >= 63) {
                                             s->state = s->state | SCALEFACTOR_ERROR;
                                             i = 62;
@@ -2363,13 +2398,13 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                                 mfactors[n][i];
                                     }
                                     else {
-                                        i = getbit (s, 6);                                 /* 113 */
+                                        i = s->getbit ( 6);                                 /* 113 */
                                         if (i >= 63) {
                                             s->state = s->state | SCALEFACTOR_ERROR;
                                             i = 62;
                                         }
                                         si->mfactor[0] = mfactors[n][i];
-                                        i = getbit (s, 6);                                 /* 113 */
+                                        i = s->getbit ( 6);                                 /* 113 */
                                         if (i >= 63) {
                                             s->state = s->state | SCALEFACTOR_ERROR;
                                             i = 62;
@@ -2387,44 +2422,44 @@ mp3_read (int id, mp3_sample * buffer, int size)
                     int g;
 
                     for (g = 0; g < GROUPS; g++) {
-                        layer_II_decode_samples (s, g);
-                        output_blocks (s, buffer + s->info.samples, 12);
+                        s->layer_II_decode_samples (g);
+                        s->output_blocks ( buffer + s->info.samples, 12);
                     }
                 }
-                s->frame = next_frame (s);
+                s->frame = s->next_frame ();
                 break;
             case LAYER_III:                                                 /* 319 */
             {                                                              /* 332 */
                 if (s->info.mode == MP3_MONO)                                /* 333 */
-                    getbit (s, 5);
+                    s->getbit ( 5);
                 else
-                    getbit (s, 3);
+                    s->getbit ( 3);
                 {
                     int ch, group;                                             /* 335 */
 
                     for (ch = 0; ch < s->info.channels; ch++)
                         for (group = 0; group < BANDGROUPS; group++)
-                            s->share[ch][group] = getbit (s, 1);
+                            s->share[ch][group] = s->getbit ( 1);
                 }
                 {
                     int ch, gr;                                                /* 338 */
 
                     for (gr = 0; gr < 2; gr++)
                         for (ch = 0; ch < s->info.channels; ch++) {
-                            main_data_bit[gr][ch] = getbit (s, 12);                /* 339 */
-                            big_values[gr][ch] = getbit (s, 9);                    /* 341 */
+                            main_data_bit[gr][ch] = s->getbit ( 12);                /* 339 */
+                            big_values[gr][ch] = s->getbit ( 9);                    /* 341 */
                             if (big_values[gr][ch] > FREQUENCIES / 2)
                                 big_values[gr][ch] = FREQUENCIES / 2;
-                            global_gain[gr][ch] = getbit (s, 8);                   /* 343 */
-                            s->slength[gr][ch] = slength_v1[getbit (s, 4)];        /* 344 */
-                            window_switching[gr][ch] = getbit (s, 1);              /* 347 */
+                            global_gain[gr][ch] = s->getbit ( 8);                   /* 343 */
+                            s->slength[gr][ch] = slength_v1[s->getbit ( 4)];        /* 344 */
+                            window_switching[gr][ch] = s->getbit ( 1);              /* 347 */
                             if (window_switching[gr][ch]) {                        /* 349 */
-                                s->block_type[gr][ch] = getbit (s, 2);               /* 356 */
+                                s->block_type[gr][ch] = s->getbit ( 2);               /* 356 */
                                 if (s->block_type[gr][ch] == SHORT_BLOCK) {
                                     s->share[ch][0] = s->share[ch][1] = s->share[ch][2] =
                                     s->share[ch][3] = 0;
                                 }
-                                s->mixed_block[gr][ch] = getbit (s, 1);
+                                s->mixed_block[gr][ch] = s->getbit ( 1);
                                 width[gr][ch] = width_table[s->info.version][s->info.frequency_index][s->mixed_block[gr][ch]][s->block_type[gr][ch] == SHORT_BLOCK];    /* 245 */
                                 start[gr][ch] =
                                         start_table[s->info.version][s->info.frequency_index][s->
@@ -2432,13 +2467,13 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                         [gr]
                                         [ch]]
                                         [s->block_type[gr][ch] == SHORT_BLOCK];
-                                s->bigtable[gr][ch][0] = getbit (s, 5);
-                                s->bigtable[gr][ch][1] = getbit (s, 5);
+                                s->bigtable[gr][ch][0] = s->getbit ( 5);
+                                s->bigtable[gr][ch][1] = s->getbit ( 5);
                                 {
                                     int i;
 
                                     for (i = 0; i < SUBBLOCKS; i++)
-                                        subblock_gain[gr][ch][i] = getbit (s, 3);
+                                        subblock_gain[gr][ch][i] = s->getbit ( 3);
                                 }
                                 {
                                     int *pairs = s->bigpairs[gr][ch];                  /* 357 */
@@ -2475,13 +2510,13 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                             [ch]]
                                             [s->block_type[gr][ch] == SHORT_BLOCK];
                                     for (region = 0; region < REGIONS; region++)
-                                        s->bigtable[gr][ch][region] = getbit (s, 5);
+                                        s->bigtable[gr][ch][region] = s->getbit ( 5);
                                 }
                                 {
                                     int region0, region1;                                /* 354 */
 
-                                    region0 = getbit (s, 4) + 1;
-                                    region1 = getbit (s, 3) + 1;
+                                    region0 = s->getbit ( 4) + 1;
+                                    region1 = s->getbit ( 3) + 1;
                                     {
                                         int *pairs = s->bigpairs[gr][ch];                  /* 355 */
 
@@ -2506,15 +2541,15 @@ mp3_read (int id, mp3_sample * buffer, int size)
                             }
                             s->slimit[gr][ch] = slimit_v1[s->block_type[gr][ch] == SHORT_BLOCK]       /* 345 */
                             [s->mixed_block[gr][ch]];
-                            if (getbit (s, 1) == 0)
+                            if (s->getbit ( 1) == 0)
                                 preemphasis[gr][ch] = zero_table;                    /* 260 */
                             else
                                 preemphasis[gr][ch] = preemphasis_table;             /* 259 */
-                            if (getbit (s, 1) == 0)
+                            if (s->getbit ( 1) == 0)
                                 scale_shift[gr][ch] = 1;                             /* 254 */
                             else
                                 scale_shift[gr][ch] = 2;                             /* 255 */
-                            s->smalltable_A[gr][ch] = (getbit (s, 1) == 0);        /* 360 */
+                            s->smalltable_A[gr][ch] = (s->getbit ( 1) == 0);        /* 360 */
                         }
                 }
             }
@@ -2556,7 +2591,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                                 if (slen == 0)
                                                     m = 0;
                                                 else
-                                                    m = getbit (s, slen);
+                                                    m = s->getbit ( slen);
                                                 s->sfimax[ch][band] = (2 << slen) - 1;
                                                 s->sfi[ch][band] = m;
                                             }
@@ -2579,7 +2614,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                             if (slen == 0)
                                                 m = 0;
                                             else
-                                                m = getbit (s, slen);
+                                                m = s->getbit ( slen);
                                             s->sfimax[ch][band] = (2 << slen) - 1;
                                             s->sfi[ch][band] = m;
                                         }
@@ -2590,7 +2625,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                             if (slen == 0)
                                                 m = 0;
                                             else
-                                                m = getbit (s, slen);
+                                                m = s->getbit ( slen);
                                             s->sfimax[ch][band] = (2 << slen) - 1;
                                             s->sfi[ch][band] = m;
                                         }
@@ -2602,7 +2637,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                             if (slen == 0)
                                                 m = 0;
                                             else
-                                                m = getbit (s, slen);
+                                                m = s->getbit ( slen);
                                             s->sfimax[ch][band] = (2 << slen) - 1;
                                             s->sfi[ch][band] = m;
                                         }
@@ -2613,7 +2648,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                             if (slen == 0)
                                                 m = 0;
                                             else
-                                                m = getbit (s, slen);
+                                                m = s->getbit ( slen);
                                             s->sfimax[ch][band] = (2 << slen) - 1;
                                             s->sfi[ch][band] = m;
                                         }
@@ -2634,16 +2669,16 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                             u[2 * n] = u[2 * n + 1] = 0;
                                     }
                                     else if (k <= 12)
-                                        decode_big (s, u, k, s->bigpairs[gr][ch][region]);
+                                        s->decode_big ( u, k, s->bigpairs[gr][ch][region]);
                                     else
-                                        decode_very_big (s, u, k, s->bigpairs[gr][ch][region]);
+                                        s->decode_very_big ( u, k, s->bigpairs[gr][ch][region]);
                                     u = u + 2 * s->bigpairs[gr][ch][region];
                                 }
                                 if (s->smalltable_A[gr][ch])
-                                    u = decode_small_A (s, u, main_data_position + main_data_bit[gr][ch] - ((s->byte_pointer - s->main_data_start) * 8 + s->bit_offset)       /* 328 */
+                                    u = s->decode_small_A ( u, main_data_position + main_data_bit[gr][ch] - ((s->byte_pointer - s->main_data_start) * 8 + s->bit_offset)       /* 328 */
                                             , FREQUENCIES - (u - uv[ch]));
                                 else
-                                    u = decode_small_B (s, u, main_data_position + main_data_bit[gr][ch] - ((s->byte_pointer - s->main_data_start) * 8 + s->bit_offset)       /* 328 */
+                                    u = s->decode_small_B ( u, main_data_position + main_data_bit[gr][ch] - ((s->byte_pointer - s->main_data_start) * 8 + s->bit_offset)       /* 328 */
                                             , FREQUENCIES - (u - uv[ch]));
                                 ulimit[ch] = u - uv[ch];
                                 while (u < &(uv[ch][FREQUENCIES]))
@@ -2892,19 +2927,19 @@ mp3_read (int id, mp3_sample * buffer, int size)
 
                                 for (ch = 0; ch < s->info.channels; ch++)
                                     if (s->block_type[gr][ch] != SHORT_BLOCK)
-                                        qs (s, gr, ch, 0, 0, ulimit[ch]);
+                                        s->qs ( gr, ch, 0, 0, ulimit[ch]);
                                     else {
                                         if (s->mixed_block[gr][ch]) {
                                             int band = boundary_table[s->info.version];
 
                                             int limit = start[gr][ch][band];
 
-                                            qs (s, gr, ch, 0, 0, limit);
-                                            band = qs_short (s, gr, ch, band, limit, ulimit[ch]);
+                                            s->qs ( gr, ch, 0, 0, limit);
+                                            band = s->qs_short ( gr, ch, band, limit, ulimit[ch]);
                                             ulimit[ch] = start[gr][ch][band];
                                         }
                                         else {
-                                            int band = qs_short (s, gr, ch, 0, 0, ulimit[ch]);
+                                            int band = s->qs_short ( gr, ch, 0, 0, ulimit[ch]);
 
                                             ulimit[ch] = start[gr][ch][band];
                                         }
@@ -3388,31 +3423,31 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                         y[i][ch][sb] = -y[i][ch][sb];
                             }
                         }
-                        output_blocks (s, buffer + s->info.samples, SUBFREQUENCIES);
+                        s->output_blocks ( buffer + s->info.samples, SUBFREQUENCIES);
                     }
                     ;                                                            /* 141 */
                     ;
                 }
-                s->frame = next_frame (s);
+                s->frame = s->next_frame ();
                 break;
             case LAYER_III_V2:                                              /* 398 */
                 if (s->info.mode == MP3_MONO)                                  /* 374 */
-                    getbit (s, 1);
+                    s->getbit ( 1);
                 else
-                    getbit (s, 2);
+                    s->getbit ( 2);
                 {
                     const int gr = 0;                                            /* 378 */
 
                     int ch;
 
                     for (ch = 0; ch < s->info.channels; ch++) {
-                        main_data_bit[gr][ch] = getbit (s, 12);                    /* 339 */
-                        big_values[gr][ch] = getbit (s, 9);                        /* 341 */
+                        main_data_bit[gr][ch] = s->getbit ( 12);                    /* 339 */
+                        big_values[gr][ch] = s->getbit ( 9);                        /* 341 */
                         if (big_values[gr][ch] > FREQUENCIES / 2)
                             big_values[gr][ch] = FREQUENCIES / 2;
-                        global_gain[gr][ch] = getbit (s, 8);                       /* 343 */
+                        global_gain[gr][ch] = s->getbit ( 8);                       /* 343 */
                         {
-                            int sfc = getbit (s, 9);                                 /* 379 */
+                            int sfc = s->getbit ( 9);                                 /* 379 */
 
                             if (s->info.i_stereo && ch == 1) {
                                 i_scale = sfc & 1;
@@ -3421,27 +3456,27 @@ mp3_read (int id, mp3_sample * buffer, int size)
                             else
                                 s->slength[0][ch] = slength_v2[sfc];
                         }
-                        window_switching[gr][ch] = getbit (s, 1);                  /* 347 */
+                        window_switching[gr][ch] = s->getbit ( 1);                  /* 347 */
                         if (window_switching[gr][ch]) {                            /* 349 */
-                            s->block_type[gr][ch] = getbit (s, 2);                   /* 356 */
+                            s->block_type[gr][ch] = s->getbit ( 2);                   /* 356 */
                             if (s->block_type[gr][ch] == SHORT_BLOCK) {
                                 s->share[ch][0] = s->share[ch][1] = s->share[ch][2] =
                                 s->share[ch][3] = 0;
                             }
-                            s->mixed_block[gr][ch] = getbit (s, 1);
+                            s->mixed_block[gr][ch] = s->getbit ( 1);
                             width[gr][ch] = width_table[s->info.version][s->info.frequency_index][s->mixed_block[gr][ch]][s->block_type[gr][ch] == SHORT_BLOCK];        /* 245 */
                             start[gr][ch] =
                                     start_table[s->info.version][s->info.frequency_index][s->
                                             mixed_block
                                     [gr][ch]]
                                     [s->block_type[gr][ch] == SHORT_BLOCK];
-                            s->bigtable[gr][ch][0] = getbit (s, 5);
-                            s->bigtable[gr][ch][1] = getbit (s, 5);
+                            s->bigtable[gr][ch][0] = s->getbit ( 5);
+                            s->bigtable[gr][ch][1] = s->getbit ( 5);
                             {
                                 int i;
 
                                 for (i = 0; i < SUBBLOCKS; i++)
-                                    subblock_gain[gr][ch][i] = getbit (s, 3);
+                                    subblock_gain[gr][ch][i] = s->getbit ( 3);
                             }
                             {
                                 int *pairs = s->bigpairs[gr][ch];                      /* 357 */
@@ -3477,13 +3512,13 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                         [gr][ch]]
                                         [s->block_type[gr][ch] == SHORT_BLOCK];
                                 for (region = 0; region < REGIONS; region++)
-                                    s->bigtable[gr][ch][region] = getbit (s, 5);
+                                    s->bigtable[gr][ch][region] = s->getbit ( 5);
                             }
                             {
                                 int region0, region1;                                    /* 354 */
 
-                                region0 = getbit (s, 4) + 1;
-                                region1 = getbit (s, 3) + 1;
+                                region0 = s->getbit ( 4) + 1;
+                                region1 = s->getbit ( 3) + 1;
                                 {
                                     int *pairs = s->bigpairs[gr][ch];                      /* 355 */
 
@@ -3516,11 +3551,11 @@ mp3_read (int id, mp3_sample * buffer, int size)
                             preemphasis[gr][ch] = zero_table;                        /* 260 */
                         else
                             preemphasis[gr][ch] = preemphasis_table;                 /* 259 */
-                        if (getbit (s, 1) == 0)
+                        if (s->getbit ( 1) == 0)
                             scale_shift[gr][ch] = 1;                                 /* 254 */
                         else
                             scale_shift[gr][ch] = 2;                                 /* 255 */
-                        s->smalltable_A[gr][ch] = (getbit (s, 1) == 0);            /* 360 */
+                        s->smalltable_A[gr][ch] = (s->getbit ( 1) == 0);            /* 360 */
                     }
                 }
                 {
@@ -3561,7 +3596,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                                 if (slen == 0)
                                                     m = 0;
                                                 else
-                                                    m = getbit (s, slen);
+                                                    m = s->getbit ( slen);
                                                 s->sfimax[ch][band] = (2 << slen) - 1;
                                                 s->sfi[ch][band] = m;
                                             }
@@ -3584,7 +3619,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                             if (slen == 0)
                                                 m = 0;
                                             else
-                                                m = getbit (s, slen);
+                                                m = s->getbit ( slen);
                                             s->sfimax[ch][band] = (2 << slen) - 1;
                                             s->sfi[ch][band] = m;
                                         }
@@ -3595,7 +3630,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                             if (slen == 0)
                                                 m = 0;
                                             else
-                                                m = getbit (s, slen);
+                                                m = s->getbit ( slen);
                                             s->sfimax[ch][band] = (2 << slen) - 1;
                                             s->sfi[ch][band] = m;
                                         }
@@ -3607,7 +3642,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                             if (slen == 0)
                                                 m = 0;
                                             else
-                                                m = getbit (s, slen);
+                                                m = s->getbit ( slen);
                                             s->sfimax[ch][band] = (2 << slen) - 1;
                                             s->sfi[ch][band] = m;
                                         }
@@ -3618,7 +3653,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                             if (slen == 0)
                                                 m = 0;
                                             else
-                                                m = getbit (s, slen);
+                                                m = s->getbit ( slen);
                                             s->sfimax[ch][band] = (2 << slen) - 1;
                                             s->sfi[ch][band] = m;
                                         }
@@ -3639,16 +3674,16 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                             u[2 * n] = u[2 * n + 1] = 0;
                                     }
                                     else if (k <= 12)
-                                        decode_big (s, u, k, s->bigpairs[gr][ch][region]);
+                                        s->decode_big ( u, k, s->bigpairs[gr][ch][region]);
                                     else
-                                        decode_very_big (s, u, k, s->bigpairs[gr][ch][region]);
+                                        s->decode_very_big ( u, k, s->bigpairs[gr][ch][region]);
                                     u = u + 2 * s->bigpairs[gr][ch][region];
                                 }
                                 if (s->smalltable_A[gr][ch])
-                                    u = decode_small_A (s, u, main_data_position + main_data_bit[gr][ch] - ((s->byte_pointer - s->main_data_start) * 8 + s->bit_offset)       /* 328 */
+                                    u = s->decode_small_A ( u, main_data_position + main_data_bit[gr][ch] - ((s->byte_pointer - s->main_data_start) * 8 + s->bit_offset)       /* 328 */
                                             , FREQUENCIES - (u - uv[ch]));
                                 else
-                                    u = decode_small_B (s, u, main_data_position + main_data_bit[gr][ch] - ((s->byte_pointer - s->main_data_start) * 8 + s->bit_offset)       /* 328 */
+                                    u = s->decode_small_B ( u, main_data_position + main_data_bit[gr][ch] - ((s->byte_pointer - s->main_data_start) * 8 + s->bit_offset)       /* 328 */
                                             , FREQUENCIES - (u - uv[ch]));
                                 ulimit[ch] = u - uv[ch];
                                 while (u < &(uv[ch][FREQUENCIES]))
@@ -3897,19 +3932,19 @@ mp3_read (int id, mp3_sample * buffer, int size)
 
                                 for (ch = 0; ch < s->info.channels; ch++)
                                     if (s->block_type[gr][ch] != SHORT_BLOCK)
-                                        qs (s, gr, ch, 0, 0, ulimit[ch]);
+                                        s->qs ( gr, ch, 0, 0, ulimit[ch]);
                                     else {
                                         if (s->mixed_block[gr][ch]) {
                                             int band = boundary_table[s->info.version];
 
                                             int limit = start[gr][ch][band];
 
-                                            qs (s, gr, ch, 0, 0, limit);
-                                            band = qs_short (s, gr, ch, band, limit, ulimit[ch]);
+                                            s->qs ( gr, ch, 0, 0, limit);
+                                            band = s->qs_short ( gr, ch, band, limit, ulimit[ch]);
                                             ulimit[ch] = start[gr][ch][band];
                                         }
                                         else {
-                                            int band = qs_short (s, gr, ch, 0, 0, ulimit[ch]);
+                                            int band = s->qs_short ( gr, ch, 0, 0, ulimit[ch]);
 
                                             ulimit[ch] = start[gr][ch][band];
                                         }
@@ -4393,12 +4428,12 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                         y[i][ch][sb] = -y[i][ch][sb];
                             }
                         }
-                        output_blocks (s, buffer + s->info.samples, SUBFREQUENCIES);
+                        s->output_blocks ( buffer + s->info.samples, SUBFREQUENCIES);
                     }
                     ;                                                            /* 141 */
                     ;
                 }
-                s->frame = next_frame (s);
+                s->frame = s->next_frame ();
                 break;
             case SKIP:                                                      /* 401 */
             default:
@@ -4409,7 +4444,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                     s->main_data_start = s->main_data_start + s->info.fixed_size;
                     s->start = s->start + s->info.fixed_size;
                 }
-                s->frame = next_frame (s);
+                s->frame = s->next_frame ();
                 break;
             case MUTE:                                                      /* 402 */
             {
@@ -4423,7 +4458,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                     n = 18 * GRANULES;
                 else
                     n = 18;
-                output_silence (s, buffer + s->info.samples, n);
+                s->output_silence ( buffer + s->info.samples, n);
                 break;
             }
             case MUTE | SKIP:                                               /* 403 */
@@ -4445,8 +4480,8 @@ mp3_read (int id, mp3_sample * buffer, int size)
                     n = 18 * GRANULES;
                 else
                     n = 18;
-                output_silence (s, buffer + s->info.samples, n);
-                s->frame = next_frame (s);
+                s->output_silence ( buffer + s->info.samples, n);
+                s->frame = s->next_frame ();
                 break;
             }
             case REPEAT:                                                    /* 405 */
@@ -4461,7 +4496,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                     n = 18 * GRANULES;
                 else
                     n = 18;
-                output_repeat (s, buffer + s->info.samples, n, n);
+                s->output_repeat ( buffer + s->info.samples, n, n);
                 break;
             }
             case REPEAT | SKIP:
@@ -4483,8 +4518,8 @@ mp3_read (int id, mp3_sample * buffer, int size)
                     n = 18 * GRANULES;
                 else
                     n = 18;
-                output_repeat (s, buffer + s->info.samples, n, n);
-                s->frame = next_frame (s);
+                s->output_repeat ( buffer + s->info.samples, n, n);
+                s->frame = s->next_frame ();
                 break;
             }
             case REPAIR:                                                    /* 409 */
@@ -4521,7 +4556,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                         }
                     }
                 }
-                output_repeat (s, buffer + s->info.samples, n, d);
+                s->output_repeat ( buffer + s->info.samples, n, d);
                 break;
             }
             case REPAIR | SKIP:
@@ -4565,8 +4600,8 @@ mp3_read (int id, mp3_sample * buffer, int size)
                         }
                     }
                 }
-                output_repeat (s, buffer + s->info.samples, n, d);
-                s->frame = next_frame (s);
+                s->output_repeat ( buffer + s->info.samples, n, d);
+                s->frame = s->next_frame ();
                 break;
             }
         }
