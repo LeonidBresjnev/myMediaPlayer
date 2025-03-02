@@ -35,9 +35,7 @@ namespace equalizer {
     int16_t FilePlayer::getSample() {
         uint8_t buffer[2];
         inputFile.read(reinterpret_cast<char *>(buffer), 2);
-        int16_t sampleAsInt = twoBytesToInt (
-                buffer,
-                0);
+        int16_t sampleAsInt = twoBytesToInt ( buffer, 0);
 
        // return 0.f;
         return (sampleAsInt) ;

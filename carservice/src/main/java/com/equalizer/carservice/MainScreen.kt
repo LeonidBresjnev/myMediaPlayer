@@ -5,7 +5,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.util.Log
-import androidx.annotation.OptIn
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
@@ -24,7 +23,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
@@ -93,7 +91,6 @@ class MainScreen(
                     }
 
 
-                    @OptIn(UnstableApi::class)
                     override fun onVolumeChanged(volume: Float) {
                         volPerFreq[currentInterval] = volume
                         setVolPerFreqText(currentInterval)
@@ -225,7 +222,7 @@ class MainScreen(
 
             val folder = File(Environment.getExternalStorageDirectory(),"/Music")
 
-            val file = folder.listFiles()[0]
+            val file = folder.listFiles()?.get(0)
             file?.let {
                 val myItem = MediaItem
                     .Builder()

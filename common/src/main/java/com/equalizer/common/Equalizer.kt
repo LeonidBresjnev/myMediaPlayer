@@ -2,6 +2,7 @@ package com.equalizer.common
 
 //import androidx.media3.common.util.Log
 import android.content.Context
+import android.media.AudioManager
 import android.os.Looper
 import android.view.Surface
 import android.view.SurfaceHolder
@@ -155,6 +156,8 @@ class Equalizer(
                             synchronized(equalizerMutex) {
                                 createNativeHandleIfNotExists()
                                 log("play: ${file.absolutePath}")
+
+
                                 nativePlayWithVol(equalizerHandle,
                                     file.absolutePath,
                                     volPerFreq.toFloatArray())
@@ -325,6 +328,7 @@ class Equalizer(
 
     override fun setPlayWhenReady(playWhenReady: Boolean) {
         log("setPlayWhenReady: $playWhenReady")
+
         this.playWhenReady=playWhenReady
 
         listeners.sendEvent(

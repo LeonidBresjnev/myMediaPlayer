@@ -47,7 +47,6 @@ namespace equalizer {
         int currentChannel=0;
     };
 
-
 }
 
 

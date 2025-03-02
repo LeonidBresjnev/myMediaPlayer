@@ -26,7 +26,7 @@ namespace equalizer {
         bool _isPlaying = false;
         std::shared_ptr<Oscillator> _oscillator;
         std::shared_ptr<FilterSource> _filterSource;
-        std::shared_ptr<FilePlayer> _filePlayer;
+        //std::shared_ptr<FilePlayer> _filePlayer;
         std::unique_ptr<AudioPlayer> _audioPlayer;
 
 

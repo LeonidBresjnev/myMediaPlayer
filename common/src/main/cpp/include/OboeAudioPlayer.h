@@ -23,6 +23,7 @@ namespace equalizer {
                                               void* audioData,
                                               int32_t framesCount) override;
 
+
     private:
         std::shared_ptr<AudioSource> _source;
         std::shared_ptr<oboe::AudioStream> _stream;

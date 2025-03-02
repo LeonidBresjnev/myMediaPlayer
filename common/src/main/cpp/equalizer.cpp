@@ -8,9 +8,6 @@ namespace equalizer {
             _oscillator{std::make_shared<Oscillator>() },
             _filterSource{std::make_shared<FilterSource>(_oscillator)},
             _audioPlayer{std::make_unique<OboeAudioPlayer>(_filterSource)}  {
-
-
-
     }
 
     Equalizer::~Equalizer() = default;
@@ -21,10 +18,11 @@ namespace equalizer {
         _isPlaying = false;
     }
 
+
+
     void Equalizer::play(std::string fileName) {
 
         _oscillator->load(fileName);
-
         _isPlaying = true;
         LOGD("play called");
 
@@ -32,11 +30,9 @@ namespace equalizer {
         int32_t samplingRate = _oscillator->getSampleRate();
         int32_t numChannels = _oscillator->getChannelCount();
         LOGD("sampleRate=%d", samplingRate);
-        _oscillator->setSamplingRate(samplingRate);
+
         _filterSource->setFilter(samplingRate,numChannels);
-        /*for (int i=0; i<200; i++) {
-            LOGD("sample :%d", _filterSource->getSample());
-        }*/
+
         const auto result = _audioPlayer -> play(samplingRate, numChannels);
         if (result == 0) {
             _isPlaying = true;

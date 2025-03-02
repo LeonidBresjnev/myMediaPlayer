@@ -21,8 +21,7 @@ std::string jstringToString(JNIEnv* env, jstring jStr) {
 }
 
 extern "C" {
-JNIEXPORT jlong JNICALL
-Java_com_equalizer_common_Equalizer_nativeCreate(JNIEnv *env, jobject thiz) {
+JNIEXPORT jlong JNICALL Java_com_equalizer_common_Equalizer_nativeCreate(JNIEnv *env, jobject thiz) {
 
     auto equalizer = std::make_unique<equalizer::Equalizer>();
 

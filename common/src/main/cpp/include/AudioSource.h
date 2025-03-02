@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 namespace equalizer {
     class AudioSource {
     public:

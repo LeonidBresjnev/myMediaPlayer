@@ -19,6 +19,9 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         FilterElement.cpp
         FilterSource.cpp
         OboeAudioPlayer.cpp
+        mp3/perform.cpp
+        mp3/mp32pcm.cpp
+        mp3.cpp
 
 )
 

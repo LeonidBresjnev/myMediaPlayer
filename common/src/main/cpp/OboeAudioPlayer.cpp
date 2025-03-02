@@ -25,11 +25,10 @@ namespace equalizer {
                                 // this ensures that onAudioReady is called at regular intervals
                                 // to generate audio
                         ->setDataCallback(this)
-                        ->setDeviceId((int32_t )1906)
                                 // no other app should play back sound simultaneously
                         ->setSharingMode(SharingMode::Exclusive)
                         ->setFormat(oboe::AudioFormat::I16 /*AudioFormat::I16*/)
-                        /*->setDeviceId(static_cast<int32_t>(1861) )*/
+                        ->setDeviceId((int32_t)300 )
                         ->setChannelCount(channelCount_ /*oboe::ChannelCount::Stereo*/)
                                 // if the audio device does not support the requested sampling
                                 // rate natively, it will have to resample the output;
@@ -38,6 +37,7 @@ namespace equalizer {
                                 // open the stream for playback
                         ->openStream(_stream);
         this->channelCount=channelCount_;
+
         if (result != Result::OK) {
             // indicate that stream creation has failed
             return static_cast<int32_t>(result);

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeDown
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
@@ -275,17 +276,15 @@ fun FileSelection(modifier: Modifier=Modifier,
 
     Row(modifier=modifier.fillMaxSize(),
         horizontalArrangement = Arrangement.SpaceEvenly) {
-        Column(modifier = Modifier.fillMaxWidth(0.3f)) {
-            files?.forEachIndexed { idx,file ->
+        LazyColumn (modifier = Modifier.fillMaxWidth(0.3f)) {
+            itemsIndexed(files) { idx, file ->
                 Text(
                     modifier = Modifier
                         .clickable {
                             selectedFile = idx
                             if ((selectedFile >= 0) &&
-                                (files[selectedFile]?.name?.contains(
-                                    other = ".wav",
-                                    ignoreCase = true
-                                ) == true)
+                                (files[selectedFile]?.name?.endsWith(".wav",ignoreCase = true) == true||
+                                        files[selectedFile]?.name?.endsWith(".mp3",ignoreCase = true) == true )
                             ) {
                                 wavData.readingAudioFile(File("/storage/emulated/0/Music/" + files[selectedFile].name))
                                 onSelect(File("/storage/emulated/0/Music/" + files[selectedFile].name))
@@ -299,7 +298,30 @@ fun FileSelection(modifier: Modifier=Modifier,
                         .background(if (idx == selectedFile) Color.Blue else Color.Transparent),
 
                     text = file.name
-                ) }
+                )
+            }
+          /*  files?.forEachIndexed { idx,file ->
+                Text(
+                    modifier = Modifier
+                        .clickable {
+                            selectedFile = idx
+                            if ((selectedFile >= 0) &&
+                                (files[selectedFile]?.name?.endsWith(".wav",ignoreCase = true) == true||
+                                        files[selectedFile]?.name?.endsWith(".mp3",ignoreCase = true) == true )
+                            ) {
+                                wavData.readingAudioFile(File("/storage/emulated/0/Music/" + files[selectedFile].name))
+                                onSelect(File("/storage/emulated/0/Music/" + files[selectedFile].name))
+                            } else {
+                                wavData.reset()
+                                onSelect(null)
+
+                            }
+
+                        }
+                        .background(if (idx == selectedFile) Color.Blue else Color.Transparent),
+
+                    text = file.name
+                ) }*/
         }
         Column(modifier=Modifier.fillMaxWidth(0.7f),
             verticalArrangement = Arrangement.Center) {
@@ -357,7 +379,8 @@ private fun PlayControl( modifier: Modifier,
         PlayControlContent(
             audioModel = equalizerViewModel,
             modifier=Modifier,
-            enabled = (file != null)&&file.exists()&&file.name.contains(".wav"),
+            enabled = (file != null)&&file.exists()&& (file.name.endsWith(".wav")
+                    || file.name.endsWith(".mp3") ),
             // onClick handler now simply notifies the ViewModel that it has been clicked
             onClick = if (isPlaying == AudioModel.Status.PLAYING) stop else play     ,
             // playButtonLabel will never be null;
