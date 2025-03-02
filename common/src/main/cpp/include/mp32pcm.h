@@ -40,10 +40,44 @@
 #define MP3_ERROR_NO_SIZE -9
 #define SCALEFACTOR_ERROR 0x0010                                     /* 114 */
 #define MP3_EQ_UNITGAIN 210                                          /* 446 */
+
+
+#define MAX_FRAME 1729                                               /* 170 */
+
 typedef short int mp3_sample;                                        /*  14 */
 
-typedef struct mp3_info
-{                                                                    /*  23 */
+class mp3_info {
+    /*  23 */
+    constexpr static const int bit_rate_table[3][3][16] = {                        /* 415 */
+            {
+                    {0, 32000, 64000, 96000, 128000, 160000, 192000, 224000, 256000, 288000,
+                                                                                          320000, 352000, 384000, 416000, 448000, -1},
+                    {0, 32000, 48000, 56000, 64000, 80000, 96000, 112000, 128000, 160000, 192000,
+                            224000, 256000, 320000, 384000, -1},
+                    {0, 32000, 40000, 48000, 56000, 64000, 80000, 96000, 112000, 128000, 160000,
+                            192000, 224000, 256000, 320000, -1}},
+            {
+                    {0, 32000, 48000, 56000, 64000, 80000, 96000, 112000, 128000, 144000, 160000,
+                                                                                                  176000, 192000, 224000, 256000, -1},
+                    {0, 8000, 16000, 24000, 32000, 40000, 48000, 56000, 64000, 80000, 96000,
+                            112000, 128000, 144000, 160000, -1},
+                    {0, 8000, 16000, 24000, 32000, 40000, 48000, 56000, 64000, 80000, 96000,
+                            112000, 128000, 144000, 160000, -1}},
+            {
+                    {0, 32000, 48000, 56000, 64000, 80000, 96000, 112000, 128000, 144000, 160000,
+                                                                                                  176000, 192000, 224000, 256000, -1},
+                    {0, 8000, 16000, 24000, 32000, 40000, 48000, 56000, 64000, 80000, 96000,
+                            112000, 128000, 144000, 160000, -1},
+                    {0, 8000, 16000, 24000, 32000, 40000, 48000, 56000, 64000, 80000, 96000,
+                            112000, 128000, 144000, 160000, -1}},
+    };
+
+    constexpr static const int frequency_table[3][3] = {                           /* 416 */
+            {44100, 48000, 32000},
+            {22050, 24000, 16000},
+            {11025, 12000, 8000}
+    };
+public:
     int id;
     unsigned int header;
     int version;                                                       /*  31 */
@@ -77,7 +111,171 @@ typedef struct mp3_info
     int ms_stereo;                                                     /* 282 */
     int i_stereo;
     int fixed_size;                                                    /* 431 */
-} mp3_info;
+
+
+
+     int
+    decode_header ( unsigned char *frame)
+    {                                                                    /*  78 */
+        unsigned int header;
+
+        header = (((((frame[0] << 8) | frame[1]) << 8) | frame[2]) << 8) | frame[3];
+        this->header = header;
+        {
+            int n = 11;                                                      /*  79 */
+
+            int bits = header >> (32 - n);                                   /*  80 */
+
+            header = header << n;
+            if (bits != 0x7FF)
+                return 0;
+        }
+        {
+            int n = 2;                                                       /*  81 */
+
+            int bits = header >> (32 - n);                                   /*  80 */
+
+            header = header << n;
+            if (bits == 0)
+                this->version = MP3_V2_5;
+            else if (bits == 2)
+                this->version = MP3_V2_0;
+            else if (bits == 3)
+                this->version = MP3_V1_0;
+            else
+                return 0;
+        }
+        {
+            int n = 2;                                                       /*  82 */
+
+            int bits = header >> (32 - n);                                   /*  80 */
+
+            header = header << n;
+            if (bits == 0)
+                return 0;
+            this->layer = 4 - bits;
+        }
+        {
+            int n = 1;                                                       /*  83 */
+
+            int bits = header >> (32 - n);                                   /*  80 */
+
+            header = header << n;
+            this->crc_protected = (bits == 0);
+        }
+        {
+            int n = 4;                                                       /*  85 */
+
+            int bits = header >> (32 - n);                                   /*  80 */
+
+            header = header << n;
+            if (bits == 0)
+                this->free_format = 1;
+            else if (bits == 0xF)
+                return 0;
+            else {
+                this->free_format = 0;
+                this->bit_rate = bit_rate_table[this->version][this->layer - 1][bits];
+            }
+        }
+        {
+            int n = 2;                                                       /*  87 */
+
+            int bits = header >> (32 - n);                                   /*  80 */
+
+            header = header << n;
+            if (bits == 3)
+                return 0;
+            this->frequency_index = bits;
+            this->sample_rate = frequency_table[this->version][this->frequency_index];
+        }
+        {
+            int n = 1;                                                       /*  88 */
+
+            int bits = header >> (32 - n);                                   /*  80 */
+
+            header = header << n;
+            this->padding = bits;
+        }
+        {
+            int n = 1;                                                       /*  92 */
+
+            int bits = header >> (32 - n);                                   /*  80 */
+
+            header = header << n;
+            this->private_ = bits;
+        }
+        {
+            int n = 2;                                                       /*  94 */
+
+            int bits = header >> (32 - n);                                   /*  80 */
+
+            header = header << n;
+            this->mode = bits;
+            if (this->mode == MP3_MONO)
+                this->channels = 1;
+            else
+                this->channels = 2;
+        }
+        {
+            int n = 2;                                                       /*  95 */
+
+            int bits = header >> (32 - n);                                   /*  80 */
+
+            header = header << n;
+            this->bound = bits * 4 + 4;                                      /*  97 */
+            if (this->mode != MP3_JOINT_STEREO)
+                this->bound = 32;
+            if (this->mode == MP3_JOINT_STEREO) {                            /* 281 */
+                this->ms_stereo = (bits >> 1) & 1;
+                this->i_stereo = bits & 1;
+            }
+            else
+                this->ms_stereo = this->i_stereo = 0;
+        }
+        {
+            int n = 1;
+
+            int bits = header >> (32 - n);                                   /*  80 */
+
+            header = header << n;
+            this->copyright = bits;
+        }
+        {
+            int n = 1;
+
+            int bits = header >> (32 - n);                                   /*  80 */
+
+            header = header << n;
+            this->original = bits;
+        }
+        {
+            int n = 2;
+
+            int bits = header >> (32 - n);                                   /*  80 */
+
+            header = header << n;
+            this->emphasis = bits;
+        }
+        {
+            if (this->layer == 1)                                            /*  90 */
+                this->frame_size =
+                        4 * (this->padding +
+                             (384 / (8 * 4)) * this->bit_rate / this->sample_rate);
+            else
+                this->frame_size =
+                        this->padding + (1152 / 8) * this->bit_rate / this->sample_rate;
+        }
+        if (this->layer == 3 && this->version != MP3_V1_0)                 /* 375 */
+            this->frame_size =
+                    1 * (this->padding + 72 * this->bit_rate / this->sample_rate);
+        if (this->frame_size > MAX_FRAME)
+            return 0;
+        return 1;
+    }
+
+
+} ;
 
 typedef struct mp3_options
 {                                                                    /*  19 */

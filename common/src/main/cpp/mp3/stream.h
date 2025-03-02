@@ -1,0 +1,8 @@
+//
+// Created by simon on 02-03-2025.
+//
+
+#ifndef MYMEDIAPLAYER_STREAM_H
+#define MYMEDIAPLAYER_STREAM_H
+
+#endif //MYMEDIAPLAYER_STREAM_H
