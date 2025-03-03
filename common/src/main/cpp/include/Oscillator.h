@@ -28,7 +28,7 @@ namespace equalizer {
         int32_t getSampleRate() const;
         uint16_t getChannelCount() const;
 
-        bool load(std::string );
+        bool load(const std::string& );
 
         static bool endsWithWavCaseInsensitive(std::string str, std::string suffix) {
             std::transform(str.begin(), str.end(), str.begin(), ::tolower);
@@ -42,7 +42,6 @@ namespace equalizer {
 
         static int32_t fourBytesToInt (const uint8_t source[4], int startIndex );
         static int16_t twoBytesToInt (const uint8_t source[2], int );
-        static int16_t twoBytesToInt2 (const int source[2], int );
         std::ifstream inputFile;
         uint16_t numChannels=2;
         int32_t sampleRate=0;

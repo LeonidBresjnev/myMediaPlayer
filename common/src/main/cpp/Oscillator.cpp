@@ -53,13 +53,6 @@ namespace equalizer {
         return (result);
     }
 
-    int16_t Oscillator::twoBytesToInt2 (const int  source[2],
-                                       int startIndex)
-    {
-        int16_t result = (source[startIndex + 1] << 8) | source[startIndex];
-        return (result);
-    }
-
 
     void Oscillator::onPlaybackStopped() {
         inputFile.close();
@@ -111,7 +104,7 @@ namespace equalizer {
     }
     return 0;
     }
-    bool Oscillator::load (std::string fileName)
+    bool Oscillator::load (const std::string& fileName)
     {
         LOGD("Load file started");
         inputFile.open(fileName, std::ios::binary); // Open the file in binary mode

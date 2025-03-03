@@ -55,6 +55,7 @@ dependencies {
   //  implementation(libs.androidx.media3.common)
 
     implementation(libs.androidx.media3.session)
+    implementation(libs.androidx.media3.exoplayer)
     implementation(libs.oboe)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)

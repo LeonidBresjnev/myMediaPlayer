@@ -21,6 +21,7 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         OboeAudioPlayer.cpp
         mp3/perform.cpp
         mp3/mp32pcm.cpp
+        mp3/stream.cpp
         mp3.cpp
 
 )

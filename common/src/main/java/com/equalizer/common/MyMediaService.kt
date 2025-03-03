@@ -1,12 +1,14 @@
 package com.equalizer.common
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.Log
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSession.MediaItemsWithStartPosition
 import androidx.media3.session.MediaSessionService
@@ -34,13 +36,19 @@ class MyMediaService : MediaSessionService() {
     override fun onCreate() {
 
         super.onCreate()
-
-       /* val player0 = ExoPlayer
+/*
+        val player0 = ExoPlayer
             .Builder(this)
             .setName("ExoPlayer")
-            .build()*/
-        val player = Equalizer(context=this)
+            .build()
 
+        val mediaItem = MediaItem.Builder()
+            .setUri( Uri.parse("/storage/emulated/0/Music/snothvalp.mp3"))
+            .build()
+        player0.setMediaItem(mediaItem)
+        player0.prepare()
+        player0.play()*/
+        val player = Equalizer(context=this)
 /*
         val availableCommands = SessionCommands.Builder()
             .add(SessionCommand.COMMAND_CODE_CUSTOM)

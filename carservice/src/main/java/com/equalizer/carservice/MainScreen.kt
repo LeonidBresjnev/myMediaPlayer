@@ -19,10 +19,13 @@ import androidx.car.app.model.Template
 import androidx.core.content.ContextCompat.getString
 import androidx.core.graphics.drawable.IconCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
@@ -60,6 +63,25 @@ class MainScreen(
 
     private val viewModel: MyViewModel by viewModel<MyViewModel>()
     init {
+        val player0 = ExoPlayer
+            .Builder(carContext)
+            .build()
+
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+            .build()
+
+        player0.setAudioAttributes(audioAttributes, true)
+        val mediaItem = MediaItem.Builder()
+            .setUri( Uri.parse("/storage/emulated/0/Music/snothvalp.mp3"))
+            .build()
+        player0.playWhenReady=true
+        player0.setMediaItem(mediaItem)
+        player0.prepare()
+        player0.play()
+
+
         val sessionToken = SessionToken(this.carContext, ComponentName(this.carContext, MyMediaService::class.java))
 
 
