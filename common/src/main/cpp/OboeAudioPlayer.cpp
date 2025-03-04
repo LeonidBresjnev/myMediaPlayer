@@ -28,12 +28,12 @@ namespace equalizer {
                                 // no other app should play back sound simultaneously
                         ->setSharingMode(SharingMode::Exclusive)
                         ->setFormat(oboe::AudioFormat::I16 /*AudioFormat::I16*/)
-                        ->setDeviceId((int32_t)300 )
+                        /*->setDeviceId((int32_t)300 )*/
                         ->setChannelCount(channelCount_ /*oboe::ChannelCount::Stereo*/)
                                 // if the audio device does not support the requested sampling
                                 // rate natively, it will have to resample the output;
                                 // the better the resampling quality the larger the workload
-                        ->setSampleRateConversionQuality(SampleRateConversionQuality::Fastest)
+                        ->setSampleRateConversionQuality(SampleRateConversionQuality::None)
                                 // open the stream for playback
                         ->openStream(_stream);
         this->channelCount=channelCount_;

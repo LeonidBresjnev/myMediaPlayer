@@ -1,26 +1,14 @@
 package com.equalizer.carservice
 
 import android.content.Intent
-import android.net.Uri
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.car.app.CarAppService
 import androidx.car.app.Screen
 import androidx.car.app.Session
 import androidx.car.app.validation.HostValidator
-import androidx.media3.common.C
-import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
-import org.koin.android.ext.koin.androidContext
-import org.koin.android.ext.koin.androidLogger
-import org.koin.androidx.viewmodel.dsl.viewModel
-import org.koin.core.context.startKoin
-import org.koin.dsl.module
 
-val appModule = module {
-    viewModel { MyViewModel() }
-}
 @OptIn(UnstableApi::class)
 class CarService : CarAppService() {
 
@@ -46,7 +34,7 @@ class CarService : CarAppService() {
 
 
             override fun onCreateScreen(intent: Intent): Screen {
-                log( "onCreateSession1: ")
+         /*       log( "onCreateSession1: ")
                 val player0 = ExoPlayer
                     .Builder(carContext)
                     .setName("ExoPlayer")
@@ -64,11 +52,10 @@ class CarService : CarAppService() {
                 player0.setMediaItem(mediaItem)
                 player0.prepare()
                 player0.play()
-                startKoin {
-                    androidContext(carContext)
-                    androidLogger()
-                    modules(appModule)
-                }
+                player0.stop()
+
+                player0.release()*/
+
                 /*
                 val callback = object: MediaSessionCompat.Callback() {
                     override fun onPlay() {

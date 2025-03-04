@@ -18,21 +18,16 @@ import androidx.car.app.model.Row
 import androidx.car.app.model.Template
 import androidx.core.content.ContextCompat.getString
 import androidx.core.graphics.drawable.IconCompat
-import androidx.lifecycle.lifecycleScope
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.equalizer.common.MyMediaService
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
-import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Locale
 import kotlin.math.max
@@ -57,13 +52,11 @@ class MainScreen(
         STOPPED
     }
 
-    val viewModelStoreOwner = getViewModelStoreOwner() // Voila!
 
     private var isPlaying = Status.PAUSED
 
-    private val viewModel: MyViewModel by viewModel<MyViewModel>()
     init {
-        val player0 = ExoPlayer
+   /*     val player0 = ExoPlayer
             .Builder(carContext)
             .build()
 
@@ -79,7 +72,7 @@ class MainScreen(
         player0.playWhenReady=true
         player0.setMediaItem(mediaItem)
         player0.prepare()
-        player0.play()
+        player0.play()*/
 
 
         val sessionToken = SessionToken(this.carContext, ComponentName(this.carContext, MyMediaService::class.java))
@@ -101,6 +94,8 @@ class MainScreen(
                             if (controller.playWhenReady) Status.PAUSED
                             else Status.STOPPED
                         }
+                        //invalidate()
+                        super.onIsPlayingChanged(isitplaying)
                     }
 
                     override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -150,11 +145,7 @@ class MainScreen(
             }, MoreExecutors.directExecutor())
         }
 
-        lifecycleScope.launch {
-            viewModel.activeInterval.collect {
-                invalidate()
-            }
-        }
+
 
 
     }
@@ -229,13 +220,13 @@ class MainScreen(
     private val playPause = Action
         .Builder()
         .setIcon(CarIcon
-            .Builder(IconCompat.createWithResource(carContext,R.drawable.play_solid)
+            .Builder(IconCompat.createWithResource(carContext, R.drawable.play_solid)
                 .setTint(CarColor.TYPE_RED))
             .build())
         .setOnClickListener {
 
             log("play clicked")
-            log("status is ${Status.PLAYING}")
+            log("status is $isPlaying")
 
             if (isPlaying==Status.PLAYING) {
                 controller.pause()
@@ -245,6 +236,7 @@ class MainScreen(
             val folder = File(Environment.getExternalStorageDirectory(),"/Music")
 
             val file = folder.listFiles()?.get(0)
+            log("file: $file")
             file?.let {
                 val myItem = MediaItem
                     .Builder()
@@ -256,8 +248,24 @@ class MainScreen(
                             .setTitle(it.name)
                             .build()
                     ).build()
-                playMedia(myItem)
+              playMedia(myItem)
             }
+        }
+        .setBackgroundColor(CarColor.RED)
+        .build()
+
+    private val stopAction = Action
+        .Builder()
+        .setIcon(CarIcon
+            .Builder(IconCompat.createWithResource(carContext, R.drawable.stopplaying )
+                .setTint(CarColor.TYPE_RED))
+            .build())
+        .setOnClickListener {
+
+            log("stop clicked")
+            log("status is ${Status.PLAYING}")
+
+            controller.pause()
         }
         .setBackgroundColor(CarColor.RED)
         .build()
@@ -352,7 +360,7 @@ class MainScreen(
             .setActionStrip(actionStrip)
             .setSingleList(singleList)
             /*.addSectionedList(sectionedItemList)*/
-            .addAction(playPause)
+            .addAction(if (isPlaying==Status.PLAYING) stopAction else playPause)
             .build()
 
         /*

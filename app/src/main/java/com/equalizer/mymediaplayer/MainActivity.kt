@@ -277,7 +277,7 @@ fun FileSelection(modifier: Modifier=Modifier,
     Row(modifier=modifier.fillMaxSize(),
         horizontalArrangement = Arrangement.SpaceEvenly) {
         LazyColumn (modifier = Modifier.fillMaxWidth(0.3f)) {
-            itemsIndexed(files) { idx, file ->
+            itemsIndexed(files!!) { idx, file ->
                 Text(
                     modifier = Modifier
                         .clickable {
@@ -380,7 +380,7 @@ private fun PlayControl( modifier: Modifier,
             audioModel = equalizerViewModel,
             modifier=Modifier,
             enabled = (file != null)&&file.exists()&& (file.name.endsWith(".wav")
-                    || file.name.endsWith(".mp3") ),
+                    || file.name.endsWith(".mp3") ) || (isPlaying == AudioModel.Status.PLAYING),
             // onClick handler now simply notifies the ViewModel that it has been clicked
             onClick = if (isPlaying == AudioModel.Status.PLAYING) stop else play     ,
             // playButtonLabel will never be null;

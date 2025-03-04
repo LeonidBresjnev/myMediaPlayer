@@ -2,7 +2,6 @@ package com.equalizer.common
 
 //import androidx.media3.common.util.Log
 import android.content.Context
-import android.media.AudioManager
 import android.os.Looper
 import android.view.Surface
 import android.view.SurfaceHolder
@@ -312,17 +311,15 @@ class Equalizer(
     }
 
     override fun getPlaybackState(): Int {
-        log("get playback state: ${this.playWhenReady}")
+       // log("get playback state: ${this.playWhenReady}")
         return if (mediaItems.isNotEmpty()) STATE_READY
         else if (mediaItems.isEmpty()) STATE_IDLE
         else STATE_ENDED
     }
 
-    override fun getPlaybackSuppressionReason(): Int {
-        log("getPlaybackSuppressionReason")
-        return PLAYBACK_SUPPRESSION_REASON_NONE
+    override fun getPlaybackSuppressionReason(): Int = PLAYBACK_SUPPRESSION_REASON_NONE
         //Player.PlaybackSuppressionReason()
-    }
+
 
     override fun getPlayerError(): PlaybackException? = null
 

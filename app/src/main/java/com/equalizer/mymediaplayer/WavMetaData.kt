@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import com.mpatric.mp3agic.Mp3File
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
@@ -70,51 +71,61 @@ class WavMetaData: ViewModel() {
         file: File,
     )  {
 
-        FileInputStream(file).use { fileInputstream ->
-            var byteBuffer: ByteBuffer
-            for (i in numberOfBytes.indices) {
-                val byteArray = ByteArray(numberOfBytes[i])
-                fileInputstream.read(byteArray, 0, numberOfBytes[i])
-                byteBuffer = byteArrayToNumber(byteArray, numberOfBytes[i], type[i])
-                when (i) {
-                    0 -> chunkID = String(byteArray)
-                    1 -> chunkSize = byteBuffer.getInt()
-                    2 -> format = String(byteArray)
-                    3 -> subChunk1ID = String(byteArray)
-                    4 -> subChunk1Size = byteBuffer.getInt()
-                    5 -> audioFormat = byteBuffer.getShort()
-                    6 -> _numChannels.value = byteBuffer.getShort()
-                    7 -> {
-                        Log.d("wavFile", "samplerate set")
-                        _sampleRate.value = byteBuffer.getInt()
-                    }
-                    8 -> byteRate = byteBuffer.getInt()
-                    9 -> blockAlign = byteBuffer.getShort()
-                    10 -> { //_bitsPerSample.value =  byteBuffer.getShort()
-                    }
-                    11 -> {
-                        subChunk2ID = String(byteArray)
-                        if (subChunk2ID!!.compareTo("data") == 0) {
-                            continue
-                        } else if (subChunk2ID!!.compareTo("LIST") == 0) {
-                            val byteArray2 = ByteArray(4)
-                            fileInputstream.read(byteArray2, 0, 4)
-                            byteBuffer = byteArrayToNumber(byteArray2, 4, 1)
-                            val temp = byteBuffer.getInt()
-                            //redundant data reading
-                            val byteArray3 = ByteArray(temp)
-                            fileInputstream.read(byteArray3, 0, temp)
-                            fileInputstream.read(byteArray2, 0, 4)
-                            subChunk2ID = String(byteArray2)
+        if (file.name.endsWith(suffix="wav",ignoreCase = true)) {
+            FileInputStream(file).use { fileInputstream ->
+                var byteBuffer: ByteBuffer
+                for (i in numberOfBytes.indices) {
+                    val byteArray = ByteArray(numberOfBytes[i])
+                    fileInputstream.read(byteArray, 0, numberOfBytes[i])
+                    byteBuffer = byteArrayToNumber(byteArray, numberOfBytes[i], type[i])
+                    when (i) {
+                        0 -> chunkID = String(byteArray)
+                        1 -> chunkSize = byteBuffer.getInt()
+                        2 -> format = String(byteArray)
+                        3 -> subChunk1ID = String(byteArray)
+                        4 -> subChunk1Size = byteBuffer.getInt()
+                        5 -> audioFormat = byteBuffer.getShort()
+                        6 -> _numChannels.value = byteBuffer.getShort()
+                        7 -> {
+                            Log.d("wavFile", "samplerate set")
+                            _sampleRate.value = byteBuffer.getInt()
                         }
-                    }
 
-                    12 -> subChunk2Size = byteBuffer.getInt()
+                        8 -> byteRate = byteBuffer.getInt()
+                        9 -> blockAlign = byteBuffer.getShort()
+                        10 -> { //_bitsPerSample.value =  byteBuffer.getShort()
+                        }
+
+                        11 -> {
+                            subChunk2ID = String(byteArray)
+                            if (subChunk2ID!!.compareTo("data") == 0) {
+                                continue
+                            } else if (subChunk2ID!!.compareTo("LIST") == 0) {
+                                val byteArray2 = ByteArray(4)
+                                fileInputstream.read(byteArray2, 0, 4)
+                                byteBuffer = byteArrayToNumber(byteArray2, 4, 1)
+                                val temp = byteBuffer.getInt()
+                                //redundant data reading
+                                val byteArray3 = ByteArray(temp)
+                                fileInputstream.read(byteArray3, 0, temp)
+                                fileInputstream.read(byteArray2, 0, 4)
+                                subChunk2ID = String(byteArray2)
+                            }
+                        }
+
+                        12 -> subChunk2Size = byteBuffer.getInt()
+                    }
                 }
+                bytePerSample = 4096 * (_bitsPerSample.value ?: 0.toShort()) / 8
+                Log.d("wavFile", "Sample rate: ${_sampleRate.value}")
+                //fileInputstream.close()
             }
-            bytePerSample = 4096 * (_bitsPerSample.value ?:0.toShort()) / 8
-            Log.d("wavFile", "Sample rate: ${_sampleRate.value}")
-            //fileInputstream.close()
+        }
+        else if (file.name.endsWith(suffix="mp3",ignoreCase = true)) {
+            val myMp3 = Mp3File(file)
+            _sampleRate.value=myMp3.sampleRate
+            _bitsPerSample.value = myMp3.bitrate.toShort()
+            _numChannels.value = 0.toShort()
         }
 
     }

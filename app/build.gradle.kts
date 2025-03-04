@@ -62,6 +62,7 @@ dependencies {
     implementation(project(":carservice"))
     implementation(libs.androidx.app)
     implementation(libs.androidx.app.projected)
+    implementation(libs.mp3agic)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
