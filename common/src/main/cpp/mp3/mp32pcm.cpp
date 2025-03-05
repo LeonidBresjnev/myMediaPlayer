@@ -102,7 +102,6 @@ static const char slimit_v1[2][2][4] =                               /* 436 */
 static int tag_read (int id, void *buffer, int count)
 {                                                                    /*  38 */
     stream *s=streams[id];
-
     if (buffer == nullptr)
         return MP3_ERROR_NO_BUFFER;
     if (id >= STREAMS || id < 0)                                       /*  52 */

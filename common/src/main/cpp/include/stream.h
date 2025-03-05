@@ -186,32 +186,32 @@ public:
 #define MP3_V1_0 0x00
 #define MP3_V2_0 0x01
 #define MP3_V2_5 0x02
-    int layer;
+    unsigned int layer;
     int crc_protected;                                                 /*  32 */
     int bit_rate;
-    int frame_size;
+    unsigned int frame_size;
     int frame_position;
     int samples;
-    int private_;
-    int mode;
+    unsigned int private_;
+    unsigned int mode;
 #define MP3_STEREO       0x00
 #define MP3_JOINT_STEREO 0x01
 #define MP3_DUAL_CHANNEL 0x02
 #define MP3_MONO         0x03
-    int copyright;
-    int original;
-    int emphasis;
+    unsigned int copyright;
+    unsigned int original;
+    unsigned int emphasis;
     int frame;
     int sample_rate;                                                   /*  33 */
     int channels;
     int bit_per_sample;
     int free_format;                                                   /*  84 */
-    int frequency_index;                                               /*  86 */
-    int padding;                                                       /*  89 */
-    int bound;                                                         /*  96 */
+    unsigned int frequency_index;                                               /*  86 */
+    unsigned int padding;                                                       /*  89 */
+    unsigned int bound;                                                         /*  96 */
     int changes;                                                       /* 182 */
-    int ms_stereo;                                                     /* 282 */
-    int i_stereo;
+    unsigned int ms_stereo;                                                     /* 282 */
+    unsigned int i_stereo;
     int fixed_size;                                                    /* 431 */
 
 
@@ -225,7 +225,7 @@ public:
         {
             int n = 11;                                                      /*  79 */
 
-            int bits = header >> (32 - n);                                   /*  80 */
+            unsigned int bits = header >> (32 - n);                                   /*  80 */
 
             header = header << n;
             if (bits != 0x7FF)
@@ -234,7 +234,7 @@ public:
         {
             int n = 2;                                                       /*  81 */
 
-            int bits = header >> (32 - n);                                   /*  80 */
+            unsigned int bits = header >> (32 - n);                                   /*  80 */
 
             header = header << n;
             if (bits == 0)
@@ -249,7 +249,7 @@ public:
         {
             int n = 2;                                                       /*  82 */
 
-            int bits = header >> (32 - n);                                   /*  80 */
+            unsigned int bits = header >> (32 - n);                                   /*  80 */
 
             header = header << n;
             if (bits == 0)
@@ -259,7 +259,7 @@ public:
         {
             int n = 1;                                                       /*  83 */
 
-            int bits = header >> (32 - n);                                   /*  80 */
+            unsigned int bits = header >> (32 - n);                                   /*  80 */
 
             header = header << n;
             this->crc_protected = (bits == 0);
@@ -267,7 +267,7 @@ public:
         {
             int n = 4;                                                       /*  85 */
 
-            int bits = header >> (32 - n);                                   /*  80 */
+            unsigned int bits = header >> (32 - n);                                   /*  80 */
 
             header = header << n;
             if (bits == 0)
@@ -282,7 +282,7 @@ public:
         {
             int n = 2;                                                       /*  87 */
 
-            int bits = header >> (32 - n);                                   /*  80 */
+            unsigned int bits = header >> (32 - n);                                   /*  80 */
 
             header = header << n;
             if (bits == 3)
@@ -293,7 +293,7 @@ public:
         {
             int n = 1;                                                       /*  88 */
 
-            int bits = header >> (32 - n);                                   /*  80 */
+            unsigned int bits = header >> (32 - n);                                   /*  80 */
 
             header = header << n;
             this->padding = bits;
@@ -301,7 +301,7 @@ public:
         {
             int n = 1;                                                       /*  92 */
 
-            int bits = header >> (32 - n);                                   /*  80 */
+            unsigned int bits = header >> (32 - n);                                   /*  80 */
 
             header = header << n;
             this->private_ = bits;
@@ -309,7 +309,7 @@ public:
         {
             int n = 2;                                                       /*  94 */
 
-            int bits = header >> (32 - n);                                   /*  80 */
+            unsigned int bits = header >> (32 - n);                                   /*  80 */
 
             header = header << n;
             this->mode = bits;
@@ -321,7 +321,7 @@ public:
         {
             int n = 2;                                                       /*  95 */
 
-            int bits = header >> (32 - n);                                   /*  80 */
+            unsigned int bits = header >> (32 - n);                                   /*  80 */
 
             header = header << n;
             this->bound = bits * 4 + 4;                                      /*  97 */
@@ -337,7 +337,7 @@ public:
         {
             int n = 1;
 
-            int bits = header >> (32 - n);                                   /*  80 */
+            unsigned int bits = header >> (32 - n);                                   /*  80 */
 
             header = header << n;
             this->copyright = bits;
@@ -345,7 +345,7 @@ public:
         {
             int n = 1;
 
-            int bits = header >> (32 - n);                                   /*  80 */
+            unsigned int bits = header >> (32 - n);                                   /*  80 */
 
             header = header << n;
             this->original = bits;
@@ -353,7 +353,7 @@ public:
         {
             int n = 2;
 
-            int bits = header >> (32 - n);                                   /*  80 */
+            unsigned int bits = header >> (32 - n);                                   /*  80 */
 
             header = header << n;
             this->emphasis = bits;

@@ -694,13 +694,12 @@ stream::layer_II_decode_samples ( int g)
 
     unsigned char *byte_pointer = this->byte_pointer;
 
-    {
-        int i;                                                           /* 218 */
+    {                                                     /* 218 */
 
-        for (i = 0; i < 12; i = i + 3) {
-            int sb, ch;
+        for (int i = 0; i < 12; i = i + 3) {
+            int ch;
 
-            for (sb = 0; sb < this->info.bound; sb++)
+            for (int sb = 0; sb < this->info.bound; sb++)
                 for (ch = 0; ch < this->info.channels; ch++) {
                     double f = side_info[sb][ch].mfactor[g];
 
@@ -800,7 +799,7 @@ stream::layer_II_decode_samples ( int g)
                             y[i][ch][sb] = y[i + 1][ch][sb] = y[i + 2][ch][sb] = 0.0;
                     }
                 }
-            for (sb = this->info.bound; sb < this->sblimit[0]; sb++) {
+            for (int sb = this->info.bound; sb < this->sblimit[0]; sb++) {
                 const double f = side_info[sb][0].mfactor[g];
 
                 const double r = side_info[sb][1].mfactor[g] / f;
@@ -871,7 +870,7 @@ stream::layer_II_decode_samples ( int g)
                         y[i + 2][ch][sb] = sample * f;
                     }
                     else if (n < 0) {                                          /* 424 */
-                        int c;
+                        unsigned int c;
 
                         {
                             unsigned int bits;
@@ -907,7 +906,7 @@ stream::layer_II_decode_samples ( int g)
                     y[i + 2][1][sb] = y[i + 2][0][sb] * r;
                 }
             }
-            for (sb = this->sblimit[0]; sb < SUBBANDS; sb++) {
+            for (int sb = this->sblimit[0]; sb < SUBBANDS; sb++) {
                 y[i][0][sb] = y[i + 1][0][sb]
                         = y[i + 2][0][sb] = 0.0;
                 if (this->info.channels > 1)
