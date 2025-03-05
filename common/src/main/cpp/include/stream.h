@@ -27,8 +27,7 @@ extern void windowing (const double *v, mp3_sample * x);
 #define OUTPUT_EXPONENT (sizeof(int)*8-1)                            /* 137 */
 #define BUFFERSIZE (2*MAX_FRAME+HEADER_SIZE+MAX_RESERVOIR)           /* 148 */
 
-//*static int tag_read (int id, void *buffer, int count)                           /*  38 */
-;
+//*static int tag_read (int id, void *buffer, int count)                           /*  38 */;
 
 #define GROUPS 3                                                     /* 202 */
 static unsigned short int
@@ -217,8 +216,7 @@ public:
 
 
 
-    int
-    decode_header ( unsigned char *frame)
+    int decode_header ( unsigned char *frame)
     {                                                                    /*  78 */
         unsigned int header;
 
@@ -420,7 +418,7 @@ public:
     double w[CHANNELS][SHIFTSIZE];                                /*   2 */
     int offset[CHANNELS];                                         /*   3 */
     mp3_info info;                                                /*  24 */
-    int (*input_read) (int id,std::ifstream*, void *buffer, size_t size)         /*  12 */
+    int (*input_read) (int id,std::shared_ptr<std::ifstream>, void *buffer, size_t size)         /*  12 */
     ;
     mp3_options options;
     int state;                                                    /*  58 */
@@ -448,7 +446,7 @@ public:
     int smalltable_A[GRANULES][CHANNELS];                         /* 361 */
     char sfi[CHANNELS][BANDS];                                    /* 366 */
     char sfimax[CHANNELS][BANDS];
-    std::ifstream *myFile;
+    std::shared_ptr<std::ifstream> myFile;
 
     void  output_silence (mp3_sample * , int );
 

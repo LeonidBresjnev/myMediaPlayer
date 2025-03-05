@@ -14,13 +14,11 @@ materialIconsExtendedVersion = "1.7.8"
 media3SessionVersion = "1.5.1"
 jetbrainsKotlinJvm = "2.1.0"
 appcompat = "1.7.0"
-material = "1.12.0"
 mp3agic = "0.9.1"
 runtimeLivedata = "1.7.8"
 oboe = "1.9.3"
 app = "1.4.0"
 lifecycleViewmodelAndroid = "2.8.7"
-koinAndroidxNavigation = "3.4.3"
 media3Exoplayer = "1.5.1"
 
 [libraries]
@@ -47,13 +45,11 @@ androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-man
 androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
-material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 mp3agic = { module = "com.mpatric:mp3agic", version.ref = "mp3agic" }
 oboe = { module = "com.google.oboe:oboe", version.ref = "oboe" }
 
 androidx-app = { module = "androidx.car.app:app", version.ref = "app" }
 androidx-lifecycle-viewmodel-android = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-android", version.ref = "lifecycleViewmodelAndroid" }
-koin-android = { module = "io.insert-koin:koin-android", version.ref = "koinAndroidxNavigation" }
 
 
 [plugins]

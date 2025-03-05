@@ -46,8 +46,8 @@
 #include "stream.h"
 
 
-int mp3_open (std::ifstream*  ,
-                     int (*input_read) (int id,std::ifstream*  , void *buffer, size_t )     /*  12 */
+int mp3_open (std::shared_ptr<std::ifstream>  ,
+                     int (*input_read) (int id,std::shared_ptr<std::ifstream>  , void *buffer, size_t )     /*  12 */
         , mp3_options *                  /*  18 */
 );
 

@@ -126,7 +126,7 @@ class MyMediaService : MediaSessionService() {
                         val index = args.getInt("KEY_INDEX")
                         val volume = args.getFloat("KEY_VOLUME")
                         player.setVolOnFreq(volume,index)
-                        Log.i("Media Service","setVolOnFreq $index $volume")
+                        //Log.i("Media Service","setVolOnFreq $index $volume")
                     }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }

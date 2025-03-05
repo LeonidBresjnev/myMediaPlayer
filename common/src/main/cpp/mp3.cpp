@@ -5,20 +5,20 @@
 #include "mp3.h"
 #include "include/Log.h"
 #include <cstdint>
-
+/*
 namespace equalizer {
 
 
-    int mp3_reader2(int fileHandle,std::ifstream *myFile, void *buffer, size_t bufferSize) {
+    int mp3_reader2(int fileHandle,std::shared_ptr<std::ifstream> myFile, void *buffer, size_t bufferSize) {
         // std::cout<<i++ <<std::endl;
-        if (!(*myFile) || !(*myFile).is_open()) {
+        if (!myFile || !myFile->is_open()) {
             //std::cout<< "Error: Failed to read from the file, file is not open." << std::endl;
             return 0;
         }
 
         // Read from the file into the buffer
-        (*myFile).read(static_cast<char *>(buffer), bufferSize);
-        auto bytesRead = (*myFile).gcount();
+        myFile->read(static_cast<char *>(buffer), bufferSize);
+        auto bytesRead = myFile->gcount();
         // Return the number of bytes read
       //  std::cout<<"bytes read: "<<bytesRead<<std::endl;
         return static_cast<int>(bytesRead);
@@ -67,7 +67,8 @@ return this->sampleRate;
         myoptions.info_callback = &printinfo2;
         myoptions.flags = MP3_INFO_ONCE;
         // Open the mp3 file (assuming 'read' is defined elsewhere or replaced with functional logic).
-        id = mp3_open(&inputFile,&mp3_reader2, &myoptions); // NULL is replaced with nullptr in C++
+        id = mp3_open(std::make_shared<std::ifstream>(source, std::ios::binary),
+                &mp3_reader2, &myoptions); // NULL is replaced with nullptr in C++
         if (id < 0) {
             LOGD("Failed to open MP3 file");
             return false;
@@ -78,4 +79,4 @@ return this->sampleRate;
         return true;
 
     }
-}
+}*/

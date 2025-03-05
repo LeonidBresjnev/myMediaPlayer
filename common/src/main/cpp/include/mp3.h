@@ -5,7 +5,7 @@
 #include <cmath>
 #include <fstream>
 #include <cstdint>
-
+/*
 #define BUFSIZE (4 * MP3_MIN_BUFFER)
 namespace equalizer {
 
@@ -36,4 +36,4 @@ namespace equalizer {
         int bufferpointer;
     };
 
-}
+}*/

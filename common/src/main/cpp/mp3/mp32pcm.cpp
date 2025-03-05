@@ -219,8 +219,8 @@ static int is_zero_band (int band)
 
 
 
-int mp3_open (std::ifstream* myFile_ ,                                                           /*  11 */
-        int (*input_read) (int id, std::ifstream *, void *buffer, size_t size)     /*  12 */
+int mp3_open (std::shared_ptr<std::ifstream> myFile_ ,                                                           /*  11 */
+        int (*input_read) (int id, std::shared_ptr<std::ifstream>, void *buffer, size_t size)     /*  12 */
         , mp3_options * option_pointer                            /*  18 */
 )
 {
@@ -248,7 +248,7 @@ int mp3_open (std::ifstream* myFile_ ,                                          
     s->byte_pointer = s->buffer;                                       /* 150 */
     s->start = s->buffer;                                              /* 152 */
     s->finish = s->buffer;
-    s->info.changes = MP3_INFO_FRAME | MP3_INFO_ONCE;                  /* 183 */
+    s->info.changes = MP3_INFO_FRAME | MP3_INFO_ONCE;/* 183 */
     s->myFile = myFile_;
     return id;
 }

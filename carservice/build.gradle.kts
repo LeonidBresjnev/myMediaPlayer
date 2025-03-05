@@ -35,7 +35,7 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
-    implementation(libs.material)
+    //implementation(libs.material)
     implementation(libs.androidx.app)
     implementation(libs.androidx.lifecycle.viewmodel.android)
     testImplementation(libs.junit)
@@ -43,7 +43,7 @@ dependencies {
     implementation(libs.androidx.media3.session)
     implementation(libs.androidx.media3.exoplayer)
 
-    implementation (libs.koin.android)
+   // implementation (libs.koin.android)
     //implementation (libs.koin.androidx.workmanager) // For WorkManager
 
     implementation(project(":common"))
