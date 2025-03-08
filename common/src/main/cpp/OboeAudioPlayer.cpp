@@ -29,6 +29,8 @@ namespace equalizer {
                         ->setSharingMode(SharingMode::Exclusive)
                         ->setFormat(oboe::AudioFormat::I16 /*AudioFormat::I16*/)
                         /*->setDeviceId((int32_t)300 )*/
+                        ->setContentType(ContentType::Music)
+                        ->setUsage(Usage::Media)
                         ->setChannelCount(channelCount_ /*oboe::ChannelCount::Stereo*/)
                                 // if the audio device does not support the requested sampling
                                 // rate natively, it will have to resample the output;

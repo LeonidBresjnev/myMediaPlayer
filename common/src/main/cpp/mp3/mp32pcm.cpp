@@ -99,9 +99,9 @@ static const char slimit_v1[2][2][4] =                               /* 436 */
 
 
 
-static int tag_read (int id, void *buffer, int count)
-{                                                                    /*  38 */
-    stream *s=streams[id];
+static int tag_read ( int id, void *buffer, int count)
+{
+    stream* s = streams[id];
     if (buffer == nullptr)
         return MP3_ERROR_NO_BUFFER;
     if (id >= STREAMS || id < 0)                                       /*  52 */
@@ -272,6 +272,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
 {                                                                    /*  13 */
     stream *s;
 
+    std::unique_ptr<stream> s2 = std::unique_ptr<stream>(streams[id]);
     if (id >= STREAMS || id < 0)                                       /*  52 */
         return MP3_ERROR_NO_ID;
     s = streams[id];
@@ -577,7 +578,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                         int n;
 
                         {
-                            int a = s->getbit (4);                                   /* 108 */
+                            unsigned int a = s->getbit (4);                                   /* 108 */
 
                             if (a == 15) {
                                 s->state = s->state | BITALLOCATION_ERROR;
@@ -592,11 +593,10 @@ mp3_read (int id, mp3_sample * buffer, int size)
                         side_info[sb][1].bit_allocation = n;
                     }
                 }
-                {
-                    int sb, ch;                                                  /* 111 */
+                {                                              /* 111 */
 
-                    for (sb = 0; sb < SUBBANDS; sb++)
-                        for (ch = 0; ch < s->info.channels; ch++) {
+                    for (int sb = 0; sb < SUBBANDS; sb++)
+                        for (int ch = 0; ch < s->info.channels; ch++) {
                             side_information *si;
 
                             si = &(side_info[sb][ch]);
@@ -630,9 +630,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                             int n, nbal = s->nbal[sb];                             /* 198 */
 
                             if (nbal > 0) {
-                                int i;
-
-                                i = s->getbit ( nbal);
+                                int i = s->getbit ( nbal);
                                 n = s->nbit[sb][i];
                             }
                             else
@@ -645,9 +643,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                             int n, nbal = s->nbal[sb];                             /* 198 */
 
                             if (nbal > 0) {
-                                int i;
-
-                                i = s->getbit ( nbal);
+                                int i = s->getbit ( nbal);
                                 n = s->nbit[sb][i];
                             }
                             else
@@ -2208,9 +2204,8 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                 }
                             }
                             else {
-                                int ch;
 
-                                for (ch = 0; ch < s->info.channels; ch++)
+                                for (int ch = 0; ch < s->info.channels; ch++)
                                     if (s->block_type[gr][ch] != SHORT_BLOCK)
                                         s->qs ( gr, ch, 0, 0, ulimit[ch]);
                                     else {

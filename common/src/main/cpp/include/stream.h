@@ -112,7 +112,7 @@ static char subblock_gain[GRANULES][CHANNELS][SUBBLOCKS];            /* 263 */
 //static int decode_header (, unsigned char *);
 
 static void
-qs_band (const int ch, int i, int j, int width, int m, int step)
+qs_band (const int ch, int i, int j, int width, unsigned int m, int step)
 {                                                                    /* 243 */
     const double f = twotomquarter (m);
 
@@ -378,6 +378,8 @@ public:
 
 } ;
 
+class stream;
+
 typedef struct mp3_options
 {                                                                    /*  19 */
     int flags;                                                         /*  20 */
@@ -448,25 +450,23 @@ public:
     char sfimax[CHANNELS][BANDS];
     std::shared_ptr<std::ifstream> myFile;
 
+    ~stream() = default;
+
     void  output_silence (mp3_sample * , int );
 
 
     void    output_repeat ( mp3_sample * , int , int );
 
-    short int *
-    decode_small_A ( short int *, int , int ) const;
+    short int *  decode_small_A ( short int *, int , int ) const;
 
-    short int *
-    decode_small_B ( short int *, int , int ) const;
+    short int * decode_small_B ( short int *, int , int ) const;
 
-    void
-    decode_big ( short int *, int , int );
+    void decode_big ( short int *, int , int );
 
-    void   decode_very_big ( short int *, int , int );
+    void decode_very_big ( short int *, int , int );
 
     void output_blocks ( mp3_sample * buffer, const int n                /*  69 */
-    )
-    {
+    ) {
 
         for (int i = 0; i < n; i++) {
             double *v;                                                       /*  70 */
@@ -543,6 +543,7 @@ public:
             this->info.samples += n * this->info.channels * SUBBANDS;
     }
 
+
     int qs ( const int gr, const int ch, int band, int i, const int limit)
     {                                                                    /* 268 */
         while (i < limit) {
@@ -564,11 +565,9 @@ public:
                const int limit)
     {                                                                    /* 269 */
         while (i < limit) {
-            int k, j = i;
+            int j = i, size = width[gr][ch][band];
 
-            int size = width[gr][ch][band];
-
-            for (k = 0; k < SUBBLOCKS; k++, j++, i = i + size, band++)
+            for (int k = 0; k < SUBBLOCKS; k++, j++, i = i + size, band++)
                 qs_band (ch, i, j, size, (4 * OUTPUT_EXPONENT                  /* 265 */
                                           + (global_gain[gr][ch] - 210)        /* 251 */
                                           -8 * subblock_gain[gr][ch][k]

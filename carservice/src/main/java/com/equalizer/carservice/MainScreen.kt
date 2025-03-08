@@ -95,7 +95,7 @@ class MainScreen(
                             else Status.STOPPED
                         }
                         //invalidate()
-                        super.onIsPlayingChanged(isitplaying)
+                        //super.onIsPlayingChanged(isitplaying)
                     }
 
                     override fun onVideoSizeChanged(videoSize: VideoSize) {

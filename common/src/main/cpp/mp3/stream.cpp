@@ -292,7 +292,7 @@ stream::decode_big ( short int *u, int k, int n)
             }
             *u++ = value;
         }
-        code = (code << 4) & 0xFF;
+     //   code = (code << 4) & 0xFF;
     }
     this->bit_offset = (8 - (huffman_cache_size % 8)) & 0x7;              /* 314 */
     this->byte_pointer = byte_pointer - ((huffman_cache_size + this->bit_offset) / 8);
@@ -413,7 +413,7 @@ void   stream::decode_very_big ( short int *u, int k, int n)
                 huffman_cache_size--;
             }
             *u++ = value;
-            code = (code << 4) & 0xFF;
+         //   code = (code << 4) & 0xFF;
         }
     }
     this->bit_offset = (8 - (huffman_cache_size % 8)) & 0x7;              /* 314 */
@@ -670,9 +670,9 @@ short unsigned int  stream::crc_check ()
                 bits |= ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
                 bits |= ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
                 bits <<= bit_offset;                                         /* 143 */
-                bit_offset += n;
-                byte_pointer += (bit_offset >> 3);
-                bit_offset = bit_offset & 0x07;
+             //   bit_offset += n;
+             //   byte_pointer += (bit_offset >> 3);
+            //    bit_offset = bit_offset & 0x07;
                 bits = (bits >> (sizeof (bits) * 8 - n));
                 crc = bitcrc (crc, (unsigned short int) bits, n);
             }
@@ -981,8 +981,7 @@ void stream::fill_input_buffer ()
         this->finish = this->finish + size;
 }
 
-unsigned char *
-stream::synchronize (int (*tag_read) (int id, void *buffer, int count))
+unsigned char * stream::synchronize (int (*tag_read)( int id, void *buffer, int count) )
 {                                                                    /* 161 */
     if (this->bit_offset > 0) {
         this->byte_pointer++;
@@ -1144,3 +1143,6 @@ stream::synchronize (int (*tag_read) (int id, void *buffer, int count))
     } while (true);
     return nullptr;
 }
+
+
+//void stream::output_blocks ( mp3_sample * buffer, const int n    )
