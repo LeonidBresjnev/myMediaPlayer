@@ -58,9 +58,10 @@ namespace equalizer {
 
     void Oscillator::onPlaybackStopped() {
         inputFile.close();
-        LOGD("file closed");
+        LOGD("onPlaybackStopped");
         if (this->format == AudioFormat::MP3) {
             mp3_close(id);
+            pmyfile.reset();
         }
     }
 
@@ -168,7 +169,7 @@ namespace equalizer {
             myoptions.info_callback = &printinfo;
             myoptions.flags = MP3_INFO_ONCE  | MP3_STEREO | MP3_SYNC_1;
             // Open the mp3 file (assuming 'read' is defined elsewhere or replaced with functional logic).
-            auto pmyfile = std::make_shared<std::ifstream>(fileName, std::ios::binary);
+            pmyfile = std::make_shared<std::ifstream>(fileName, std::ios::binary);
             id = mp3_open(pmyfile,&mp3_reader, &myoptions); // NULL is replaced with nullptr in C++
             if (id < 0) {
                 LOGD("Failed to open MP3 file");
@@ -190,4 +191,5 @@ namespace equalizer {
         }
         return false;
     }
+
 }

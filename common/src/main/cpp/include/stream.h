@@ -522,16 +522,15 @@ public:
                 windowing (v, buffer + 1);
                 buffer = buffer + 2 * SUBBANDS;
             }
-            else {
-                int sb;                                                        /*  71 */
+            else {                                                     /*  71 */
 
                 if (this->options.flags & MP3_TWO_CHANNEL_MONO) {
-                    for (sb = 0; sb < SUBBANDS; sb++)
+                    for (int sb = 0; sb < SUBBANDS; sb++)
                         buffer[2 * sb + 1] = buffer[2 * sb];
                     buffer = buffer + 2 * SUBBANDS;
                 }
                 else {
-                    for (sb = 0; sb < SUBBANDS; sb++)
+                    for (int sb = 0; sb < SUBBANDS; sb++)
                         buffer[sb] = buffer[2 * sb];
                     buffer = buffer + SUBBANDS;
                 }
@@ -561,8 +560,7 @@ public:
         return band;
     }
 
-    int qs_short ( const int gr, const int ch, int band, int i,
-               const int limit)
+    int qs_short ( const int gr, const int ch, int band, int i, const int limit)
     {                                                                    /* 269 */
         while (i < limit) {
             int j = i, size = width[gr][ch][band];

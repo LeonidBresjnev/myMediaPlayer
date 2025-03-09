@@ -3,13 +3,12 @@
 
 void  stream::output_silence (mp3_sample * buffer, int n)
 {                                                                    /*  74 */
-    int i;
 
-    for (i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++) {
         double *v;                                                       /*  75 */
 
         {
-            int sb, ch = 0;
+            int ch = 0;
 
             this->offset[ch] = this->offset[ch] - SUBBANDS;                      /*   4 */
             if (this->offset[ch] < 0) {
@@ -19,12 +18,12 @@ void  stream::output_silence (mp3_sample * buffer, int n)
                          sizeof (double) * (WINDOWBLOCKS - 1) * SUBBANDS);
             }
             v = this->w[ch] + this->offset[ch];
-            for (sb = SUBBANDS - 1; sb >= 0; sb--)
+            for (int sb = SUBBANDS - 1; sb >= 0; sb--)
                 v[sb] = 0.0;
             windowing (v, buffer);
         }
         if (this->info.channels > 1) {
-            int sb, ch = 1;
+            int ch = 1;
 
             this->offset[ch] = this->offset[ch] - SUBBANDS;                      /*   4 */
             if (this->offset[ch] < 0) {
@@ -34,21 +33,20 @@ void  stream::output_silence (mp3_sample * buffer, int n)
                          sizeof (double) * (WINDOWBLOCKS - 1) * SUBBANDS);
             }
             v = this->w[ch] + this->offset[ch];
-            for (sb = SUBBANDS - 1; sb >= 0; sb--)
+            for (int sb = SUBBANDS - 1; sb >= 0; sb--)
                 v[sb] = 0.0;
             windowing (v, buffer + 1);
             buffer = buffer + 2 * SUBBANDS;
         }
-        else {
-            int sb;                                                        /*  71 */
+        else {                                                  /*  71 */
 
             if (this->options.flags & MP3_TWO_CHANNEL_MONO) {
-                for (sb = 0; sb < SUBBANDS; sb++)
+                for (int sb = 0; sb < SUBBANDS; sb++)
                     buffer[2 * sb + 1] = buffer[2 * sb];
                 buffer = buffer + 2 * SUBBANDS;
             }
             else {
-                for (sb = 0; sb < SUBBANDS; sb++)
+                for (int sb = 0; sb < SUBBANDS; sb++)
                     buffer[sb] = buffer[2 * sb];
                 buffer = buffer + SUBBANDS;
             }
@@ -63,10 +61,8 @@ void  stream::output_silence (mp3_sample * buffer, int n)
 
 
 void    stream::output_repeat ( mp3_sample * buffer, int n, int d)
-{                                                                    /* 406 */
-    int i;
-
-    for (i = 0; i < n; i++) {
+{
+    for (int i = 0; i < n; i++) {
         int ch;                                                          /* 408 */
 
         double *v;
@@ -103,9 +99,7 @@ void    stream::output_repeat ( mp3_sample * buffer, int n, int d)
             }
             v = this->w[ch] + this->offset[ch];
             {
-                int previous_offset;                                         /* 407 */
-
-                previous_offset = this->offset[ch] + d * SUBBANDS;
+                int previous_offset = this->offset[ch] + d * SUBBANDS;
                 if (previous_offset >= SHIFTSIZE)
                     previous_offset =
                             previous_offset - SHIFTSIZE + (WINDOWBLOCKS - 1) * SUBBANDS;
@@ -114,16 +108,15 @@ void    stream::output_repeat ( mp3_sample * buffer, int n, int d)
             windowing (v, buffer + 1);
             buffer = buffer + 2 * SUBBANDS;
         }
-        else {
-            int sb;                                                        /*  71 */
+        else {                                                    /*  71 */
 
             if (this->options.flags & MP3_TWO_CHANNEL_MONO) {
-                for (sb = 0; sb < SUBBANDS; sb++)
+                for (int sb = 0; sb < SUBBANDS; sb++)
                     buffer[2 * sb + 1] = buffer[2 * sb];
                 buffer = buffer + 2 * SUBBANDS;
             }
             else {
-                for (sb = 0; sb < SUBBANDS; sb++)
+                for (int sb = 0; sb < SUBBANDS; sb++)
                     buffer[sb] = buffer[2 * sb];
                 buffer = buffer + SUBBANDS;
             }
@@ -146,7 +139,6 @@ stream::decode_small_A ( short int *u, int bits_available, int n) const
             (*byte_pointer++) << (sizeof (int) * 8 - huffman_cache_size);
     bits_available = bits_available - huffman_cache_size;
     while (n >= 4) {
-        unsigned char code;
 
         if ((16 - huffman_cache_size > 0)                                /* 315 */
                 ) {
@@ -165,7 +157,7 @@ stream::decode_small_A ( short int *u, int bits_available, int n) const
                     break;
             }
         }
-        code = htabA[((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 6)];   /* 299 */
+        unsigned char code = htabA[((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 6)];   /* 299 */
         huffman_cache = huffman_cache << (code & 0xF);
         huffman_cache_size = huffman_cache_size - (code & 0xF);
         code = (code & 0xF0) | (((unsigned int) huffman_cache) >> (HUFFMAN_CACHE_SIZE - 4));        /* 300 */
@@ -422,13 +414,13 @@ void   stream::decode_very_big ( short int *u, int k, int n)
 
 unsigned int stream::getbit (const int n)
 {                                                                    /* 144 */
-    unsigned int bits;
+
 
     char bit_offset = this->bit_offset;                          /* 146 */
 
     unsigned char *byte_pointer = this->byte_pointer;
 
-    bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);   /* 142 */
+    unsigned int bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);   /* 142 */
     bits |= ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
     bits |= ((unsigned int) byte_pointer[2]) << (sizeof (bits) * 8 - 24);
     bits <<= bit_offset;                                               /* 143 */
@@ -447,11 +439,10 @@ void stream::layer_I_decode_samples ()
 
     unsigned char *byte_pointer = this->byte_pointer;
 
-    {
-        int i;                                                           /* 116 */
+    {                                                          /* 116 */
 
         if (this->info.channels > 1)
-            for (i = 0; i < 12; i++) {
+            for (int i = 0; i < 12; i++) {
                 int sb;                                                      /* 120 */
 
                 for (sb = 0; sb < this->info.bound; sb++) {
@@ -463,9 +454,7 @@ void stream::layer_I_decode_samples ()
                         if (n == 0)                                              /* 121 */
                             sample = 0;
                         else {
-                            unsigned int bits;                                     /* 125 */
-
-                            bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
+                            unsigned int bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
                             bits |=
                                     ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
                             bits |=
@@ -488,9 +477,7 @@ void stream::layer_I_decode_samples ()
                         if (n == 0)                                              /* 121 */
                             sample = 0;
                         else {
-                            unsigned int bits;                                     /* 125 */
-
-                            bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
+                            unsigned int bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
                             bits |=
                                     ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
                             bits |=
@@ -517,9 +504,7 @@ void stream::layer_I_decode_samples ()
                         if (n == 0)                                              /* 121 */
                             sample = 0;
                         else {
-                            unsigned int bits;                                     /* 125 */
-
-                            bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
+                            unsigned int bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
                             bits |=
                                     ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
                             bits |=
@@ -540,10 +525,9 @@ void stream::layer_I_decode_samples ()
                 }
             }
         else
-            for (i = 0; i < 12; i++) {
-                int sb;                                                      /* 117 */
+            for (int i = 0; i < 12; i++) {                                /* 117 */
 
-                for (sb = 0; sb < SUBBANDS; sb++) {
+                for (int sb = 0; sb < SUBBANDS; sb++) {
                     int sample;                                                /* 118 */
 
                     {
@@ -552,9 +536,7 @@ void stream::layer_I_decode_samples ()
                         if (n == 0)                                              /* 121 */
                             sample = 0;
                         else {
-                            unsigned int bits;                                     /* 125 */
-
-                            bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
+                            unsigned int bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
                             bits |=
                                     ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
                             bits |=
@@ -697,10 +679,9 @@ stream::layer_II_decode_samples ( int g)
     {                                                     /* 218 */
 
         for (int i = 0; i < 12; i = i + 3) {
-            int ch;
 
             for (int sb = 0; sb < this->info.bound; sb++)
-                for (ch = 0; ch < this->info.channels; ch++) {
+                for (int ch = 0; ch < this->info.channels; ch++) {
                     double f = side_info[sb][ch].mfactor[g];
 
                     int n = side_info[sb][ch].bit_allocation;
@@ -806,7 +787,7 @@ stream::layer_II_decode_samples ( int g)
 
                 int n = side_info[sb][0].bit_allocation;
 
-                ch = 0;
+                int ch = 0;
                 {
                     int sample;                                                /* 201 */
 
@@ -831,9 +812,7 @@ stream::layer_II_decode_samples ( int g)
                         }
                         y[i][ch][sb] = sample * f;
                         {
-                            unsigned int bits;                                     /* 125 */
-
-                            bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
+                            unsigned int bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
                             bits |=
                                     ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
                             bits |=
@@ -850,9 +829,7 @@ stream::layer_II_decode_samples ( int g)
                         }
                         y[i + 1][ch][sb] = sample * f;
                         {
-                            unsigned int bits;                                     /* 125 */
-
-                            bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
+                            unsigned int bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
                             bits |=
                                     ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
                             bits |=
@@ -873,10 +850,8 @@ stream::layer_II_decode_samples ( int g)
                         unsigned int c;
 
                         {
-                            unsigned int bits;
-
                             n = -n;
-                            bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
+                            unsigned int bits = ((unsigned int) byte_pointer[0]) << (sizeof (bits) * 8 - 8);       /* 142 */
                             bits |=
                                     ((unsigned int) byte_pointer[1]) << (sizeof (bits) * 8 - 16);
                             bits |=

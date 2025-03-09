@@ -168,8 +168,8 @@ qs_mid_side_band (int i, int j, int width, int mM, int mS, int step)
                 side = utothreequarter (1, i) * fS;
         z[0][j] = mid + side;
         z[1][j] = mid - side;
-        i = i + 1;
-        j = j + step;
+        i++;
+        j += step;
     }
 }
 
@@ -272,7 +272,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
 {                                                                    /*  13 */
     stream *s;
 
-    std::unique_ptr<stream> s2 = std::unique_ptr<stream>(streams[id]);
+   // std::unique_ptr<stream> s2 = std::unique_ptr<stream>(streams[id]);
     if (id >= STREAMS || id < 0)                                       /*  52 */
         return MP3_ERROR_NO_ID;
     s = streams[id];
@@ -294,17 +294,15 @@ mp3_read (int id, mp3_sample * buffer, int size)
             s->frame = s->synchronize (&tag_read);
             if (s->frame == nullptr) {
                 if (!(s->options.flags & MP3_DONT_FLUSH)) {                  /*  72 */
-                    int n;
+                    int n=0;
 
                     {
                         double *v;                                               /*  76 */
 
-                        int ch, sb;
-
-                        for (n = 0, ch = 0; ch < s->info.channels; ch++) {
+                        for (int ch = 0; ch < s->info.channels; ch++) {
                             v = s->w[ch] + s->offset[ch];
                             for (int i = n; i < WINDOWBLOCKS - 1; i++)
-                                for (sb = 0; sb < SUBBANDS; sb++)
+                                for (int sb = 0; sb < SUBBANDS; sb++)
                                     if (v[i * SUBBANDS + sb] != 0.0) {
                                         n = i + 1;
                                         break;
@@ -549,11 +547,10 @@ mp3_read (int id, mp3_sample * buffer, int size)
         }
         switch (output_mode) {
             case LAYER_I:                                                   /*  66 */
-            { {
-                    int sb, ch;                                                /* 106 */
+            { {                                                /* 106 */
 
-                    for (sb = 0; sb < s->info.bound; sb++)
-                        for (ch = 0; ch < s->info.channels; ch++) {
+                    for (int sb = 0; sb < s->info.bound; sb++)
+                        for (int ch = 0; ch < s->info.channels; ch++) {
                             int n;
 
                             {
@@ -571,10 +568,9 @@ mp3_read (int id, mp3_sample * buffer, int size)
                             side_info[sb][ch].bit_allocation = n;
                         }
                 }
-                {
-                    int sb;                                                      /* 107 */
+                {                                                    /* 107 */
 
-                    for (sb = s->info.bound; sb < SUBBANDS; sb++) {
+                    for (int sb = s->info.bound; sb < SUBBANDS; sb++) {
                         int n;
 
                         {
@@ -595,8 +591,8 @@ mp3_read (int id, mp3_sample * buffer, int size)
                 }
                 {                                              /* 111 */
 
-                    for (int sb = 0; sb < SUBBANDS; sb++)
-                        for (int ch = 0; ch < s->info.channels; ch++) {
+                    for (auto sb = 0; sb < SUBBANDS; sb++)
+                        for (auto ch = 0; ch < s->info.channels; ch++) {
                             side_information *si;
 
                             si = &(side_info[sb][ch]);
@@ -623,10 +619,10 @@ mp3_read (int id, mp3_sample * buffer, int size)
                 break;
             case LAYER_II:                                                  /* 216 */
             { {
-                    int sb, ch;                                                /* 195 */
+                    int sb;                                                /* 195 */
 
                     for (sb = 0; sb < s->info.bound; sb++)
-                        for (ch = 0; ch < s->info.channels; ch++) {
+                        for (int ch = 0; ch < s->info.channels; ch++) {
                             int n, nbal = s->nbal[sb];                             /* 198 */
 
                             if (nbal > 0) {
@@ -638,7 +634,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                             side_info[sb][ch].bit_allocation = n;
                         }
                     for (; sb < s->sblimit[0]; sb++) {
-                        ch = 0;
+                        int ch = 0;
                         {
                             int n, nbal = s->nbal[sb];                             /* 198 */
 
@@ -761,18 +757,16 @@ mp3_read (int id, mp3_sample * buffer, int size)
                     s->getbit ( 5);
                 else
                     s->getbit ( 3);
-                {
-                    int  group;                                             /* 335 */
+                {                                       /* 335 */
 
                     for (int ch = 0; ch < s->info.channels; ch++)
-                        for (group = 0; group < BANDGROUPS; group++)
+                        for (int group = 0; group < BANDGROUPS; group++)
                             s->share[ch][group] = s->getbit ( 1);
                 }
-                {
-                    int ch, gr;                                                /* 338 */
+                {                                             /* 338 */
 
-                    for (gr = 0; gr < 2; gr++)
-                        for (ch = 0; ch < s->info.channels; ch++) {
+                    for (int gr = 0; gr < 2; gr++)
+                        for (int ch = 0; ch < s->info.channels; ch++) {
                             main_data_bit[gr][ch] = s->getbit ( 12);                /* 339 */
                             big_values[gr][ch] = s->getbit ( 9);                    /* 341 */
                             if (big_values[gr][ch] > FREQUENCIES / 2)
@@ -797,9 +791,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                 s->bigtable[gr][ch][0] = s->getbit ( 5);
                                 s->bigtable[gr][ch][1] = s->getbit ( 5);
                                 {
-                                    int i;
-
-                                    for (i = 0; i < SUBBLOCKS; i++)
+                                    for (int i = 0; i < SUBBLOCKS; i++)
                                         subblock_gain[gr][ch][i] = s->getbit ( 3);
                                 }
                                 {
@@ -824,8 +816,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                     }
                                 }
                             }
-                            else { {
-                                    int region;                                        /* 351 */
+                            else { {                                     /* 351 */
 
                                     s->block_type[gr][ch] = LONG_BLOCK;
                                     s->mixed_block[gr][ch] = 0;
@@ -836,7 +827,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                             [gr]
                                             [ch]]
                                             [s->block_type[gr][ch] == SHORT_BLOCK];
-                                    for (region = 0; region < REGIONS; region++)
+                                    for (int region = 0; region < REGIONS; region++)
                                         s->bigtable[gr][ch][region] = s->getbit ( 5);
                                 }
                                 {
@@ -879,11 +870,9 @@ mp3_read (int id, mp3_sample * buffer, int size)
                         }
                 }
             }
-                {
-                    int gr;                                                      /* 362 */
+                {                                                     /* 362 */
 
                     int main_data_position = 0;                                  /* 326 */
-
                     { {
                             int size = s->frame - s->main_data_start;                /* 325 */
 
@@ -895,10 +884,9 @@ mp3_read (int id, mp3_sample * buffer, int size)
                         s->byte_pointer = s->main_data_start;
                         s->bit_offset = 0;
                     }
-                    for (gr = 0; gr < GRANULES; gr++) {
-                        int ch;                                                    /* 363 */
+                    for (int gr = 0; gr < GRANULES; gr++) {                    /* 363 */
 
-                        for (ch = 0; ch < s->info.channels; ch++) { /* 364 */  {
+                        for (int ch = 0; ch < s->info.channels; ch++) { /* 364 */  {
                                 if (gr == 0 || s->block_type[gr][ch] == SHORT_BLOCK || s->block_type[0][ch] == SHORT_BLOCK) {     /* 365 */
                                     const signed char *slength = s->slength[gr][ch];            /* 367 */
 
@@ -959,15 +947,11 @@ mp3_read (int id, mp3_sample * buffer, int size)
                             {
                                 short int *u = uv[ch];                                   /* 369 */
 
-                                int region;
-
-                                for (region = 0; region < REGIONS; region++) {
+                                for (int region = 0; region < REGIONS; region++) {
                                     int k = s->bigtable[gr][ch][region];                   /* 370 */
 
                                     if (k == 0) {
-                                        int n;                                               /* 371 */
-
-                                        for (n = 0; n < s->bigpairs[gr][ch][region]; n++)
+                                        for (int n = 0; n < s->bigpairs[gr][ch][region]; n++)
                                             u[2 * n] = u[2 * n + 1] = 0;
                                     }
                                     else if (k <= 12)
@@ -1028,9 +1012,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                                     stereo_mode[band] = low_frequency_mode;
                                         }
                                         else { {
-                                                int k;                                         /* 394 */
-
-                                                k = band - 2;
+                                                int k = band - 2;
                                                 while (k >= first_short_band && is_zero_band (k)) {
                                                     if (s->sfi[1][k] < s->sfimax[1][k])
                                                         stereo_mode[k] = INTENSITY_V2;
@@ -1134,9 +1116,9 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                         band++;
                                     }
                                     while (band < band_limit) {
-                                        int ch, k, j = i, size = width[gr][0][band];       /* 289 */
+                                        int ch, j = i, size = width[gr][0][band];       /* 289 */
 
-                                        for (k = 0; k < 3; k++, band++, j++, i = i + size)
+                                        for (int k = 0; k < 3; k++, band++, j++, i = i + size)
                                             if (stereo_mode[band] == STEREO) {
                                                 qs_band (0, i, j, size, (ch = 0, (4 * OUTPUT_EXPONENT     /* 265 */
                                                                                   + (global_gain[gr][ch] - 210)   /* 251 */
@@ -1225,9 +1207,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                 }
                             }
                             else {
-                                int ch;
-
-                                for (ch = 0; ch < s->info.channels; ch++)
+                                for (int ch = 0; ch < s->info.channels; ch++)
                                     if (s->block_type[gr][ch] != SHORT_BLOCK)
                                         s->qs ( gr, ch, 0, 0, ulimit[ch]);
                                     else {
@@ -1248,7 +1228,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                     }
                             }
                         }
-                        for (ch = 0; ch < s->info.channels; ch++) {                /* 297 */
+                        for (int ch = 0; ch < s->info.channels; ch++) {                /* 297 */
                             s->sblimit[ch] = (ulimit[ch] + SUBFREQUENCIES - 1) / SUBFREQUENCIES;        /* 292 */
                             {
 
@@ -1295,18 +1275,18 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                 }
                             }
                             if (s->block_type[gr][ch] == LONG_BLOCK) {               /* 234 */
-                                int sb;                                                /* 223 */
+                                                                              /* 223 */
 
-                                for (sb = 0; sb < SUBBANDS; sb++) {
+                                for (int sb = 0; sb < SUBBANDS; sb++) {
                                     double t[18];
 
                                     if (sb < s->sblimit[ch])
                                         dct18 (z[ch] + sb * SUBFREQUENCIES, t);
-                                    else {
-                                        int i;                                             /* 224 */
+                                    else {                                          /* 224 */
 
-                                        for (i = 0; i < 18; i++)
+                                        for (auto i = 0; i < 18; i++) {
                                             t[i] = 0.0;
+                                        }
                                     }
                                     {
                                         double *tprime = s->tprime[ch][sb];                /* 222 */
@@ -1394,11 +1374,11 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                     for (sb = 0; sb < long_subbands; sb++) {
                                         if (sb < s->sblimit[ch])
                                             dct18 (z[ch] + sb * SUBFREQUENCIES, t);
-                                        else {
-                                            int i;                                           /* 224 */
+                                        else {                                   /* 224 */
 
-                                            for (i = 0; i < 18; i++)
+                                            for (int i = 0; i < 18; i++) {
                                                 t[i] = 0.0;
+                                            }
                                         }
                                         {
                                             double *tprime = s->tprime[ch][sb];              /* 222 */
@@ -1483,10 +1463,9 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                             dct6 (z[ch] + sb * 18 + 1, t + 6);
                                             dct6 (z[ch] + sb * 18 + 2, t + 12);
                                         }
-                                        else {
-                                            int i;                                           /* 224 */
+                                        else {                                         /* 224 */
 
-                                            for (i = 0; i < 18; i++)
+                                            for (auto i = 0; i < 18; i++)
                                                 t[i] = 0.0;
                                         }
                                         {
@@ -1647,10 +1626,9 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                     for (; sb < SUBBANDS; sb++) {
                                         if (sb < s->sblimit[ch])
                                             dct18 (z[ch] + sb * SUBFREQUENCIES, t);
-                                        else {
-                                            int i;                                           /* 224 */
+                                        else {                                         /* 224 */
 
-                                            for (i = 0; i < 18; i++)
+                                            for (auto i = 0; i < 18; i++)
                                                 t[i] = 0.0;
                                         }
                                         {
@@ -1715,18 +1693,16 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                     }
                                 }
                             }
-                            {
-                                int i, sb;                                             /* 296 */
-
-                                for (sb = 1; sb < SUBBANDS; sb = sb + 2)
-                                    for (i = 1; i < 18; i = i + 2)
+                            {                                         /* 296 */
+                                for (auto sb = 1; sb < SUBBANDS; sb = sb + 2)
+                                    for (auto i = 1; i < 18; i = i + 2)
                                         y[i][ch][sb] = -y[i][ch][sb];
                             }
                         }
                         s->output_blocks ( buffer + s->info.samples, SUBFREQUENCIES);
                     }
-                    ;                                                            /* 141 */
-                    ;
+                                                                              /* 141 */
+
                 }
                 s->frame = s->next_frame ();
                 break;
@@ -1738,9 +1714,8 @@ mp3_read (int id, mp3_sample * buffer, int size)
                 {
                     const int gr = 0;                                            /* 378 */
 
-                    int ch;
 
-                    for (ch = 0; ch < s->info.channels; ch++) {
+                    for (int ch = 0; ch < s->info.channels; ch++) {
                         main_data_bit[gr][ch] = s->getbit ( 12);                    /* 339 */
                         big_values[gr][ch] = s->getbit ( 9);                        /* 341 */
                         if (big_values[gr][ch] > FREQUENCIES / 2)
@@ -1773,9 +1748,8 @@ mp3_read (int id, mp3_sample * buffer, int size)
                             s->bigtable[gr][ch][0] = s->getbit ( 5);
                             s->bigtable[gr][ch][1] = s->getbit ( 5);
                             {
-                                int i;
 
-                                for (i = 0; i < SUBBLOCKS; i++)
+                                for (int i = 0; i < SUBBLOCKS; i++)
                                     subblock_gain[gr][ch][i] = s->getbit ( 3);
                             }
                             {
@@ -1871,10 +1845,9 @@ mp3_read (int id, mp3_sample * buffer, int size)
                         s->byte_pointer = s->main_data_start;
                         s->bit_offset = 0;
                     }
-                    {
-                        int ch;                                                    /* 363 */
+                    {                                                  /* 363 */
 
-                        for (ch = 0; ch < s->info.channels; ch++) { /* 364 */  {
+                        for (int ch = 0; ch < s->info.channels; ch++) { /* 364 */  {
                                 if (gr == 0 || s->block_type[gr][ch] == SHORT_BLOCK || s->block_type[0][ch] == SHORT_BLOCK) {     /* 365 */
                                     const signed char *slength = s->slength[gr][ch];            /* 367 */
 
@@ -1888,12 +1861,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                             slim = *++slimit;
                                         }
                                         else { {
-                                                int m;                                         /* 368 */
-
-                                                if (slen == 0)
-                                                    m = 0;
-                                                else
-                                                    m = s->getbit ( slen);
+                                                int m= (slen == 0)? 0:s->getbit ( slen);
                                                 s->sfimax[ch][band] = (2 << slen) - 1;
                                                 s->sfi[ch][band] = m;
                                             }
@@ -1943,10 +1911,9 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                 for (int region = 0; region < REGIONS; region++) {
                                     int k = s->bigtable[gr][ch][region];                   /* 370 */
 
-                                    if (k == 0) {
-                                        int n;                                               /* 371 */
+                                    if (k == 0) {                                              /* 371 */
 
-                                        for (n = 0; n < s->bigpairs[gr][ch][region]; n++)
+                                        for (int n = 0; n < s->bigpairs[gr][ch][region]; n++)
                                             u[2 * n] = u[2 * n + 1] = 0;
                                     }
                                     else if (k <= 12)
@@ -2007,9 +1974,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                                     stereo_mode[band] = low_frequency_mode;
                                         }
                                         else { {
-                                                int k;                                         /* 394 */
-
-                                                k = band - 2;
+                                                int k = band - 2;
                                                 while (k >= first_short_band && is_zero_band (k)) {
                                                     if (s->sfi[1][k] < s->sfimax[1][k])
                                                         stereo_mode[k] = INTENSITY_V2;
@@ -2113,9 +2078,9 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                         band++;
                                     }
                                     while (band < band_limit) {
-                                        int ch, k, j = i, size = width[gr][0][band];       /* 289 */
+                                        int ch, j = i, size = width[gr][0][band];       /* 289 */
 
-                                        for (k = 0; k < 3; k++, band++, j++, i = i + size)
+                                        for (int k = 0; k < 3; k++, band++, j++, i = i + size)
                                             if (stereo_mode[band] == STEREO) {
                                                 qs_band (0, i, j, size, (ch = 0, (4 * OUTPUT_EXPONENT     /* 265 */
                                                                                   + (global_gain[gr][ch] - 210)   /* 251 */
@@ -2226,7 +2191,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                     }
                             }
                         }
-                        for (ch = 0; ch < s->info.channels; ch++) {                /* 297 */
+                        for (int ch = 0; ch < s->info.channels; ch++) {                /* 297 */
                             s->sblimit[ch] = (ulimit[ch] + SUBFREQUENCIES - 1) / SUBFREQUENCIES;        /* 292 */
                             {
 
@@ -2255,36 +2220,30 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                 if (k > s->sblimit[ch] - 1)
                                     k = s->sblimit[ch] - 1;
                                 for (; k > 0; k--) {
-                                    int i;
 
                                     double *pHi = z[ch] + k * SUBFREQUENCIES;
 
                                     double *pLo = pHi - 1;
 
-                                    for (i = 0; i < 8; i++, pLo--, pHi++) {
-                                        double zHi, zLo, c, d;
+                                    for (int i = 0; i < 8; i++, pLo--, pHi++) {
+                                        double zHi=*pHi, zLo= *pLo, c=alias_coefficients[i].c, d=alias_coefficients[i].d;
 
-                                        zLo = *pLo;
-                                        zHi = *pHi;
-                                        c = alias_coefficients[i].c;
-                                        d = alias_coefficients[i].d;
                                         *pLo = zLo * c - zHi * d;
                                         *pHi = zHi * c + zLo * d;
                                     }
                                 }
                             }
                             if (s->block_type[gr][ch] == LONG_BLOCK) {               /* 234 */
-                                int sb;                                                /* 223 */
+                                                                              /* 223 */
 
-                                for (sb = 0; sb < SUBBANDS; sb++) {
+                                for (int sb = 0; sb < SUBBANDS; sb++) {
                                     double t[18];
 
                                     if (sb < s->sblimit[ch])
                                         dct18 (z[ch] + sb * SUBFREQUENCIES, t);
                                     else {
-                                        int i;                                             /* 224 */
-
-                                        for (i = 0; i < 18; i++)
+                                                                                   /* 224 */
+                                        for (int i = 0; i < 18; i++)
                                             t[i] = 0.0;
                                     }
                                     {
@@ -2373,11 +2332,10 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                     for (sb = 0; sb < long_subbands; sb++) {
                                         if (sb < s->sblimit[ch])
                                             dct18 (z[ch] + sb * SUBFREQUENCIES, t);
-                                        else {
-                                            int i;                                           /* 224 */
+                                        else {                                        /* 224 */
 
-                                            for (i = 0; i < 18; i++)
-                                                t[i] = 0.0;
+                                            for (auto& element : t)
+                                                element = 0.0;
                                         }
                                         {
                                             double *tprime = s->tprime[ch][sb];              /* 222 */
@@ -2462,11 +2420,10 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                             dct6 (z[ch] + sb * 18 + 1, t + 6);
                                             dct6 (z[ch] + sb * 18 + 2, t + 12);
                                         }
-                                        else {
-                                            int i;                                           /* 224 */
+                                        else {                                      /* 224 */
 
-                                            for (i = 0; i < 18; i++)
-                                                t[i] = 0.0;
+                                            for (auto& element : t)
+                                                element = 0.0;
                                         }
                                         {
                                             double (*ytilde)[CHANNELS][SUBBANDS];            /* 229 */
@@ -2538,8 +2495,8 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                             dct18 (z[ch] + sb * SUBFREQUENCIES, t);
                                         else {                                         /* 224 */
 
-                                            for (double & i : t)
-                                                i = 0.0;
+                                            for (double & element : t)
+                                                element = 0.0;
                                         }
                                         {
                                             double *tprime = s->tprime[ch][sb];              /* 222 */
@@ -2627,8 +2584,8 @@ mp3_read (int id, mp3_sample * buffer, int size)
                                             dct18 (z[ch] + sb * SUBFREQUENCIES, t);
                                         else {                                         /* 224 */
 
-                                            for (double & i : t)
-                                                i = 0.0;
+                                            for (double & element : t)
+                                                element = 0.0;
                                         }
                                         {
                                             double *tprime = s->tprime[ch][sb];              /* 232 */
@@ -2701,8 +2658,8 @@ mp3_read (int id, mp3_sample * buffer, int size)
                         }
                         s->output_blocks ( buffer + s->info.samples, SUBFREQUENCIES);
                     }
-                    ;                                                            /* 141 */
-                    ;
+                                                                                /* 141 */
+
                 }
                 s->frame = s->next_frame ();
                 break;
@@ -2808,7 +2765,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                 {
                     int i, k, previous_offset;                                 /* 410 */
 
-                    double *p, sum, distance, *v = s->w[0] + s->offset[0];
+                    double *p, sum=0.0, distance, *v = s->w[0] + s->offset[0];
 
                     distance = SUBBANDS * ((double) ((unsigned) 1 << OUTPUT_EXPONENT))    /* 136 */
                                *((double) ((unsigned) 1 << OUTPUT_EXPONENT))            /* 136 */
@@ -2819,7 +2776,7 @@ mp3_read (int id, mp3_sample * buffer, int size)
                             previous_offset =
                                     previous_offset - SHIFTSIZE + (WINDOWBLOCKS - 1) * SUBBANDS;
                         p = s->w[0] + previous_offset;
-                        for (sum = 0.0, k = 0; k < SUBBANDS; k++)
+                        for (k = 0; k < SUBBANDS; k++)
                             sum = sum + (p[k] - v[k]) * (p[k] - v[k]);
                         if (sum < distance) {
                             distance = sum;

@@ -29,6 +29,7 @@ namespace equalizer {
         uint16_t getChannelCount() const;
 
         bool load(const std::string& );
+        std::shared_ptr<std::ifstream> pmyfile;
 
         static bool endsWithWavCaseInsensitive(std::string str, std::string suffix) {
             std::transform(str.begin(), str.end(), str.begin(), ::tolower);
