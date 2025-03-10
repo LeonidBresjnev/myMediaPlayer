@@ -174,9 +174,10 @@ class MyMediaService : MediaSessionService() {
         }
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
 
-
+        return mediaSession
+    }
 
 
 }

@@ -94,8 +94,8 @@ class MainScreen(
                             if (controller.playWhenReady) Status.PAUSED
                             else Status.STOPPED
                         }
-                        //invalidate()
-                        //super.onIsPlayingChanged(isitplaying)
+                        invalidate()
+                        super.onIsPlayingChanged(isitplaying)
                     }
 
                     override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -144,10 +144,6 @@ class MainScreen(
                 })
             }, MoreExecutors.directExecutor())
         }
-
-
-
-
     }
 
     private val frequencyLabels = listOf(
@@ -216,6 +212,8 @@ class MainScreen(
             .build()
 
     }
+    private val content = File(Environment.getExternalStorageDirectory(),"/Music")
+        .listFiles()!!
 
     private val playPause = Action
         .Builder()
@@ -230,12 +228,12 @@ class MainScreen(
 
             if (isPlaying==Status.PLAYING) {
                 controller.pause()
+                log("pause called")
                 return@setOnClickListener
             }
 
-            val folder = File(Environment.getExternalStorageDirectory(),"/Music")
 
-            val file = folder.listFiles()?.get(0)
+            val file = content[0]
             log("file: $file")
             file?.let {
                 val myItem = MediaItem
@@ -257,7 +255,7 @@ class MainScreen(
     private val stopAction = Action
         .Builder()
         .setIcon(CarIcon
-            .Builder(IconCompat.createWithResource(carContext, R.drawable.stopplaying )
+            .Builder(IconCompat.createWithResource(carContext, R.drawable.stopplay )
                 .setTint(CarColor.TYPE_RED))
             .build())
         .setOnClickListener {
@@ -336,16 +334,6 @@ class MainScreen(
                 log("item selected: $it")
                 currentInterval=it
             }
-        //val x= CarAppApiLevels.getLatest()
-
-
-
-        //val plus = CarText.Builder("+").addVariant("plus").build()
-        //val plusIcon = CarIcon.Builder(IconCompat())
-
-
-
-
 
         intervalItems.forEach { singleListBuilder.addItem(it) }
 
@@ -360,7 +348,7 @@ class MainScreen(
             .setActionStrip(actionStrip)
             .setSingleList(singleList)
             /*.addSectionedList(sectionedItemList)*/
-            .addAction(if (isPlaying==Status.PLAYING) stopAction else playPause)
+            .addAction(if (isPlaying!=Status.PLAYING) playPause else stopAction)
             .build()
 
         /*
