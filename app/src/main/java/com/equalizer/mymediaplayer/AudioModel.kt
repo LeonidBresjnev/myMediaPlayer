@@ -12,6 +12,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaBrowser
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
@@ -65,11 +67,24 @@ class AudioModel: ViewModel() {
         STOPPED
     }
 
-    private var mediaControllerFuture: ListenableFuture<MediaController>? = null
+    private var mediaControllerFuture: ListenableFuture<MediaBrowser>? = null
 
-    private lateinit var controller: MediaController
+    private lateinit var controller: MediaBrowser
+
+    private lateinit var libResult : ListenableFuture<LibraryResult<MediaItem>>
+
+/*
+    val browserFuture = MediaBrowser.Builder(context, sessionToken).buildAsync()
+    browserFuture.addListener({
+        // MediaBrowser is available here with browserFuture.get()
+    }, MoreExecutors.directExecutor())
 
 
+    // Get the library root to start browsing the library tree.
+    val rootFuture = mediaBrowser.getLibraryRoot(/* params= */ null)
+    rootFuture.addListener({
+        // Root node MediaItem is available here with rootFuture.get().value
+    }, MoreExecutors.directExecutor())*/
 
     private fun log(message: String) {
         Log.i("AudioModel", message)
@@ -141,16 +156,29 @@ class AudioModel: ViewModel() {
 
     }
 
+    @OptIn(UnstableApi::class)
     internal fun initializeMediaController(context: Context) {
         val sessionToken = SessionToken(context, ComponentName(context, MyMediaService::class.java))
 
-        mediaControllerFuture = MediaController
+        mediaControllerFuture = MediaBrowser
             .Builder(context, sessionToken)
             .buildAsync()
         mediaControllerFuture?.apply {
             addListener({
                 controller = get()
+                log("before get root")
+                libResult = controller.getLibraryRoot(/* params= */ null)
 
+                libResult.addListener({
+                    log("before call get")
+                    val result=libResult.get()
+                   // result.sessionError?.let { log(it.message) }
+                    if (result == null) log("result is null")
+                    if (result.value == null) log("result-value is null")
+                      println("result: ${result.value?.mediaId?:"null"}")
+                    //controller.getChildren()
+                    // Root node MediaItem is available here with rootFuture.get().value
+                }, MoreExecutors.directExecutor())
                 //updateUIWithMediaController(controller)
 
                 // Ensure media is played appropriately based on state
@@ -161,6 +189,32 @@ class AudioModel: ViewModel() {
 
             )
         }
+// Get the library root to start browsing the library tree.
+
+
+/*
+        val browserFuture = MediaBrowser
+            .Builder(context, sessionToken).buildAsync()
+        browserFuture.addListener({
+            // MediaBrowser is available here with browserFuture.get()
+            mediabrowser = browserFuture.get()
+        }, MoreExecutors.directExecutor())
+        val rootMediaItem = mediabrowser?.currentMediaItem
+
+        // Get the library root to start browsing the library tree.
+        val childrenFuture =
+            rootMediaItem?.let { mediabrowser?.getChildren(it.mediaId, 0, Int.MAX_VALUE, null) }
+        childrenFuture?.addListener({
+            // List of children MediaItem nodes is available here with
+            // childrenFuture.get().value
+        }, MoreExecutors.directExecutor())
+
+        val myRoot = mediabrowser?.getLibraryRoot(
+           null
+        )?.get()
+
+
+        log("rootMediaItem is ${myRoot?.value.toString()}")*/
     }
 
     internal fun playMedia(mediaItem: MediaItem) {

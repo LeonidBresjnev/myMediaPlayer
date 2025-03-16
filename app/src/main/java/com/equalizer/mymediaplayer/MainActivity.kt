@@ -1,31 +1,27 @@
 package com.equalizer.mymediaplayer
 
-import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
-import android.os.Environment
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.car.app.connection.CarConnection
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.VolumeDown
-import androidx.compose.material.icons.automirrored.filled.VolumeOff
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.outlined.List
+import androidx.compose.material.icons.automirrored.outlined.QueueMusic
+import androidx.compose.material.icons.filled.DirectionsCarFilled
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
@@ -34,10 +30,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
@@ -48,13 +46,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import com.equalizer.mymediaplayer.ui.theme.MyMediaPlayerTheme
 import java.io.File
+
+data class TabRowItem(
+    val title: String,
+    val selectedIcon: ImageVector,
+    val unselectedIcon: ImageVector,
+    val screen: @Composable () -> Unit,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
@@ -68,6 +73,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
 
+
         audioModel.initializeMediaController(applicationContext)
 
 
@@ -76,9 +82,53 @@ class MainActivity : ComponentActivity() {
             var selectedFile by remember {
                 mutableStateOf<File?>(null)
             }
+
+
+            var selectedTabIndex by remember {
+                mutableIntStateOf(value=0)
+            }
+
+            val tabRowItems = listOf(
+                TabRowItem(
+                    title = "Media browser",
+                    screen = {
+                        FileSelection(modifier=Modifier
+                            /* .border(width = 2.dp, color = Color.Black)*/,
+                            wavData=wavData,
+                            onSelect = { file -> selectedFile = file
+                                // Log.d("Selected file", selectedFile?.name?:"null")
+                            } )
+                    },
+                    selectedIcon = Icons.AutoMirrored.Filled.List,
+                    unselectedIcon = Icons.AutoMirrored.Outlined.List
+                ),
+                TabRowItem(
+                    title = "Equalizer",
+                    screen = { ControlPanel(
+                        modifier = Modifier,
+                        equalizerViewModel = audioModel
+                    )},
+                    selectedIcon = Icons.AutoMirrored.Filled.QueueMusic,
+                    unselectedIcon = Icons.AutoMirrored.Outlined.QueueMusic
+                )
+            )
+            val pagerState = rememberPagerState {
+                tabRowItems.size
+            }
+
+            LaunchedEffect(selectedTabIndex) {
+                pagerState.animateScrollToPage(selectedTabIndex)
+            }
+            LaunchedEffect(pagerState.currentPage, pagerState.isScrollInProgress) {
+                if (!pagerState.isScrollInProgress) {
+                    selectedTabIndex = pagerState.currentPage
+                }
+            }
+
             var showRationalDialog by rememberSaveable { mutableStateOf(true) }
 
             MyMediaPlayerTheme {
+
                 Scaffold(modifier = Modifier.fillMaxSize(),
                     topBar = {
                         CenterAlignedTopAppBar(
@@ -95,10 +145,54 @@ class MainActivity : ComponentActivity() {
                         PermissionDemo()
                         showRationalDialog=false
                     }
+
                     Column(modifier = Modifier.padding(innerPadding)) {
+                        TabRow(
+                            modifier = Modifier.weight(0.1f),
+                            selectedTabIndex = selectedTabIndex
+                        ) {
+                            tabRowItems.forEachIndexed { index, item ->
+                                Tab(
+                                    selected = /*pagerState.currentPage*/ selectedTabIndex == index,
+                                    selectedContentColor = MaterialTheme.colorScheme.primary,
+                                    unselectedContentColor = MaterialTheme.colorScheme.primary.copy(
+                                        alpha = 0.5f
+                                    ),
+                                    onClick = {
+                                        selectedTabIndex = index
+                                    },
+                                    icon = {
+                                        Icon(
+                                            imageVector = if (index == selectedTabIndex) item.selectedIcon else item.unselectedIcon,
+                                            contentDescription = item.title
+                                        )
+                                    },
+                                    text = {
+                                        Text(
+                                            text = item.title,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                )
+                            }
+                        }
 
-                        val carConnectionType by CarConnection(this@MainActivity).type.observeAsState(initial = -1)
+                        HorizontalPager(
+                            state = pagerState,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(0.8f),
+                            verticalAlignment = Alignment.Top,
+                            userScrollEnabled = true
+                        ) {
+                            tabRowItems[it].screen()
+                        }
 
+                        val carConnectionType by CarConnection(this@MainActivity).type.observeAsState(
+                            initial = -1
+                        )
+                        /*
                         Button(
                             modifier = Modifier
                                 .height(40.dp)
@@ -116,35 +210,25 @@ class MainActivity : ComponentActivity() {
                             }
                         ) {
                             Text("devices")
-                        }
+                        }*/
+                        Column(modifier = Modifier.weight(0.1f)) {
+                            ProjectionState(
 
-                        ProjectionState(
-                            carConnectionType = carConnectionType,
-                            modifier = Modifier.padding(8.dp)
-                        )
-
-
-                        Column(modifier = Modifier
-                            .padding(innerPadding)
-                            .fillMaxSize()) {
-                            ControlPanel(
-                                modifier = Modifier
-                                    .weight(0.65f),
-                                equalizerViewModel = audioModel
+                                carConnectionType = carConnectionType,
+                                modifier = Modifier.padding(8.dp)
                             )
-                            FileSelection(modifier=Modifier
-                                .weight(0.18f)
-                                /* .border(width = 2.dp, color = Color.Black)*/,
-                                wavData=wavData,
-                                onSelect = { file ->
-                                    selectedFile = file
-                                    // Log.d("Selected file", selectedFile?.name?:"null")
-                                } )
-                            PlayControl(modifier = Modifier
+
+
+
+
+                            PlayControl(
+                                modifier = Modifier
                                     .weight(0.07f),
-                                equalizerViewModel = audioModel, file=selectedFile)
+                                equalizerViewModel = audioModel, file = selectedFile
+                            )
                         }
                     }
+
                 }
             }
         }
@@ -158,187 +242,26 @@ fun ProjectionState(carConnectionType: Int, modifier: Modifier = Modifier) {
         CarConnection.CONNECTION_TYPE_PROJECTION -> "Projecting"
         else -> "Unknown connection type"
     }
+Row {
 
     Text(
         text = text,
         style = MaterialTheme.typography.bodyMedium,
         modifier = modifier
     )
-}
-
-@Composable
-fun ControlPanel(modifier: Modifier = Modifier,
-                 equalizerViewModel: AudioModel) {
-
-
-    val volumenLow = equalizerViewModel.volumenLow.observeAsState()
-
-    val frequencyLabels = listOf(
-        stringResource(R.string.sub_bass_0_125_hz),
-        stringResource(R.string.bass_125_250_hz),
-        stringResource(R.string.low_250_500_hz),
-        stringResource(R.string.low_mids_500_hz_1_khz),
-        stringResource(R.string.high_mids_1_khz_2_khz),
-        stringResource(R.string.high_2_4_khz),
-        stringResource(R.string.upper_highs_4_8_khz),
-        stringResource(R.string.air_8_khz_and_above)
-    )
-    LazyColumn(modifier=modifier
-        .fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-
-        items(frequencyLabels.size) { index ->
-            VolumeControlContent(
-                frequencyLabel=frequencyLabels[index],
-                modifier = Modifier,
-                volumenValueLabel = stringResource(
-                    id=R.string.volumen_value, volumenLow.value!![index]),
-                onValueChange = { v->equalizerViewModel.setVolumen(volumeInDb =  v,index=index) },
-                volume = volumenLow.value!![index],
-                volumeRange = equalizerViewModel.volumeRange
-            )
-        }
+    if (carConnectionType == CarConnection.CONNECTION_TYPE_PROJECTION || true) {
+        Icon(
+            imageVector = Icons.Default.DirectionsCarFilled,
+            contentDescription = "car-icon",
+            tint= Color.Red
+        )
     }
 }
-
-@Composable
-private fun VolumeControlContent(
-    frequencyLabel: String,
-    modifier: Modifier,
-    volume: Float,
-    volumeRange: ClosedFloatingPointRange<Float>,
-    onValueChange: (Float) -> Unit,
-    volumenValueLabel: String
-) {
-    // The volume slider should take around 1/4 of the screen height
-    val screenHeight = LocalConfiguration.current.screenWidthDp
-    val sliderHeight = screenHeight * 0.8
-
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        /*
-        modifier=Modifier.border(BorderStroke(0.1.dp, Color.Black))*/
-    ) {
-        Text(text = frequencyLabel)
-        Row(modifier = modifier) {
-            Text(text = volumenValueLabel)
-            Icon(
-
-                imageVector = if (volume == 0f) Icons.AutoMirrored.Filled.VolumeOff
-                else Icons.AutoMirrored.Filled.VolumeDown,
-                contentDescription = null
-            )
-
-
-            Slider(
-                value = volume,
-                onValueChange = onValueChange,
-                modifier = modifier
-                    .fillMaxWidth(0.6f)
-                    .width(sliderHeight.dp),
-                valueRange = volumeRange
-            )
-
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                contentDescription = null
-            )
-        }
-
-    }
-
-
 }
 
 
-@Composable
-fun FileSelection(modifier: Modifier=Modifier,
-                  wavData: WavMetaData,
-                  onSelect: (File?) -> Unit = {}) {
-    val folder = remember {
-        File(
-            Environment.getExternalStorageDirectory(),
-            "/Music")
-    }
-
-    val files = remember { folder.listFiles() }
-
-    var selectedFile by remember {
-        mutableIntStateOf(-1)
-    }
 
 
-    val sampleRate = wavData.sampleRate.observeAsState()
-    val numChannels = wavData.numChannels.observeAsState()
-    val bitsPerSample = wavData.bitsPerSample.observeAsState()
-
-    Row(modifier=modifier.fillMaxSize(),
-        horizontalArrangement = Arrangement.SpaceEvenly) {
-        LazyColumn (modifier = Modifier.fillMaxWidth(0.3f)) {
-            itemsIndexed(files!!) { idx, file ->
-                Text(
-                    modifier = Modifier
-                        .clickable {
-                            selectedFile = idx
-                            if ((selectedFile >= 0) &&
-                                (files[selectedFile]?.name?.endsWith(".wav",ignoreCase = true) == true||
-                                        files[selectedFile]?.name?.endsWith(".mp3",ignoreCase = true) == true )
-                            ) {
-                                wavData.readingAudioFile(File("/storage/emulated/0/Music/" + files[selectedFile].name))
-                                onSelect(File("/storage/emulated/0/Music/" + files[selectedFile].name))
-                            } else {
-                                wavData.reset()
-                                onSelect(null)
-
-                            }
-
-                        }
-                        .background(if (idx == selectedFile) Color.Blue else Color.Transparent),
-
-                    text = file.name
-                )
-            }
-          /*  files?.forEachIndexed { idx,file ->
-                Text(
-                    modifier = Modifier
-                        .clickable {
-                            selectedFile = idx
-                            if ((selectedFile >= 0) &&
-                                (files[selectedFile]?.name?.endsWith(".wav",ignoreCase = true) == true||
-                                        files[selectedFile]?.name?.endsWith(".mp3",ignoreCase = true) == true )
-                            ) {
-                                wavData.readingAudioFile(File("/storage/emulated/0/Music/" + files[selectedFile].name))
-                                onSelect(File("/storage/emulated/0/Music/" + files[selectedFile].name))
-                            } else {
-                                wavData.reset()
-                                onSelect(null)
-
-                            }
-
-                        }
-                        .background(if (idx == selectedFile) Color.Blue else Color.Transparent),
-
-                    text = file.name
-                ) }*/
-        }
-        Column(modifier=Modifier.fillMaxWidth(0.7f),
-            verticalArrangement = Arrangement.Center) {
-            Text(
-                modifier = Modifier.weight(0.2f),
-                text = """File info
-File name: ${if (selectedFile >= 0 ) files?.get(selectedFile)?.name else ""}  
-Sample Rate: ${sampleRate.value!!}
-Channels: ${numChannels.value!!}
-Bit depth: ${bitsPerSample.value!!}
-                """.trimMargin()
-            )
-
-
-        }
-    }
-}
 
 @Composable
 private fun PlayControl( modifier: Modifier,
@@ -422,7 +345,7 @@ private fun PlayControlContent(audioModel: AudioModel,
 
 
         }
-        Text(text="isplaying=${isPlaying?:"null"}")
+       // Text(text="isplaying=${isPlaying?:"null"}")
         //val carConnectionType by CarConnection(context).type.observeAsState(initial = -1)
         /*
                 Button(

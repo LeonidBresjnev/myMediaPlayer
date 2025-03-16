@@ -1,30 +1,47 @@
 package com.equalizer.common
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import androidx.annotation.OptIn
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
-import androidx.media3.common.util.Log
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSession.MediaItemsWithStartPosition
-import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionCommands
 import androidx.media3.session.SessionResult
+import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.io.File
 
 
-class MyMediaService : MediaSessionService() {
-    private var mediaSession: MediaSession? = null
+class MyMediaService : MediaLibraryService() {
+    private var mediaSession: MediaLibrarySession? = null
 
+
+    private val commands = SessionCommands
+        .Builder()
+        .add(SessionCommand.COMMAND_CODE_LIBRARY_GET_LIBRARY_ROOT)
+        .build()
     private val setVolOnFreq = SessionCommand("setVolOnFreq" , Bundle.EMPTY)
     private val getVolOnFreq = SessionCommand("getVolOnFreq" , Bundle.EMPTY)
 
+    private fun log(message: String) {
+        Log.d("My Media Service", message)
+    }
+
+    var currentlocation="storage/emulated/0/Music"
 
     private var volPerFreq = List(8) { 1f }
     // Create your Player and MediaSession in the onCreate lifecycle event
@@ -50,9 +67,8 @@ class MyMediaService : MediaSessionService() {
             .add(SessionCommand.COMMAND_CODE_CUSTOM)
             .build()*/
 
-        mediaSession = MediaSession
-            .Builder(this, player)
-            .setCallback(object: MediaSession.Callback {
+        mediaSession = MediaLibrarySession
+            .Builder(this, player,object: MediaLibrarySession.Callback {
 /*
                 override fun onSetMediaItems(
                     mediaSession: MediaSession,
@@ -72,7 +88,6 @@ class MyMediaService : MediaSessionService() {
                     )
                 }*/
 
-
                 override fun onConnect(
                     session: MediaSession,
                     controller: MediaSession.ControllerInfo
@@ -84,12 +99,64 @@ class MyMediaService : MediaSessionService() {
                             MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
                                 .add(setVolOnFreq)
                                 .add(getVolOnFreq)
+                                .add(SessionCommand.COMMAND_CODE_LIBRARY_GET_LIBRARY_ROOT)
                                 .build()
                         )
                         .build()
 
                 }
 
+                override fun onGetLibraryRoot(
+                    session: MediaLibrarySession,
+                    browser: MediaSession.ControllerInfo,
+                    params: LibraryParams?,
+                ): ListenableFuture<LibraryResult<MediaItem>> {
+                   // log("onGetLibraryRoot")
+                    return Futures.immediateFuture(
+                        LibraryResult.ofItem(MediaItem
+                            .Builder()
+                            .setUri(Uri.fromFile(
+                                File("/storage/emulated/0/Music/")))
+                            .setMediaId("root")
+                            .setMediaMetadata(MediaMetadata
+                                .Builder()
+                                .setTitle("Root")
+                                .setIsBrowsable(true)
+                                .setIsPlayable(false)
+                                .build())
+                            .build(), params))
+                }
+
+                override fun onGetChildren(
+                    session: MediaLibrarySession,
+                    browser: MediaSession.ControllerInfo,
+                    parentId: String,
+                    page: Int,
+                    pageSize: Int,
+                    params: LibraryParams?,
+                ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+                    val currentDir = File(currentlocation)
+                    val children : List<MediaItem> = currentDir.listFiles()
+                        ?.map {
+                            val isBrowsable=it.isDirectory
+                            val isPlayable = it.isFile &&
+                                    (it.name.endsWith(suffix = "mp3", ignoreCase = false)
+                                            || it.name.endsWith(suffix = "wav", ignoreCase = false))
+                            MediaItem
+                                .Builder()
+                                .setUri(Uri.fromFile(it))
+                                .setMediaId(it.name)
+                                .setMediaMetadata(MediaMetadata
+                                    .Builder()
+                                    .setTitle(it.name)
+                                    .setIsBrowsable(isBrowsable)
+                                    .setIsPlayable(isPlayable)
+                                    .build())
+                                .build()
+                        } ?: emptyList()
+                    return Futures.immediateFuture(LibraryResult.ofItemList(children, params) )
+
+                }
 /*
                 override fun onAddMediaItems(
                     mediaSession: MediaSession,
@@ -174,10 +241,11 @@ class MyMediaService : MediaSessionService() {
         }
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? {
 
         return mediaSession
     }
+
 
 
 }
