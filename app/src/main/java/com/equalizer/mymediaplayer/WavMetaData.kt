@@ -28,6 +28,9 @@ class WavMetaData: ViewModel() {
     private var format: String? = null
     private var subChunk1ID: String? = null
     private var subChunk2ID: String? = null
+    private var _name = MutableLiveData("")
+    private var _imageArray : MutableLiveData<ByteArray> = MutableLiveData<ByteArray>(byteArrayOf())
+    private var _artist: MutableLiveData<String> = MutableLiveData("")
 
     val sampleRate: LiveData<Int>
         get() {
@@ -41,6 +44,21 @@ class WavMetaData: ViewModel() {
     val bitsPerSample: LiveData<Short>
         get() {
             return _bitsPerSample
+        }
+
+    val name: LiveData<String>
+        get() {
+            return _name
+        }
+
+    val imageArray: LiveData<ByteArray>
+        get() {
+            return _imageArray
+        }
+
+    val artist: LiveData<String>
+        get() {
+            return _artist
         }
 
     fun reset() {
@@ -72,6 +90,9 @@ class WavMetaData: ViewModel() {
     )  {
 
         if (file.name.endsWith(suffix="wav",ignoreCase = true)) {
+            _name.value=file.name
+            _imageArray.value = byteArrayOf()
+            _artist.value = ""
             FileInputStream(file).use { fileInputstream ->
                 var byteBuffer: ByteBuffer
                 for (i in numberOfBytes.indices) {
@@ -122,10 +143,17 @@ class WavMetaData: ViewModel() {
             }
         }
         else if (file.name.endsWith(suffix="mp3",ignoreCase = true)) {
-            val myMp3 = Mp3File(file)
-            _sampleRate.value=myMp3.sampleRate
-            _bitsPerSample.value = myMp3.bitrate.toShort()
-            _numChannels.value = 0.toShort()
+            Mp3File(file).apply {
+                Log.d("mp3File", "mimetype: ${id3v2Tag?.albumImageMimeType}")
+                Log.d("mp3File", "image: ${id3v2Tag?.albumImage?.take(100)?.joinToString()}")
+                _sampleRate.value = sampleRate
+                _bitsPerSample.value = bitrate.toShort()
+                _numChannels.value = 0.toShort()
+                _name.value = id3v2Tag?.title ?: id3v1Tag?.title ?: file.name
+                _numChannels.value = if (channelMode.contains("stereo",ignoreCase = true)) 2 else 1
+                _imageArray.value = id3v2Tag?.albumImage ?: byteArrayOf()
+                _artist.value=(id3v2Tag?.artist)?:(id3v2Tag?.albumArtist)?:(id3v1Tag?.artist)?:""
+            }
         }
 
     }

@@ -11,4 +11,6 @@
     <string name="upper_highs_4_8_khz">Upper highs (4–8 kHz)</string>
     <string name="air_8_khz_and_above">Air (8 kHz and above)</string>
     <string name="volumen_value">%.1f vol</string>
+    <string name="plus_button">+</string>
+    <string name="minus_button">-</string>
 </resources>

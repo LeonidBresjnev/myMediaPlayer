@@ -146,7 +146,7 @@ class MainActivity : ComponentActivity() {
                         showRationalDialog=false
                     }
 
-                    Column(modifier = Modifier.padding(innerPadding)) {
+                    Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
                         TabRow(
                             modifier = Modifier.weight(0.1f),
                             selectedTabIndex = selectedTabIndex

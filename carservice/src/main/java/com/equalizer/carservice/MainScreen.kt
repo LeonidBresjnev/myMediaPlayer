@@ -1,6 +1,5 @@
 package com.equalizer.carservice
 
-import android.content.ComponentName
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -16,18 +15,10 @@ import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.Template
-import androidx.core.content.ContextCompat.getString
 import androidx.core.graphics.drawable.IconCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
-import androidx.media3.common.Player
-import androidx.media3.common.VideoSize
-import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
-import androidx.media3.session.SessionToken
-import com.equalizer.common.MyMediaService
-import com.google.common.util.concurrent.ListenableFuture
-import com.google.common.util.concurrent.MoreExecutors
 import java.io.File
 import java.util.Locale
 import kotlin.math.max
@@ -41,22 +32,11 @@ class MyManager: CarHardwareManager {
 
 class MainScreen(
     carContext: CarContext,
+    val playControl: PlayControl
 ): Screen(carContext) {
 
-    private var mediaControllerFuture: ListenableFuture<MediaController>? = null
-    private lateinit var controller: MediaController
 
-    enum class Status {
-        PLAYING ,
-        PAUSED,
-        STOPPED
-    }
-
-
-    private var isPlaying = Status.PAUSED
-
-    init {
-   /*     val player0 = ExoPlayer
+    /*     val player0 = ExoPlayer
             .Builder(carContext)
             .build()
 
@@ -75,145 +55,49 @@ class MainScreen(
         player0.play()*/
 
 
-        val sessionToken = SessionToken(this.carContext, ComponentName(this.carContext, MyMediaService::class.java))
-
-
-        mediaControllerFuture = MediaController
-            .Builder(this.carContext, sessionToken)
-            .buildAsync()
-
-        mediaControllerFuture?.apply {
-            addListener({
-                controller = get()
-                controller.addListener(object : Player.Listener {
-                    override fun onIsPlayingChanged(isitplaying: Boolean) {
-                        log("is it playing = $isitplaying")
-                        isPlaying = if (isitplaying) {
-                            Status.PLAYING
-                        } else {
-                            if (controller.playWhenReady) Status.PAUSED
-                            else Status.STOPPED
-                        }
-                        invalidate()
-                        super.onIsPlayingChanged(isitplaying)
-                    }
-
-                    override fun onVideoSizeChanged(videoSize: VideoSize) {
-                        log("video size changed: ${videoSize.width}, ${videoSize.height}, ${videoSize.pixelWidthHeightRatio}")
-
-                        volPerFreq[videoSize.width] = videoSize.pixelWidthHeightRatio
-                        setVolPerFreqText(videoSize.width)
-                        invalidate()
-                        super.onVideoSizeChanged(videoSize)
-                    }
-
-
-                    override fun onVolumeChanged(volume: Float) {
-                        volPerFreq[currentInterval] = volume
-                        setVolPerFreqText(currentInterval)
-                        /*val interval=controller.sessionExtras.getInt("Interval")
-                        log("interval: $interval")*/
-                        invalidate()
-
-//                log((controller as Equalizer).getVolOnFreqs().joinToString(", "))
-                        super.onVolumeChanged(volume)
-                    }
-                    /*
-                                override fun onPlaybackStateChanged(playbackState: Int) {
-
-                                    when (playbackState) {
-                                        Player.STATE_IDLE -> {
-                                            log("Player is idle")
-                                        }
-
-                                        Player.STATE_BUFFERING -> {
-                                            log("Player is buffering")
-                                        }
-
-                                        Player.STATE_ENDED -> {
-                                            log("The player is finished")
-                                        }
-
-                                        Player.STATE_READY -> {
-                                            log("Player is ready")
-                                        }
-                                    }
-                                }*/
-
-
-                })
-            }, MoreExecutors.directExecutor())
-        }
-    }
-
-    private val frequencyLabels = listOf(
-        getString(carContext,R.string.sub_bass_0_125_hz) ,
-        getString(carContext,R.string.bass_125_250_hz),
-        getString(carContext,R.string.low_250_500_hz),
-        getString(carContext,R.string.low_mids_500_hz_1_khz),
-        getString(carContext,R.string.high_mids_1_khz_2_khz),
-        getString(carContext,R.string.high_2_4_khz),
-        getString(carContext,R.string.upper_highs_4_8_khz),
-        getString(carContext,R.string.air_8_khz_and_above)
-    )
-    private var currentInterval=0
+    private var currentInterval = 0
 
     private fun log(msg: String) {
         Log.d("Car Main Screen", msg)
     }
 
-    private fun playMedia(mediaItem: MediaItem) {
-
-        log("playbackState is ${controller.playbackState}, playwhenready=${controller.playWhenReady}")
-
-        when (controller.playbackState) {
-            Player.STATE_IDLE -> {
-                controller.addMediaItem(mediaItem)
-                controller.prepare()
-                controller.play()
-                log("player is prepared, and playing")
-            }
 
 
-            Player.STATE_BUFFERING -> {
-                log("Player is buffering")
-            }
-
-
-            Player.STATE_READY -> {
-                controller.play()
-                log("player is playing")
-            }
-
-            Player.STATE_ENDED -> {
-                log("The player is finished")
-                controller.addMediaItem(mediaItem)
-                controller.prepare()
-                controller.play()
-            }
-        }
-    }
-
-    private val volPerFreq= MutableList(8) { 1.0f}
-
-    private val intervalItems = MutableList<Item>(size=8) {
+    private val intervalItems = MutableList<Item>(size = 8) {
         Row.Builder()
-            .setTitle(frequencyLabels[it])
-            .addText("volume: ${String.format(Locale.GERMAN,"%.1f",volPerFreq[it])}")
+            .setTitle(playControl.frequencyLabels[it])
+            .addText("volume: ${String.format(Locale.GERMAN, "%.1f", playControl.volPerFreq[it])}")
 
             .build()
     }
+
 
 
     private fun setVolPerFreqText(activeRow: Int) {
+        log("setVolPerFreqText: $activeRow")
         intervalItems[activeRow] = Row.Builder()
-            .setTitle(frequencyLabels[activeRow])
-            .addText("volume: ${String.format(Locale.GERMAN,"%.1f",volPerFreq[activeRow])}")
+            .setTitle(playControl.frequencyLabels[activeRow])
+            .addText("volume: ${String.format(Locale.GERMAN,"%.1f",playControl.volPerFreq[activeRow])}")
             .build()
-
+        invalidate()
     }
+
     private val content = File(Environment.getExternalStorageDirectory(),"/Music")
         .listFiles()!!
+
+    private val mediaAction = Action.Builder()
+        .setIcon(CarIcon
+            .Builder(IconCompat.createWithResource(carContext, R.drawable.play_solid)
+                .setTint(CarColor.TYPE_RED))
+            .build())
+        .setOnClickListener {
+            this.screenManager.push(
+            TestScreen(
+                carContext = carContext
+            )
+        ) }
+        .setBackgroundColor(CarColor.RED)
+        .build()
 
     private val playPause = Action
         .Builder()
@@ -224,10 +108,10 @@ class MainScreen(
         .setOnClickListener {
 
             log("play clicked")
-            log("status is $isPlaying")
+            log("status is ${playControl.isPlaying}")
 
-            if (isPlaying==Status.PLAYING) {
-                controller.pause()
+            if (playControl.isPlaying==PlayControl.Status.PLAYING) {
+                playControl.controller.pause()
                 log("pause called")
                 return@setOnClickListener
             }
@@ -246,7 +130,7 @@ class MainScreen(
                             .setTitle(it.name)
                             .build()
                     ).build()
-              playMedia(myItem)
+              playControl.playMedia(myItem)
             }
         }
         .setBackgroundColor(CarColor.RED)
@@ -261,9 +145,9 @@ class MainScreen(
         .setOnClickListener {
 
             log("stop clicked")
-            log("status is ${Status.PLAYING}")
+            log("status is ${playControl.isPlaying}")
 
-            controller.pause()
+            playControl.controller.pause()
         }
         .setBackgroundColor(CarColor.RED)
         .build()
@@ -278,9 +162,10 @@ class MainScreen(
             .build()
         )
 
-        .setEnabled(volPerFreq[currentInterval]<2.0f)
+        .setEnabled(playControl.volPerFreq[currentInterval]<2.0f)
         .setOnClickListener {
-            val volumeInDb = min(2.0f,volPerFreq[currentInterval]+0.1f)
+            log("plus clicked")
+            val volumeInDb = min(2.0f,playControl.volPerFreq[currentInterval]+0.1f)
 
             setVolPerFreqText(currentInterval)
 
@@ -290,7 +175,7 @@ class MainScreen(
             }
             val customCommand = SessionCommand("setVolOnFreq", Bundle())
 
-            controller.sendCustomCommand(customCommand, extras)
+            playControl.controller.sendCustomCommand(customCommand, extras)
         }
         .build()
 
@@ -302,7 +187,7 @@ class MainScreen(
             .build()
         )
         .setOnClickListener {
-            val volumeInDb = max(0.0f,volPerFreq[currentInterval]-0.1f)
+            val volumeInDb = max(0.0f,playControl.volPerFreq[currentInterval]-0.1f)
             setVolPerFreqText(currentInterval)
 
             val extras = Bundle().apply {
@@ -312,11 +197,11 @@ class MainScreen(
 
             val customCommand = SessionCommand("setVolOnFreq", Bundle())
 
-            controller.sendCustomCommand(customCommand, extras)
+            playControl.controller.sendCustomCommand(customCommand, extras)
 
             invalidate()
         }
-        .setEnabled(volPerFreq[currentInterval]>0.0f)
+        .setEnabled(playControl.volPerFreq[currentInterval]>0.0f)
         .build()
 
     private val actionStrip = ActionStrip
@@ -328,17 +213,28 @@ class MainScreen(
 
     override fun onGetTemplate(): Template {
 
+        playControl.setInvalidate0 {
+            invalidate()
+        }
+
+        playControl.setVolPerFreqSetter0 { it->
+            setVolPerFreqText(it)
+        }
+
         val singleListBuilder = ItemList.Builder()
             .setSelectedIndex(currentInterval)
             .setOnSelectedListener {
                 log("item selected: $it")
                 currentInterval=it
+            }.apply {
+                intervalItems.forEach { this.addItem(it) }
             }
 
-        intervalItems.forEach { singleListBuilder.addItem(it) }
+
 
         //val itemList = ItemList.Builder().addItem(row).addItem(row).addItem(row).build()
         val singleList = singleListBuilder.build()
+
 
 
 
@@ -348,7 +244,8 @@ class MainScreen(
             .setActionStrip(actionStrip)
             .setSingleList(singleList)
             /*.addSectionedList(sectionedItemList)*/
-            .addAction(if (isPlaying!=Status.PLAYING) playPause else stopAction)
+            .addAction(if (playControl.isPlaying!= PlayControl.Status.PLAYING) playPause else stopAction)
+            .addAction(mediaAction)
             .build()
 
         /*

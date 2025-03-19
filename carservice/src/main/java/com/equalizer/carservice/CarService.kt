@@ -17,6 +17,8 @@ class CarService : CarAppService() {
     }
 
 
+
+
     override fun createHostValidator(): HostValidator {
         return HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
     }
@@ -32,8 +34,8 @@ class CarService : CarAppService() {
 
 
 
-
             override fun onCreateScreen(intent: Intent): Screen {
+                val playControl = PlayControl(carContext)
          /*       log( "onCreateSession1: ")
                 val player0 = ExoPlayer
                     .Builder(carContext)
@@ -70,8 +72,7 @@ class CarService : CarAppService() {
                 }*/
 
 
-
-                return MainScreen(carContext = this.carContext )
+                return MainScreen(carContext = this.carContext, playControl = playControl )
 
             }
 
