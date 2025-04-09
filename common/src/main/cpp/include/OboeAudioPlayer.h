@@ -13,6 +13,7 @@ namespace equalizer {
         int channelCount = oboe::ChannelCount::Mono;
 
         explicit OboeAudioPlayer(std::shared_ptr<AudioSource> source);
+
         ~OboeAudioPlayer();
 
         int32_t play(int32_t ,uint16_t ) override;

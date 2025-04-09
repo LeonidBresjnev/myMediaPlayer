@@ -27,7 +27,7 @@ namespace equalizer {
                         ->setDataCallback(this)
                                 // no other app should play back sound simultaneously
                         ->setSharingMode(SharingMode::Exclusive)
-                        ->setFormat(oboe::AudioFormat::I16 /*AudioFormat::I16*/)
+                        ->setFormat( AudioFormat::Float )
                         /*->setDeviceId((int32_t)300 )*/
                         ->setContentType(ContentType::Music)
                         ->setUsage(Usage::Media)
@@ -70,7 +70,7 @@ namespace equalizer {
         // memory block as an array of floats
         // WARNING: the sample format may differ from the requested one.
         // Please, refer to Oboe's documentation for details.
-        auto* floatData = reinterpret_cast<int16_t *>(audioData);
+        auto* floatData = reinterpret_cast<float *>(audioData);
 
         // Let's fill the array with samples.
         // This code works for any number of interleaved channels
@@ -82,6 +82,7 @@ namespace equalizer {
             for (auto channel = 0; channel < channelCount; ++channel) {
                 //const auto sample = _source->getSample();
                 auto sample = _source->getSample();
+                //LOGD("oboe sample: %f", sample);
                 floatData[frame * channelCount + channel] = sample;
             }
         }

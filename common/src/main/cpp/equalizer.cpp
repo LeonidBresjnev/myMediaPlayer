@@ -20,12 +20,13 @@ namespace equalizer {
 
 
 
-    void Equalizer::play(std::string fileName) {
+    void Equalizer::play(const std::string& fileName) {
 
-        _oscillator->load(fileName);
-        _isPlaying = true;
-        LOGD("play called");
-
+        const auto loadresult = _oscillator->load(fileName);
+        if (!loadresult) {
+            LOGD("Could not load file.");
+            return;
+        }
 
         int32_t samplingRate = _oscillator->getSampleRate();
         int32_t numChannels = _oscillator->getChannelCount();

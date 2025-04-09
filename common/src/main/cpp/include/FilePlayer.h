@@ -5,10 +5,10 @@
 #include "AudioSource.h"
 
 namespace equalizer {
-    class FilePlayer: public AudioSource {
+   /* class FilePlayer: public AudioSource {
     public:
         explicit FilePlayer();
-        int16_t getSample() override;
+        float getSample() override;
         //int16_t getSample(bool) ;
         void onPlaybackStopped() override;
 
@@ -25,5 +25,5 @@ namespace equalizer {
         uint16_t numChannels=0;
         int32_t currentSample=0;
 
-    };
+    };*/
 }
