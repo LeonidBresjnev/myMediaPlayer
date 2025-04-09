@@ -115,26 +115,26 @@ log("mystik")
 
 
                     /*
-                                                                override fun onPlaybackStateChanged(playbackState: Int) {
+                override fun onPlaybackStateChanged(playbackState: Int) {
 
-                                                                    when (playbackState) {
-                                                                        Player.STATE_IDLE -> {
-                                                                            log("Player is idle")
-                                                                        }
+                    when (playbackState) {
+                        Player.STATE_IDLE -> {
+                            log("Player is idle")
+                        }
 
-                                                                        Player.STATE_BUFFERING -> {
-                                                                            log("Player is buffering")
-                                                                        }
+                        Player.STATE_BUFFERING -> {
+                            log("Player is buffering")
+                        }
 
-                                                                        Player.STATE_ENDED -> {
-                                                                            log("The player is finished")
-                                                                        }
+                        Player.STATE_ENDED -> {
+                            log("The player is finished")
+                        }
 
-                                                                        Player.STATE_READY -> {
-                                                                            log("Player is ready")
-                                                                        }
-                                                                    }
-                                                                }*/
+                        Player.STATE_READY -> {
+                            log("Player is ready")
+                        }
+                    }
+                }*/
 
 
                 })

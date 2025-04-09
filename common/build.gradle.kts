@@ -19,6 +19,10 @@ android {
                 arguments += "-DANDROID_NATIVE_API_LEVEL=33"
             }
         }
+
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     buildTypes {
@@ -48,6 +52,8 @@ android {
     }
 }
 
+
+
 dependencies {
 
 
@@ -59,6 +65,7 @@ dependencies {
     implementation(libs.oboe)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
+    implementation(libs.mp3agic)
    // implementation(libs.material)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

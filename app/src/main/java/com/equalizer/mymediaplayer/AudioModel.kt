@@ -22,6 +22,20 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 
 class AudioModel: ViewModel() {
+    companion object {
+        private const val MEDIA_ITEM_ID_KEY = "MEDIA_ITEM_ID_KEY"
+/*
+        fun createIntent(context: Context, mediaItemID: String): Intent {
+            val intent = Intent(context, PlayableFolderActivity::class.java)
+            intent.putExtra(MEDIA_ITEM_ID_KEY, mediaItemID)
+            return intent
+        }*/
+    }
+
+    private fun log(message: String) {
+        Log.i("AudioModel", message)
+    }
+
     private val _volumenLow = MutableLiveData(List(8){1f})
 
     val volumenLow: LiveData<List<Float>>
@@ -48,12 +62,6 @@ class AudioModel: ViewModel() {
         }*/
     }
 
-    private val _playButtonLabel = MutableLiveData(R.string.play)
-
-    val playButtonLabel: LiveData<Int>
-        get() {
-            return _playButtonLabel
-        }
 
     private val _isPlaying = MutableLiveData(Status.STOPPED)
     val isPlaying: LiveData<Status>
@@ -66,6 +74,14 @@ class AudioModel: ViewModel() {
         PAUSED,
         STOPPED
     }
+
+
+    private val _subItemMediaList = MutableLiveData<List<MediaItem>>(emptyList())
+    val subItemMediaList : LiveData<List<MediaItem>>
+        get() {
+            return _subItemMediaList
+    }
+
 
     private var mediaControllerFuture: ListenableFuture<MediaBrowser>? = null
 
@@ -86,17 +102,16 @@ class AudioModel: ViewModel() {
         // Root node MediaItem is available here with rootFuture.get().value
     }, MoreExecutors.directExecutor())*/
 
-    private fun log(message: String) {
-        Log.i("AudioModel", message)
-
-    }
 
     private fun handlePlaybackBasedOnState() {
         /*if (controller.playbackState == Player.STATE_IDLE || controller.playbackState == Player.STATE_ENDED) {
             playMedia()
         } else */
+     //   libResult.addListener(object: )
+
 
         controller.addListener(object : Player.Listener {
+
             override fun onIsPlayingChanged(isitplaying: Boolean) {
                 log("is it playing = $isitplaying")
                 _isPlaying.value = if (isitplaying) {
@@ -163,15 +178,26 @@ class AudioModel: ViewModel() {
         mediaControllerFuture = MediaBrowser
             .Builder(context, sessionToken)
             .buildAsync()
+
         mediaControllerFuture?.apply {
             addListener({
                 controller = get()
                 log("before get root")
                 libResult = controller.getLibraryRoot(/* params= */ null)
 
-                libResult.addListener({
+
+                val childrenFuture = controller.getChildren(
+                    "root", 0, Int.MAX_VALUE, null)
+                val childrenResult = childrenFuture.get()
+                log("number of children ${childrenResult.value?.size?:"null"}")
+                log(childrenResult.value?.joinToString("\n") { it.mediaMetadata.title  ?:"-"}?:"null")
+                _subItemMediaList.value = childrenResult.value?:emptyList()
+                libResult.addListener( {
+
                     log("before call get")
                     val result=libResult.get()
+
+
                    // result.sessionError?.let { log(it.message) }
                     if (result == null) log("result is null")
                     if (result.value == null) log("result-value is null")
@@ -265,4 +291,26 @@ class AudioModel: ViewModel() {
         }
         controller.release()
     }
+/*
+    private fun displayFolder() {
+        val browser = this.controller ?: return
+        val id: String = intent.getStringExtra(MEDIA_ITEM_ID_KEY)!!
+        val mediaItemFuture = browser.getItem(id)
+        val childrenFuture =
+            browser.getChildren(id, /* page= */ 0, /* pageSize= */ Int.MAX_VALUE, /* params= */ null)
+        mediaItemFuture.addListener(
+            {
+                val result = mediaItemFuture.get()!!
+                val text = result.value!!.mediaMetadata.title
+            },
+            MoreExecutors.directExecutor()
+        )
+        childrenFuture.addListener(
+            {
+                val result = childrenFuture.get()!!
+                val subItemMediaList = result.value!!.toList()
+            },
+            MoreExecutors.directExecutor()
+        )
+    }*/
 }

@@ -1,8 +1,11 @@
 package com.equalizer.common
 
 import android.content.Intent
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
@@ -14,7 +17,6 @@ import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSession.MediaItemsWithStartPosition
 import androidx.media3.session.SessionCommand
-import androidx.media3.session.SessionCommands
 import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
@@ -30,10 +32,6 @@ class MyMediaService : MediaLibraryService() {
     private var mediaSession: MediaLibrarySession? = null
 
 
-    private val commands = SessionCommands
-        .Builder()
-        .add(SessionCommand.COMMAND_CODE_LIBRARY_GET_LIBRARY_ROOT)
-        .build()
     private val setVolOnFreq = SessionCommand("setVolOnFreq" , Bundle.EMPTY)
     private val getVolOnFreq = SessionCommand("getVolOnFreq" , Bundle.EMPTY)
 
@@ -41,7 +39,7 @@ class MyMediaService : MediaLibraryService() {
         Log.d("My Media Service", message)
     }
 
-    var currentlocation="storage/emulated/0/Music"
+    var currentlocation: String = Environment.getExternalStorageDirectory().absolutePath+"/Music"
 
     private var volPerFreq = List(8) { 1f }
     // Create your Player and MediaSession in the onCreate lifecycle event
@@ -62,10 +60,29 @@ class MyMediaService : MediaLibraryService() {
         player0.prepare()
         player0.play()*/
         val player = Equalizer(context=this)
-/*
-        val availableCommands = SessionCommands.Builder()
-            .add(SessionCommand.COMMAND_CODE_CUSTOM)
-            .build()*/
+      /*  val audioManager = this.getSystemService(AUDIO_SERVICE) as AudioManager
+        // Get available communication devices
+        val devices = audioManager.availableCommunicationDevices
+
+        log("devices:\n " + devices.joinToString("\n") { it.id.toString() + "  " + it.productName +" " + it.type})
+// Find Android Auto device (example: check for type or name)
+        val androidAutoDevice = devices.find {
+            it.type == AudioDeviceInfo.TYPE_REMOTE_SUBMIX
+        }
+        // Set the communication device
+        androidAutoDevice?.let { it->
+            val success = audioManager.setCommunicationDevice(it)
+            if (success) {
+                log("Audio routed to Android Auto")
+            } else {
+                log("Failed to route audio")
+            }
+        }?: log("No Android Auto device found")
+*/
+            /*
+                    val availableCommands = SessionCommands.Builder()
+                        .add(SessionCommand.COMMAND_CODE_CUSTOM)
+                        .build()*/
 
         mediaSession = MediaLibrarySession
             .Builder(this, player,object: MediaLibrarySession.Callback {
@@ -88,6 +105,25 @@ class MyMediaService : MediaLibraryService() {
                     )
                 }*/
 
+
+
+                override fun onSetMediaItems(
+                    mediaSession: MediaSession,
+                    controller: MediaSession.ControllerInfo,
+                    mediaItems: List<MediaItem>,
+                    startIndex: Int,
+                    startPositionMs: Long
+                ): ListenableFuture<MediaItemsWithStartPosition> {
+                    return super.onSetMediaItems(
+                        mediaSession,
+                        controller,
+                        mediaItems,
+                        startIndex,
+                        startPositionMs
+                    )
+                }
+
+
                 override fun onConnect(
                     session: MediaSession,
                     controller: MediaSession.ControllerInfo
@@ -100,6 +136,7 @@ class MyMediaService : MediaLibraryService() {
                                 .add(setVolOnFreq)
                                 .add(getVolOnFreq)
                                 .add(SessionCommand.COMMAND_CODE_LIBRARY_GET_LIBRARY_ROOT)
+                                .add(SessionCommand.COMMAND_CODE_LIBRARY_GET_CHILDREN)
                                 .build()
                         )
                         .build()
@@ -116,7 +153,7 @@ class MyMediaService : MediaLibraryService() {
                         LibraryResult.ofItem(MediaItem
                             .Builder()
                             .setUri(Uri.fromFile(
-                                File("/storage/emulated/0/Music/")))
+                                Environment.getExternalStorageDirectory()))
                             .setMediaId("root")
                             .setMediaMetadata(MediaMetadata
                                 .Builder()
@@ -127,6 +164,14 @@ class MyMediaService : MediaLibraryService() {
                             .build(), params))
                 }
 
+                override fun onGetItem(
+                    session: MediaLibrarySession,
+                    browser: MediaSession.ControllerInfo,
+                    mediaId: String
+                ): ListenableFuture<LibraryResult<MediaItem>> {
+                    return super.onGetItem(session, browser, mediaId)
+                }
+
                 override fun onGetChildren(
                     session: MediaLibrarySession,
                     browser: MediaSession.ControllerInfo,
@@ -135,25 +180,38 @@ class MyMediaService : MediaLibraryService() {
                     pageSize: Int,
                     params: LibraryParams?,
                 ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+                    log("onGetChildren")
                     val currentDir = File(currentlocation)
                     val children : List<MediaItem> = currentDir.listFiles()
-                        ?.map {
-                            val isBrowsable=it.isDirectory
+                        ?.mapIndexed { idx,it ->
+                            val musicMeta = if (it.isFile &&
+                                (it.name.endsWith(suffix = "mp3", ignoreCase = true) ||
+                                        it.name.endsWith(suffix = "wav", ignoreCase = true)    )) {
+                                MusicMeta(it)
+                            } else null
+
+
                             val isPlayable = it.isFile &&
-                                    (it.name.endsWith(suffix = "mp3", ignoreCase = false)
-                                            || it.name.endsWith(suffix = "wav", ignoreCase = false))
+                                    (it.name.endsWith(suffix = "mp3", ignoreCase = true)
+                                            || it.name.endsWith(suffix = "wav", ignoreCase = true))
                             MediaItem
                                 .Builder()
                                 .setUri(Uri.fromFile(it))
-                                .setMediaId(it.name)
+                                .setMediaId(idx.toString())
                                 .setMediaMetadata(MediaMetadata
                                     .Builder()
-                                    .setTitle(it.name)
-                                    .setIsBrowsable(isBrowsable)
+                                    .setArtist(musicMeta?._artist    )
+
+                                    .setTrackNumber(musicMeta?.track)
+                                    .setTitle(musicMeta?._name?:it.name)
+                                    .setIsBrowsable(it.isDirectory)
+                                    .setTotalDiscCount(musicMeta?._sampleRate)
+                                    .setReleaseMonth(musicMeta?._numChannels?.toInt())
                                     .setIsPlayable(isPlayable)
                                     .build())
                                 .build()
                         } ?: emptyList()
+
                     return Futures.immediateFuture(LibraryResult.ofItemList(children, params) )
 
                 }
@@ -203,6 +261,8 @@ class MyMediaService : MediaLibraryService() {
         mediaSession?.sessionExtras=Bundle().apply {
             putInt("Interval", 123)
         }
+
+
 /*
         player.addListener(object : Player.Listener {
 
@@ -245,6 +305,7 @@ class MyMediaService : MediaLibraryService() {
 
         return mediaSession
     }
+
 
 
 

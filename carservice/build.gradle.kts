@@ -43,6 +43,7 @@ dependencies {
     implementation(libs.androidx.media3.session)
     implementation(libs.androidx.media3.exoplayer)
 
+    implementation(libs.mp3agic)
    // implementation (libs.koin.android)
     //implementation (libs.koin.androidx.workmanager) // For WorkManager
 

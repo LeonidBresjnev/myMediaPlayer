@@ -222,7 +222,8 @@ class Equalizer(
     private var playWhenReady=false
 
     private fun createDeviceInfo(): DeviceInfo {
-        return DeviceInfo.Builder(DeviceInfo.PLAYBACK_TYPE_LOCAL)
+        return DeviceInfo
+            .Builder(DeviceInfo.PLAYBACK_TYPE_LOCAL)
             .build()
     }
 

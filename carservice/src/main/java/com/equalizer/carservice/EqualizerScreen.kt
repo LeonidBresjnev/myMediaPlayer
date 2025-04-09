@@ -1,8 +1,6 @@
 package com.equalizer.carservice
 
-import android.net.Uri
 import android.os.Bundle
-import android.os.Environment
 import android.util.Log
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
@@ -16,10 +14,7 @@ import androidx.car.app.model.ListTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.Template
 import androidx.core.graphics.drawable.IconCompat
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
 import androidx.media3.session.SessionCommand
-import java.io.File
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
@@ -30,7 +25,7 @@ class MyManager: CarHardwareManager {
 
 }*/
 
-class MainScreen(
+class EqualizerScreen(
     carContext: CarContext,
     val playControl: PlayControl
 ): Screen(carContext) {
@@ -81,76 +76,6 @@ class MainScreen(
             .build()
         invalidate()
     }
-
-    private val content = File(Environment.getExternalStorageDirectory(),"/Music")
-        .listFiles()!!
-
-    private val mediaAction = Action.Builder()
-        .setIcon(CarIcon
-            .Builder(IconCompat.createWithResource(carContext, R.drawable.play_solid)
-                .setTint(CarColor.TYPE_RED))
-            .build())
-        .setOnClickListener {
-            this.screenManager.push(
-            TestScreen(
-                carContext = carContext
-            )
-        ) }
-        .setBackgroundColor(CarColor.RED)
-        .build()
-
-    private val playPause = Action
-        .Builder()
-        .setIcon(CarIcon
-            .Builder(IconCompat.createWithResource(carContext, R.drawable.play_solid)
-                .setTint(CarColor.TYPE_RED))
-            .build())
-        .setOnClickListener {
-
-            log("play clicked")
-            log("status is ${playControl.isPlaying}")
-
-            if (playControl.isPlaying==PlayControl.Status.PLAYING) {
-                playControl.controller.pause()
-                log("pause called")
-                return@setOnClickListener
-            }
-
-
-            val file = content[0]
-            log("file: $file")
-            file?.let {
-                val myItem = MediaItem
-                    .Builder()
-                    .setMediaId("media-1")
-                    .setUri(Uri.fromFile(file))
-                    .setMediaMetadata(
-                        MediaMetadata.Builder()
-                            .setArtist("David Bowie")
-                            .setTitle(it.name)
-                            .build()
-                    ).build()
-              playControl.playMedia(myItem)
-            }
-        }
-        .setBackgroundColor(CarColor.RED)
-        .build()
-
-    private val stopAction = Action
-        .Builder()
-        .setIcon(CarIcon
-            .Builder(IconCompat.createWithResource(carContext, R.drawable.stopplay )
-                .setTint(CarColor.TYPE_RED))
-            .build())
-        .setOnClickListener {
-
-            log("stop clicked")
-            log("status is ${playControl.isPlaying}")
-
-            playControl.controller.pause()
-        }
-        .setBackgroundColor(CarColor.RED)
-        .build()
 
     private val actionPlus = Action
         .Builder()
@@ -210,6 +135,11 @@ class MainScreen(
         .addAction(actionPlus)
         .build()
 
+    init {
+        playControl.setVolPerFreqSetter0 { it->
+            setVolPerFreqText(it)
+        }
+    }
 
     override fun onGetTemplate(): Template {
 
@@ -217,9 +147,7 @@ class MainScreen(
             invalidate()
         }
 
-        playControl.setVolPerFreqSetter0 { it->
-            setVolPerFreqText(it)
-        }
+
 
         val singleListBuilder = ItemList.Builder()
             .setSelectedIndex(currentInterval)
@@ -240,12 +168,12 @@ class MainScreen(
 
 
         return ListTemplate.Builder()
+            .setHeaderAction(Action.BACK)
             .setTitle("Equalizer")
             .setActionStrip(actionStrip)
             .setSingleList(singleList)
             /*.addSectionedList(sectionedItemList)*/
-            .addAction(if (playControl.isPlaying!= PlayControl.Status.PLAYING) playPause else stopAction)
-            .addAction(mediaAction)
+
             .build()
 
         /*

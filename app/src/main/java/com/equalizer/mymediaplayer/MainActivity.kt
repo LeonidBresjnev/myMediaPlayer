@@ -92,11 +92,10 @@ class MainActivity : ComponentActivity() {
                 TabRowItem(
                     title = "Media browser",
                     screen = {
-                        FileSelection(modifier=Modifier
-                            /* .border(width = 2.dp, color = Color.Black)*/,
+                        FileSelection(modifier=Modifier,
                             wavData=wavData,
-                            onSelect = { file -> selectedFile = file
-                                // Log.d("Selected file", selectedFile?.name?:"null")
+                            onSelect = { file ->
+                                selectedFile = file
                             } )
                     },
                     selectedIcon = Icons.AutoMirrored.Filled.List,
@@ -110,6 +109,18 @@ class MainActivity : ComponentActivity() {
                     )},
                     selectedIcon = Icons.AutoMirrored.Filled.QueueMusic,
                     unselectedIcon = Icons.AutoMirrored.Outlined.QueueMusic
+                ),
+                TabRowItem(
+                    title = "test browser",
+                    screen = {
+                        MediaBrowserScreen(modifier=Modifier,
+                            audioModel=audioModel,
+                            onSelect = { file ->
+                                selectedFile = file
+                            } )
+                    },
+                    selectedIcon = Icons.AutoMirrored.Filled.List,
+                    unselectedIcon = Icons.AutoMirrored.Outlined.List
                 )
             )
             val pagerState = rememberPagerState {
@@ -234,6 +245,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+
 @Composable
 fun ProjectionState(carConnectionType: Int, modifier: Modifier = Modifier) {
     val text = when (carConnectionType) {

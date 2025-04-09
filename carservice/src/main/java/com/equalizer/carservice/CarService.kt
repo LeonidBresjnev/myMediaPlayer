@@ -1,6 +1,8 @@
 package com.equalizer.carservice
 
 import android.content.Intent
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.car.app.CarAppService
@@ -29,13 +31,40 @@ class CarService : CarAppService() {
 
 
 
-
         return object : Session() {
 
 
 
             override fun onCreateScreen(intent: Intent): Screen {
-                val playControl = PlayControl(carContext)
+             /*   val audioManager: AudioManager =  carContext.getSystemService(AUDIO_SERVICE) as (AudioManager)
+                val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                Log.d("audio device","antal device: ${devices.size}")
+                for (device in devices) {
+                    // Set the audio output to the car's audio system
+
+                    Log.d(
+                        "audio device",
+                        " ${device.id}, ${device.type}, ${device.productName}, ${
+                            device.sampleRates.joinToString(";")
+                        }"
+                    )
+
+                }
+                val androidAutoDevice: AudioDeviceInfo? = devices.find {
+                    it.type == AudioDeviceInfo.TYPE_TELEPHONY
+                }
+                // Set the communication device
+                androidAutoDevice?.let { it->
+                    val success = audioManager.setCommunicationDevice(it)
+                    if (success) {
+                        log("Audio routed to Android Auto")
+                    } else {
+                        log("Failed to route audio")
+                    }
+                }?: log("No Android Auto device found")
+*/
+
+                    val playControl = PlayControl(carContext)
          /*       log( "onCreateSession1: ")
                 val player0 = ExoPlayer
                     .Builder(carContext)
@@ -72,7 +101,7 @@ class CarService : CarAppService() {
                 }*/
 
 
-                return MainScreen(carContext = this.carContext, playControl = playControl )
+                return MediaScreen(carContext = this.carContext, playControl = playControl )
 
             }
 
