@@ -1,6 +1,10 @@
 package com.equalizer.mymediaplayer
 
+import android.content.Context
 import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
+
+import android.net.Uri
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -11,6 +15,8 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.equalizer.common.metadata.MetaFactory
+import com.equalizer.common.metadata.MusicMetaInterface
 import com.mpatric.mp3agic.Mp3File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -20,6 +26,7 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+
 
 class WavMetaData: ViewModel() {
     private var type: IntArray = intArrayOf(0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1)
@@ -42,19 +49,13 @@ class WavMetaData: ViewModel() {
     private var _imageArray : MutableLiveData<ByteArray> = MutableLiveData<ByteArray>(byteArrayOf())
     private var _artist: MutableLiveData<String> = MutableLiveData("")
 
-    val sampleRate: LiveData<Int>
+    private var _myMeta: MutableLiveData<MusicMetaInterface?> = MutableLiveData<MusicMetaInterface?>(null)
+    val myMeta: LiveData<MusicMetaInterface?>
         get() {
-            return _sampleRate
-        }
-    val numChannels: LiveData<Short>
-        get() {
-            return _numChannels
+            return _myMeta
         }
 
-    val bitsPerSample: LiveData<Short>
-        get() {
-            return _bitsPerSample
-        }
+
 
     val name: LiveData<String>
         get() {
@@ -66,10 +67,6 @@ class WavMetaData: ViewModel() {
             return _imageArray
         }
 
-    val artist: LiveData<String>
-        get() {
-            return _artist
-        }
 
     private val _imageBitmap = MutableLiveData<ImageBitmap?>(null)
     val imageBitmap: LiveData<ImageBitmap?>
@@ -104,8 +101,9 @@ class WavMetaData: ViewModel() {
 
     @Throws(IOException::class)
     fun readingAudioFile(
-        file: File,
-    )  {
+        file: File, context: Context
+    )  {    _myMeta.value = MetaFactory.createMeta(file = file, context = context)
+
             if (file.name.endsWith(suffix = "wav", ignoreCase = true)) {
                 _name.value = file.name
                 _imageArray.value = byteArrayOf()
@@ -168,15 +166,14 @@ class WavMetaData: ViewModel() {
                         mp3File.apply {
                             Log.d("mp3File", "mimetype: ${id3v2Tag?.albumImageMimeType}")
                             Log.d("mp3File", "image: ${id3v2Tag?.albumImage?.take(100)?.joinToString()}")
+
+                            _artist.value =  (id3v2Tag?.artist) ?: (id3v2Tag?.albumArtist) ?: (id3v1Tag?.artist) ?: ""
                             _sampleRate.value = sampleRate
                             _bitsPerSample.value = bitrate.toShort()
                             _numChannels.value = 0.toShort()
                             _name.value = id3v2Tag?.title ?: id3v1Tag?.title ?: file.name
-                            _numChannels.value =
-                                if (channelMode.contains("stereo", ignoreCase = true)) 2 else 1
+                            _numChannels.value = if (channelMode.contains("stereo", ignoreCase = true)) 2 else 1
                             _imageArray.value = id3v2Tag?.albumImage ?: byteArrayOf()
-                            _artist.value =
-                                (id3v2Tag?.artist) ?: (id3v2Tag?.albumArtist) ?: (id3v1Tag?.artist) ?: ""
 
                             _imageBitmap.value = withContext(Dispatchers.IO) {
                                 val bitmap = BitmapFactory.decodeByteArray(
@@ -187,12 +184,39 @@ class WavMetaData: ViewModel() {
 
                                 // Convert the Bitmap to an ImageBitmap
                                 return@withContext bitmap?.asImageBitmap()
-
-                        }
+                            }
                             isLoading = false
+                        }
                     }
-                }
+            } else if (file.name.endsWith(suffix = "m4a", ignoreCase = true)) {
+                Log.d("m4aFile", "m4aFile")
+                viewModelScope.launch {
+                    isLoading = true
 
+                    val metadataRetriever = MediaMetadataRetriever()
+                    withContext(Dispatchers.IO) {
+                        try {
+                            metadataRetriever.setDataSource(context, Uri.fromFile(file))
+                        } catch (e: Exception) {
+                            // Handle exceptions like file not found, unreadable, etc.
+                            e.printStackTrace()
+                            null
+                        } finally {
+                        }
+                    }
+
+                    // Extract common metadata
+                    _name.value = metadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) ?: ""
+                    Log.d("m4aFile", "title: ${_name.value}")
+                    _artist.value = metadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: ""
+                    val album = metadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
+                    _sampleRate.value = metadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)?.toInt() ?: 0
+                    _numChannels.value =  0
+
+                    metadataRetriever.release()
+                    isLoading = false
+
+                }
             }
     }
 }

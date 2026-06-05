@@ -1,8 +1,7 @@
 package com.equalizer.mymediaplayer
 
+import android.content.Context
 import android.os.Environment
-import android.os.Parcel
-import android.os.Parcelable
 import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -34,8 +33,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.equalizer.common.metadata.M4aMeta
+import com.equalizer.common.metadata.Mp3Meta
+import com.equalizer.common.metadata.WavMeta
 import com.mpatric.mp3agic.Mp3File
 import java.io.File
+
 /*
 class Mp3File(file: File) : Mp3File(file), Parcelable {
     override fun describeContents(): Int {
@@ -58,7 +61,8 @@ class Mp3File(file: File) : Mp3File(file), Parcelable {
 @Composable
 fun FileSelection(modifier: Modifier=Modifier,
                   wavData: WavMetaData,
-                  onSelect: (File?) -> Unit = {}) {
+                  onSelect: (File?) -> Unit = {},
+                  context: Context) {
 
 
     var currentDir by rememberSaveable {
@@ -116,12 +120,9 @@ fun FileSelection(modifier: Modifier=Modifier,
     }
 
 
-    val title = wavData.name.observeAsState()
-    val artist = wavData.artist.observeAsState()
-    val sampleRate = wavData.sampleRate.observeAsState()
-    val numChannels = wavData.numChannels.observeAsState()
-    val bitsPerSample = wavData.bitsPerSample.observeAsState()
     val imageBitmap = wavData.imageBitmap.observeAsState()
+
+    val myMeta = wavData.myMeta.observeAsState()
 
     Column(modifier=modifier
         .fillMaxSize()
@@ -130,7 +131,8 @@ fun FileSelection(modifier: Modifier=Modifier,
         LazyColumn (modifier = Modifier.weight(0.6f)) {
             itemsIndexed(items=files.filter { it.isDirectory ||
                     it.name.endsWith(".wav",ignoreCase = true) ||
-                    it.name.endsWith(".mp3",ignoreCase = true) },
+                    it.name.endsWith(".mp3",ignoreCase = true) ||
+                    it.name.endsWith(".m4a",ignoreCase = true) },
                 key = { _, file -> file.absolutePath }
            ) { idx, file ->
                 /*val mp3Info = if (file.name.endsWith(
@@ -154,18 +156,13 @@ fun FileSelection(modifier: Modifier=Modifier,
                             } else {
                                 selectedFile = idx
                                 if ((selectedFile >= 0) &&
-                                    (files[selectedFile].name.endsWith(
-                                        ".wav",
-                                        ignoreCase = true
-                                    ) == true ||
-                                            files[selectedFile].name.endsWith(
-                                                ".mp3",
-                                                ignoreCase = true
-                                            ) == true)
+                                    (files[selectedFile].name.endsWith(".wav", ignoreCase = true) == true ||
+                                            files[selectedFile].name.endsWith(".mp3",ignoreCase = true) == true ||
+                                            files[selectedFile].name.endsWith(".m4a",ignoreCase = true) == true)
                                 ) {
 
                                     //coroutineScope.launch {
-                                        wavData.readingAudioFile(File(files[selectedFile].absolutePath))
+                                        wavData.readingAudioFile(File(files[selectedFile].absolutePath), context)
                                     //}
                                     onSelect(File(files[selectedFile].absolutePath))
                                 } else {
@@ -221,27 +218,68 @@ fun FileSelection(modifier: Modifier=Modifier,
                 modifier = Modifier.weight(0.4f),
                 verticalArrangement = Arrangement.Center
             ) {
-                Row(Modifier.weight(0.2f)) {
-                    Text(
-                        modifier = Modifier.weight(0.6f),
-                        text = """File info
-                        
-Name: ${title.value ?: ""}
-Artist: ${artist.value ?: ""}
-Sample Rate: ${sampleRate.value!!}
-Channels: ${numChannels.value!!}
-Bit depth: ${bitsPerSample.value!!}
+                //if (myMeta.value != null) Text(text= myMeta.value!!::class.simpleName.toString())
+                if (myMeta.value is Mp3Meta ) {
+                    (myMeta.value as Mp3Meta).also {
+                        Row {
+                            Text(
+                                modifier = Modifier.weight(0.6f),
+                                text = """File info                        
+Name: ${it.name}      
+Artist: ${it.artist}
+Sample Rate: ${it.sampleRate}
+Channels: ${it.numChannels}
                 """.trimMargin()
-                    )
+                            )
 
-                    if (imageBitmap.value != null) {
+                            if (imageBitmap.value != null) {
+                                Image(
+                                    bitmap = imageBitmap.value!!,
+                                    contentDescription = "Image from ByteArray",
+                                    modifier = Modifier.weight(0.4f)
+                                        .size(100.dp) // Adjust size as needed
+                                )
 
-                        Image(
-                            bitmap = imageBitmap.value!!,
-                            contentDescription = "Image from ByteArray",
-                            modifier = Modifier.weight(0.4f).size(100.dp) // Adjust size as needed
+                            }
+                        }
+                    }
+
+                }
+                else if (myMeta.value is M4aMeta ) {
+                    (myMeta.value as M4aMeta).also {
+                        Row {
+                            Text(
+                                modifier = Modifier.weight(0.6f),
+                                text = """File info                        
+Name: ${it.name}      
+Artist: ${it.artist}
+Sample Rate: ${it.sampleRate}
+Channels: ${it.numChannels}
+                """.trimMargin()
+                            )
+
+                            if (imageBitmap.value != null) {
+                                Image(
+                                    bitmap = imageBitmap.value!!,
+                                    contentDescription = "Image from ByteArray",
+                                    modifier = Modifier.weight(0.4f)
+                                        .size(100.dp) // Adjust size as needed
+                                )
+
+                            }
+                        }
+                    }
+
+                } else if (myMeta.value is WavMeta) {
+                    (myMeta.value as WavMeta).also {
+                        Text(
+                            modifier = Modifier.weight(0.6f),
+                            text = """File info     
+Sample Rate: ${it.sampleRate}
+Channels: ${it.numChannels}
+Byterate: ${it.byteRate}
+                """.trimMargin()
                         )
-
                     }
                 }
             }

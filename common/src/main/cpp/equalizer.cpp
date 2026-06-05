@@ -28,8 +28,8 @@ namespace equalizer {
             return;
         }
 
-        int32_t samplingRate = _oscillator->getSampleRate();
-        int32_t numChannels = _oscillator->getChannelCount();
+        const int32_t samplingRate = _oscillator->getSampleRate();
+        const int32_t numChannels = _oscillator->getChannelCount();
         LOGD("sampleRate=%d", samplingRate);
 
         _filterSource->setFilter(samplingRate,numChannels);

@@ -7,6 +7,7 @@ import androidx.car.app.annotations.ExperimentalCarApi
 import androidx.car.app.model.Action
 import androidx.car.app.model.Action.APP_ICON
 import androidx.car.app.model.CarIcon
+import androidx.car.app.model.Header
 import androidx.car.app.model.MessageTemplate
 import androidx.car.app.model.Tab
 import androidx.car.app.model.TabContents
@@ -68,8 +69,13 @@ class TabScreen(carContext: CarContext) : Screen(carContext) {
 class TestScreen(carContext: CarContext) : Screen(carContext) {
     @OptIn(ExperimentalCarApi::class)
     override fun onGetTemplate(): Template {
-        return MessageTemplate.Builder("Test Screen")
-            .setHeaderAction(Action.BACK)
+        val header = Header.Builder()
+        .setStartHeaderAction(Action.BACK) // Set the back button here
+        .setTitle("Test Screen")           // Move the title here if needed
+        .build()
+
+        return MessageTemplate.Builder("Message body text here")
+            .setHeader(header)
             .build()
     }
 

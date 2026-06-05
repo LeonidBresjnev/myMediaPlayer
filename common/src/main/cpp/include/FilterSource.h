@@ -6,6 +6,7 @@
 
 #include "FilterElement.h"
 #include <complex>
+
 using Complex = std::complex<double>;
 namespace equalizer {
 

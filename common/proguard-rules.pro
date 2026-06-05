@@ -19,3 +19,9 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+-keep class com.equalizer.common.metadata.M4aMeta { *; }
+-keep class com.equalizer.common.metadata.MetaFactory  { *; }
+-keep class com.equalizer.common.metadata.Mp3Meta { *; }
+-keep class com.equalizer.common.metadata.MusicMetaInterface  { *; }
+-keep class com.equalizer.common.metadata.WavMeta  { *; }

@@ -26,7 +26,10 @@ class PlayControl( carContext: CarContext) {
         STOPPED
     }
 
-    val sessionToken = SessionToken(carContext, ComponentName(carContext, MyMediaService::class.java))
+    val sessionToken = SessionToken(
+        carContext,
+        ComponentName(carContext, MyMediaService::class.java)
+    )
 
     private var mediaControllerFuture: ListenableFuture<MediaController> = MediaController
         .Builder(carContext, sessionToken)

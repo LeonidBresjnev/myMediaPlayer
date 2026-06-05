@@ -5,9 +5,10 @@ import android.util.Log
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
-import androidx.car.app.model.ActionStrip
+//import androidx.car.app.model.ActionStrip
 import androidx.car.app.model.CarColor
 import androidx.car.app.model.CarIcon
+import androidx.car.app.model.Header
 import androidx.car.app.model.Item
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
@@ -128,15 +129,15 @@ class EqualizerScreen(
         }
         .setEnabled(playControl.volPerFreq[currentInterval]>0.0f)
         .build()
-
+/*
     private val actionStrip = ActionStrip
         .Builder()
         .addAction(actionMinus)
         .addAction(actionPlus)
-        .build()
+        .build()*/
 
     init {
-        playControl.setVolPerFreqSetter0 { it->
+        playControl.setVolPerFreqSetter0 {
             setVolPerFreqText(it)
         }
     }
@@ -163,17 +164,21 @@ class EqualizerScreen(
         //val itemList = ItemList.Builder().addItem(row).addItem(row).addItem(row).build()
         val singleList = singleListBuilder.build()
 
+        // 1. Create the Header object
+        val header = Header.Builder()
+            .setStartHeaderAction(Action.BACK) // Replaces setHeaderAction
+            .setTitle("Equalizer")             // Replaces setTitle on the Template
+            .addEndHeaderAction(actionMinus)
+            .addEndHeaderAction(actionPlus)
+            .build()
 
 
 
-
+        // 2. Build the template using setHeader
         return ListTemplate.Builder()
-            .setHeaderAction(Action.BACK)
-            .setTitle("Equalizer")
-            .setActionStrip(actionStrip)
+            .setHeader(header)                 // Pass the new header object here
+            //.setActionStrip(actionStrip)
             .setSingleList(singleList)
-            /*.addSectionedList(sectionedItemList)*/
-
             .build()
 
         /*

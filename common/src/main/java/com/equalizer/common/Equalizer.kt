@@ -24,13 +24,14 @@ import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
-import androidx.media3.common.util.Assertions
+//import androidx.media3.common.util.Assertions
 import androidx.media3.common.util.Clock
 import androidx.media3.common.util.ListenerSet
 import androidx.media3.common.util.Log
 import androidx.media3.common.util.Size
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util.getCurrentOrMainLooper
+import com.google.common.base.Preconditions
 import java.io.File
 
 
@@ -252,7 +253,7 @@ class Equalizer(
 
     override fun removeListener(listener: Player.Listener) {
         log("remove listener")
-        listeners.remove(Assertions.checkNotNull(listener))
+        listeners.remove(Preconditions.checkNotNull(listener))
     }
 
     override fun setMediaItems(mediaItems: List<MediaItem>,
@@ -380,7 +381,7 @@ class Equalizer(
         TODO("Not yet implemented")
     }
 
-    override fun getTrackSelectionParameters(): TrackSelectionParameters = TrackSelectionParameters.getDefaults(context)
+    override fun getTrackSelectionParameters(): TrackSelectionParameters = TrackSelectionParameters.DEFAULT
 
 
     override fun setTrackSelectionParameters(parameters: TrackSelectionParameters) {
@@ -456,6 +457,13 @@ class Equalizer(
     }
 
     override fun getVolume(): Float = volPerFreq[0]
+    override fun mute() {
+        TODO("Not yet implemented")
+    }
+
+    override fun unmute() {
+        TODO("Not yet implemented")
+    }
 
     override fun clearVideoSurface() {
         TODO("Not yet implemented")

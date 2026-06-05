@@ -6,6 +6,7 @@
 
     <application>
 
+        <profileable android:shell="true" />
         <service
             android:name=".MyMediaService"
             android:foregroundServiceType="mediaPlayback"

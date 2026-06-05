@@ -1,3 +1,4 @@
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
@@ -5,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.equalizer.common"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 33
@@ -17,6 +18,7 @@ android {
                 cppFlags += "-std=c++2a"
                 arguments += "-DANDROID_STL=c++_shared"
                 arguments += "-DANDROID_NATIVE_API_LEVEL=33"
+                arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
             }
         }
 
@@ -27,7 +29,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+
+            // Enables resource shrinking.
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -37,9 +42,17 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
-    }
+    }/*
     kotlinOptions {
         jvmTarget = "11"
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+        }
+    }*/
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+        }
     }
     buildFeatures {
         prefab = true

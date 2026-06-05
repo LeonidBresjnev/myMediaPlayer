@@ -1,15 +1,18 @@
 package com.equalizer.carservice
 
 import android.content.Intent
-import android.media.AudioDeviceInfo
-import android.media.AudioManager
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.car.app.CarAppService
 import androidx.car.app.Screen
 import androidx.car.app.Session
 import androidx.car.app.validation.HostValidator
+import androidx.core.net.toUri
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
 
 @OptIn(UnstableApi::class)
 class CarService : CarAppService() {
@@ -29,40 +32,83 @@ class CarService : CarAppService() {
         //getCarAppApiLevels
 
 
-
-
         return object : Session() {
+            /*
+            private lateinit var mediaSession: MediaSessionCompat
+            init {
+                log("init")
+                val observer = LifecycleEventObserver { _, event ->
+                    mediaSession = MediaSessionCompat(
+                        carContext,
+                        "MyCarAppMediaSession" // A unique tag for debugging
+                    )
+                    mediaSession.isActive = true // Make the session active
+
+                    val token = mediaSession.sessionToken
+                    (carContext.getCarService(CarContext.MEDIA_PLAYBACK_SERVICE) as MediaPlaybackManager)
+                        .registerMediaPlaybackToken(token)
+                }
+                lifecycle.addObserver(observer
+
+                )
+            }*/
 
 
 
             override fun onCreateScreen(intent: Intent): Screen {
-             /*   val audioManager: AudioManager =  carContext.getSystemService(AUDIO_SERVICE) as (AudioManager)
-                val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-                Log.d("audio device","antal device: ${devices.size}")
-                for (device in devices) {
-                    // Set the audio output to the car's audio system
+/*
+                val session = MediaSessionCompat(this, "session tag").apply {
+                    // Set a callback object that implements MediaSession.Callback
+                    // to handle play control requests.
+                    setCallback(MyMediaSessionCallback())
+                }*/
 
-                    Log.d(
-                        "audio device",
-                        " ${device.id}, ${device.type}, ${device.productName}, ${
-                            device.sampleRates.joinToString(";")
-                        }"
-                    )
 
-                }
-                val androidAutoDevice: AudioDeviceInfo? = devices.find {
-                    it.type == AudioDeviceInfo.TYPE_TELEPHONY
-                }
-                // Set the communication device
-                androidAutoDevice?.let { it->
-                    val success = audioManager.setCommunicationDevice(it)
-                    if (success) {
-                        log("Audio routed to Android Auto")
-                    } else {
-                        log("Failed to route audio")
-                    }
-                }?: log("No Android Auto device found")
-*/
+                val audioAttributes = AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .build()
+
+                val player = ExoPlayer.Builder(carContext)
+                    .setAudioAttributes(audioAttributes, /* handleAudioFocus= */ true)
+                    .build()
+
+                val mediaItem = MediaItem.Builder()
+                    .setUri("/storage/emulated/0/Music/snothvalp.mp3".toUri())
+                    .build()
+
+                player.setMediaItem(mediaItem)
+                player.prepare()
+                player.play()
+
+
+                /*   val audioManager: AudioManager =  carContext.getSystemService(AUDIO_SERVICE) as (AudioManager)
+                   val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                   Log.d("audio device","antal device: ${devices.size}")
+                   for (device in devices) {
+                       // Set the audio output to the car's audio system
+
+                       Log.d(
+                           "audio device",
+                           " ${device.id}, ${device.type}, ${device.productName}, ${
+                               device.sampleRates.joinToString(";")
+                           }"
+                       )
+
+                   }
+                   val androidAutoDevice: AudioDeviceInfo? = devices.find {
+                       it.type == AudioDeviceInfo.TYPE_TELEPHONY
+                   }
+                   // Set the communication device
+                   androidAutoDevice?.let { it->
+                       val success = audioManager.setCommunicationDevice(it)
+                       if (success) {
+                           log("Audio routed to Android Auto")
+                       } else {
+                           log("Failed to route audio")
+                       }
+                   }?: log("No Android Auto device found")
+   */
 
                     val playControl = PlayControl(carContext)
          /*       log( "onCreateSession1: ")

@@ -41,7 +41,6 @@ import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -96,7 +95,8 @@ class MainActivity : ComponentActivity() {
                             wavData=wavData,
                             onSelect = { file ->
                                 selectedFile = file
-                            } )
+                            },
+                            context = this@MainActivity.applicationContext)
                     },
                     selectedIcon = Icons.AutoMirrored.Filled.List,
                     unselectedIcon = Icons.AutoMirrored.Outlined.List
@@ -136,26 +136,28 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            var showRationalDialog by rememberSaveable { mutableStateOf(true) }
+            var permissionsOk by remember { mutableStateOf(false) }
 
             MyMediaPlayerTheme {
 
-                Scaffold(modifier = Modifier.fillMaxSize(),
+                if (!permissionsOk) {
+                    MultiPermissionRequest(setPermissionsOk = { permissionsOk = it })
+                }
+                else Scaffold(modifier = Modifier.fillMaxSize(),
                     topBar = {
                         CenterAlignedTopAppBar(
                             title = { Text(
                                 text = "Equalizer",
                                 color = Color.White) },
-                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                                containerColor = MaterialTheme.colorScheme.primary
+                            colors = TopAppBarDefaults.topAppBarColors( // Use topAppBarColors here
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                titleContentColor = Color.White, // You can move the title color here
+                                actionIconContentColor = Color.White,
+                                navigationIconContentColor = Color.White
                             )
                         )
                     }) { innerPadding ->
 
-                    if (showRationalDialog) {
-                        PermissionDemo()
-                        showRationalDialog=false
-                    }
 
                     Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
                         TabRow(
@@ -188,7 +190,6 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
-
                         HorizontalPager(
                             state = pagerState,
                             modifier = Modifier
@@ -316,7 +317,7 @@ private fun PlayControl( modifier: Modifier,
             audioModel = equalizerViewModel,
             modifier=Modifier,
             enabled = (file != null)&&file.exists()&& (file.name.endsWith(".wav")
-                    || file.name.endsWith(".mp3") ) || (isPlaying == AudioModel.Status.PLAYING),
+                    || file.name.endsWith(".mp3") || file.name.endsWith(".m4a") ) || (isPlaying == AudioModel.Status.PLAYING),
             // onClick handler now simply notifies the ViewModel that it has been clicked
             onClick = if (isPlaying == AudioModel.Status.PLAYING) stop else play     ,
             // playButtonLabel will never be null;

@@ -13,6 +13,7 @@ import androidx.car.app.model.Action
 import androidx.car.app.model.CarColor
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.ForegroundCarColorSpan
+import androidx.car.app.model.Header
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
 import androidx.car.app.model.Row
@@ -42,14 +43,15 @@ class MediaScreen(
 
     private fun makeRows() {
         fileItems = files
-            .filter { it.isDirectory || it.name.endsWith(
-                ".wav",
-                ignoreCase = true
-            ) == true ||
-                    it.name.endsWith(
-                        ".mp3",
-                        ignoreCase = true
-                    ) }
+            .filter {
+                it.isDirectory || it.name.endsWith(
+                    ".wav",
+                    ignoreCase = true
+                ) || it.name.endsWith(
+                    ".mp3",
+                    ignoreCase = true
+                )
+            }
             .mapIndexed { idx,it->
             val row = Row.Builder()
                 .setTitle(it.name)
@@ -235,11 +237,24 @@ class MediaScreen(
             fileItems.forEach { this.addItem(it) }
         }.build()
 
+        // 1. Create a Header object for your Title and Actions
+        val header = Header.Builder()
+            .setTitle("Media")
+            .addEndHeaderAction(if (playControl.isPlaying != PlayControl.Status.PLAYING) playPause else stopAction)
+            .addEndHeaderAction(equalizerAction)
+            .build()
+
+        // 2. Pass the header to the ListTemplate
+        return ListTemplate.Builder()
+            .setSingleList(singleList)
+            .setHeader(header) // Use setHeader instead of setTitle/addAction
+            .build()
+        /*
         return ListTemplate.Builder()
             .setTitle("Media")
             .setSingleList(singleList)
             .addAction(if (playControl.isPlaying != PlayControl.Status.PLAYING) playPause else stopAction)
             .addAction(equalizerAction)
-            .build()
+            .build()*/
     }
 }

@@ -50,11 +50,13 @@ namespace equalizer {
 
     bool Oscillator::load (const std::string& fileName)
     {
-        juce::File mp3File(fileName);// Enable support for MP3, WAV, etc.
+        juce::File mp3File(fileName);
+        // Enable support for MP3, WAV, etc.
         if (!mp3File.exists()) {
             LOGD("File not found");
             return false;
         }
+
         reader =   std::unique_ptr<juce::AudioFormatReader>(formatManager.createReaderFor(mp3File));
         LOGD("JUCE samplerate %f",reader->sampleRate);
         LOGD("JUCE channels %d",reader->numChannels);

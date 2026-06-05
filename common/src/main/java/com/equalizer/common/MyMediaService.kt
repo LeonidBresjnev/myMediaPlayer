@@ -1,8 +1,6 @@
 package com.equalizer.common
 
 import android.content.Intent
-import android.media.AudioDeviceInfo
-import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -106,7 +104,7 @@ class MyMediaService : MediaLibraryService() {
                 }*/
 
 
-
+/*
                 override fun onSetMediaItems(
                     mediaSession: MediaSession,
                     controller: MediaSession.ControllerInfo,
@@ -122,7 +120,7 @@ class MyMediaService : MediaLibraryService() {
                         startPositionMs
                     )
                 }
-
+*/
 
                 override fun onConnect(
                     session: MediaSession,
@@ -163,14 +161,14 @@ class MyMediaService : MediaLibraryService() {
                                 .build())
                             .build(), params))
                 }
-
+/*
                 override fun onGetItem(
                     session: MediaLibrarySession,
                     browser: MediaSession.ControllerInfo,
                     mediaId: String
                 ): ListenableFuture<LibraryResult<MediaItem>> {
                     return super.onGetItem(session, browser, mediaId)
-                }
+                }*/
 
                 override fun onGetChildren(
                     session: MediaLibrarySession,
