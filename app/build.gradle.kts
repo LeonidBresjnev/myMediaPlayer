@@ -2,7 +2,6 @@
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
 
@@ -77,6 +76,7 @@ dependencies {
     implementation(libs.androidx.app)
     implementation(libs.androidx.app.projected)
     implementation(libs.mp3agic)
+    implementation(libs.coil.compose)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

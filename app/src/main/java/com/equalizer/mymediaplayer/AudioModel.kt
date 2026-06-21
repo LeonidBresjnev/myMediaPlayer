@@ -19,6 +19,11 @@ import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.equalizer.common.MyMediaService
 import com.google.common.util.concurrent.ListenableFuture
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.lifecycle.viewModelScope
+import com.equalizer.common.OnlineInfo
+import com.equalizer.common.OnlineMetadataManager
+import kotlinx.coroutines.launch
 import com.google.common.util.concurrent.MoreExecutors
 
 class AudioModel: ViewModel() {
@@ -80,6 +85,34 @@ class AudioModel: ViewModel() {
     val subItemMediaList : LiveData<List<MediaItem>>
         get() {
             return _subItemMediaList
+    }
+
+    private val _currentPath = MutableLiveData("root")
+    val currentPath: LiveData<String> = _currentPath
+
+    private val navStack = mutableListOf<String>()
+
+    val onlineArtworkMap = mutableStateMapOf<String, String>()
+    val onlineInfoMap = mutableStateMapOf<String, OnlineInfo>()
+
+    private fun fetchOnlineData(context: Context, items: List<MediaItem>) {
+        items.forEach { item ->
+            val artist = item.mediaMetadata.artist?.toString()
+            val title = item.mediaMetadata.title?.toString()
+            
+            if (item.mediaMetadata.artworkUri == null && !artist.isNullOrBlank() && !title.isNullOrBlank()) {
+                val cacheKey = item.mediaId
+                if (!onlineArtworkMap.containsKey(cacheKey)) {
+                    viewModelScope.launch {
+                        val info = OnlineMetadataManager.getOnlineInfo(context, artist, title)
+                        if (info != null) {
+                            info.artworkUrl?.let { onlineArtworkMap[cacheKey] = it }
+                            onlineInfoMap[cacheKey] = info
+                        }
+                    }
+                }
+            }
+        }
     }
 
 
@@ -182,65 +215,50 @@ class AudioModel: ViewModel() {
         mediaControllerFuture?.apply {
             addListener({
                 controller = get()
-                log("before get root")
-                libResult = controller.getLibraryRoot(/* params= */ null)
-
-
-                val childrenFuture = controller.getChildren(
-                    "root", 0, Int.MAX_VALUE, null)
-                val childrenResult = childrenFuture.get()
-                log("number of children ${childrenResult.value?.size?:"null"}")
-                log(childrenResult.value?.joinToString("\n") { it.mediaMetadata.title  ?:"-"}?:"null")
-                _subItemMediaList.value = childrenResult.value?:emptyList()
-                libResult.addListener( {
-
-                    log("before call get")
-                    val result=libResult.get()
-
-
-                   // result.sessionError?.let { log(it.message) }
-                    if (result == null) log("result is null")
-                    if (result.value == null) log("result-value is null")
-                      println("result: ${result.value?.mediaId?:"null"}")
-                    //controller.getChildren()
-                    // Root node MediaItem is available here with rootFuture.get().value
-                }, MoreExecutors.directExecutor())
-                //updateUIWithMediaController(controller)
+                log("MediaController connected")
+                
+                // Initial browse
+                browse("root", context = context)
 
                 // Ensure media is played appropriately based on state
                 log("INITIAL STATE = ${controller.playbackState}")
                 handlePlaybackBasedOnState()
 
-            }, MoreExecutors.directExecutor()
-
-            )
+            }, MoreExecutors.directExecutor())
         }
-// Get the library root to start browsing the library tree.
+    }
 
-
-/*
-        val browserFuture = MediaBrowser
-            .Builder(context, sessionToken).buildAsync()
-        browserFuture.addListener({
-            // MediaBrowser is available here with browserFuture.get()
-            mediabrowser = browserFuture.get()
+    @OptIn(UnstableApi::class)
+    fun browse(parentId: String, addToStack: Boolean = true, context: Context? = null) {
+        if (!::controller.isInitialized) return
+        
+        log("Browsing: $parentId")
+        val childrenFuture = controller.getChildren(parentId, 0, Int.MAX_VALUE, null)
+        childrenFuture.addListener({
+            try {
+                val result = childrenFuture.get()
+                if (result.value != null) {
+                    _subItemMediaList.value = result.value!!
+                    if (addToStack && parentId != _currentPath.value) {
+                        _currentPath.value?.let { navStack.add(it) }
+                    }
+                    _currentPath.value = parentId
+                    
+                    // Trigger online data fetching
+                    context?.let { fetchOnlineData(it, result.value!!) }
+                }
+            } catch (e: Exception) {
+                log("Error getting children: ${e.message}")
+            }
         }, MoreExecutors.directExecutor())
-        val rootMediaItem = mediabrowser?.currentMediaItem
+    }
 
-        // Get the library root to start browsing the library tree.
-        val childrenFuture =
-            rootMediaItem?.let { mediabrowser?.getChildren(it.mediaId, 0, Int.MAX_VALUE, null) }
-        childrenFuture?.addListener({
-            // List of children MediaItem nodes is available here with
-            // childrenFuture.get().value
-        }, MoreExecutors.directExecutor())
-
-        val myRoot = mediabrowser?.getLibraryRoot(
-           null
-        )?.get()
-
-
-        log("rootMediaItem is ${myRoot?.value.toString()}")*/
+    fun navigateBack(): Boolean {
+        if (navStack.isEmpty()) return false
+        
+        val lastPath = navStack.removeAt(navStack.size - 1)
+        browse(lastPath, addToStack = false)
+        return true
     }
 
     internal fun playMedia(mediaItem: MediaItem) {
