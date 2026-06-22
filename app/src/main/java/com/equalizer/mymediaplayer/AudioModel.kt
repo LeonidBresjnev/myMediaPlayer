@@ -19,6 +19,14 @@ import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.equalizer.common.MyMediaService
 import com.google.common.util.concurrent.ListenableFuture
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.lifecycle.viewModelScope
+import com.equalizer.common.OnlineInfo
+import com.equalizer.common.OnlineMetadataManager
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.launch
 import com.google.common.util.concurrent.MoreExecutors
 
 class AudioModel: ViewModel() {
@@ -43,23 +51,71 @@ class AudioModel: ViewModel() {
             return _volumenLow
         }
 
+    private val _selectedPreset = MutableLiveData("Flat")
+    val selectedPreset: LiveData<String> = _selectedPreset
+
+    val presets = mapOf(
+        "Flat" to List(8) { 1.0f },
+        "Bass Boost" to listOf(1.5f, 1.4f, 1.2f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f),
+        "Treble Boost" to listOf(1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.2f, 1.4f, 1.6f),
+        "Vocal" to listOf(0.8f, 0.9f, 1.0f, 1.3f, 1.4f, 1.2f, 1.0f, 0.9f),
+        "Rock" to listOf(1.3f, 1.2f, 1.1f, 1.0f, 0.9f, 1.1f, 1.2f, 1.3f),
+        "Custom" to emptyList<Float>() // Handled specially
+    )
+
+    fun applyPreset(name: String) {
+        if (name == "Custom") {
+            _selectedPreset.value = "Custom"
+            return
+        }
+        
+        val values = presets[name] ?: return
+        _selectedPreset.value = name
+        _volumenLow.value = values
+        
+        if (::controller.isInitialized) {
+            values.forEachIndexed { i, v ->
+                val extras = Bundle().apply {
+                    putInt("KEY_INDEX", i)
+                    putFloat("KEY_VOLUME", v)
+                }
+                controller.sendCustomCommand(SessionCommand("setVolOnFreq", Bundle()), extras)
+            }
+        }
+    }
+
     val volumeRange = 0f..2f
 
     private var currentSlider=-1
 
     fun setVolumen(volumeInDb: Float, index: Int) {
-        currentSlider=index
+        // Switch to Custom if user adjusts a slider manually
+        if (_selectedPreset.value != "Custom") {
+            _selectedPreset.value = "Custom"
+        }
+
+        // Update local state immediately for better responsiveness
+        val currentList = _volumenLow.value?.toMutableList() ?: MutableList(8) { 1f }
+        if (index in 0 until 8) {
+            currentList[index] = volumeInDb
+            _volumenLow.value = currentList
+        }
+
+        currentSlider = index
         val extras = Bundle().apply {
             putInt("KEY_INDEX", index)
             putFloat("KEY_VOLUME", volumeInDb)
         }
         val customCommand = SessionCommand("setVolOnFreq", Bundle())
 
-        controller.sendCustomCommand(customCommand, extras)
-        /*_volumenLow.value = _volumenLow.value!!.mapIndexed { i, v -> if (i==index) volumeInDb else v }
-        viewModelScope.launch {
-            equalizer?.setVolumenLow(volumeInDb, index)
-        }*/
+        if (::controller.isInitialized) {
+            controller.sendCustomCommand(customCommand, extras)
+        }
+    }
+
+    fun resetEqualizer() {
+        Log.d("AudioModel", "resetEqualizer called")
+        applyPreset("Flat")
     }
 
 
@@ -80,6 +136,49 @@ class AudioModel: ViewModel() {
     val subItemMediaList : LiveData<List<MediaItem>>
         get() {
             return _subItemMediaList
+    }
+
+    private val _currentPath = MutableLiveData("root")
+    val currentPath: LiveData<String> = _currentPath
+
+    private val navStack = mutableListOf<String>()
+
+    val onlineArtworkMap = mutableStateMapOf<String, String>()
+    val onlineInfoMap = mutableStateMapOf<String, OnlineInfo>()
+
+    private fun fetchOnlineData(context: Context, items: List<MediaItem>) {
+        viewModelScope.launch {
+            items.map { item ->
+                async {
+                    val artist = item.mediaMetadata.artist?.toString()
+                    val title = item.mediaMetadata.title?.toString()
+                    
+                    val cacheKey = item.mediaId
+                    val needsArtwork = item.mediaMetadata.artworkUri == null && !onlineArtworkMap.containsKey(cacheKey)
+                    val needsInfo = !onlineInfoMap.containsKey(cacheKey)
+                    
+                    if ((needsArtwork || needsInfo) && !artist.isNullOrBlank() && !title.isNullOrBlank()) {
+                        try {
+                            // Max wait 60 seconds per item (to allow for long queues in large folders)
+                            val info = withTimeoutOrNull(60000L) {
+                                OnlineMetadataManager.getOnlineInfo(context, artist, title)
+                            }
+                            
+                            if (info != null) {
+                                if (needsArtwork) info.artworkUrl?.let { onlineArtworkMap[cacheKey] = it }
+                                onlineInfoMap[cacheKey] = info
+                            } else {
+                                // Stop the loading spinner even if search failed or timed out
+                                onlineInfoMap[cacheKey] = OnlineInfo(isNotFound = true)
+                            }
+                        } catch (e: Exception) {
+                            Log.e("AudioModel", "Error in fetch async for $cacheKey: ${e.message}")
+                            onlineInfoMap[cacheKey] = OnlineInfo(isNotFound = true)
+                        }
+                    }
+                }
+            }.awaitAll()
+        }
     }
 
 
@@ -124,8 +223,8 @@ class AudioModel: ViewModel() {
 
             @OptIn(UnstableApi::class)
             override fun onVolumeChanged(volume: Float) {
-                _volumenLow.value = _volumenLow.value!!.mapIndexed { i, v -> if (i==currentSlider) volume else v }
-//                log((controller as Equalizer).getVolOnFreqs().joinToString(", "))
+                // Remove this to prevent master volume changes from clobbering equalizer bands
+                // _volumenLow.value = _volumenLow.value!!.mapIndexed { i, v -> if (i==currentSlider) volume else v }
                 super.onVolumeChanged(volume)
             }
 
@@ -182,65 +281,50 @@ class AudioModel: ViewModel() {
         mediaControllerFuture?.apply {
             addListener({
                 controller = get()
-                log("before get root")
-                libResult = controller.getLibraryRoot(/* params= */ null)
-
-
-                val childrenFuture = controller.getChildren(
-                    "root", 0, Int.MAX_VALUE, null)
-                val childrenResult = childrenFuture.get()
-                log("number of children ${childrenResult.value?.size?:"null"}")
-                log(childrenResult.value?.joinToString("\n") { it.mediaMetadata.title  ?:"-"}?:"null")
-                _subItemMediaList.value = childrenResult.value?:emptyList()
-                libResult.addListener( {
-
-                    log("before call get")
-                    val result=libResult.get()
-
-
-                   // result.sessionError?.let { log(it.message) }
-                    if (result == null) log("result is null")
-                    if (result.value == null) log("result-value is null")
-                      println("result: ${result.value?.mediaId?:"null"}")
-                    //controller.getChildren()
-                    // Root node MediaItem is available here with rootFuture.get().value
-                }, MoreExecutors.directExecutor())
-                //updateUIWithMediaController(controller)
+                log("MediaController connected")
+                
+                // Initial browse
+                browse("root", context = context)
 
                 // Ensure media is played appropriately based on state
                 log("INITIAL STATE = ${controller.playbackState}")
                 handlePlaybackBasedOnState()
 
-            }, MoreExecutors.directExecutor()
-
-            )
+            }, MoreExecutors.directExecutor())
         }
-// Get the library root to start browsing the library tree.
+    }
 
-
-/*
-        val browserFuture = MediaBrowser
-            .Builder(context, sessionToken).buildAsync()
-        browserFuture.addListener({
-            // MediaBrowser is available here with browserFuture.get()
-            mediabrowser = browserFuture.get()
+    @OptIn(UnstableApi::class)
+    fun browse(parentId: String, addToStack: Boolean = true, context: Context? = null) {
+        if (!::controller.isInitialized) return
+        
+        log("Browsing: $parentId")
+        val childrenFuture = controller.getChildren(parentId, 0, Int.MAX_VALUE, null)
+        childrenFuture.addListener({
+            try {
+                val result = childrenFuture.get()
+                if (result.value != null) {
+                    _subItemMediaList.value = result.value!!
+                    if (addToStack && parentId != _currentPath.value) {
+                        _currentPath.value?.let { navStack.add(it) }
+                    }
+                    _currentPath.value = parentId
+                    
+                    // Trigger online data fetching
+                    context?.let { fetchOnlineData(it, result.value!!) }
+                }
+            } catch (e: Exception) {
+                log("Error getting children: ${e.message}")
+            }
         }, MoreExecutors.directExecutor())
-        val rootMediaItem = mediabrowser?.currentMediaItem
+    }
 
-        // Get the library root to start browsing the library tree.
-        val childrenFuture =
-            rootMediaItem?.let { mediabrowser?.getChildren(it.mediaId, 0, Int.MAX_VALUE, null) }
-        childrenFuture?.addListener({
-            // List of children MediaItem nodes is available here with
-            // childrenFuture.get().value
-        }, MoreExecutors.directExecutor())
-
-        val myRoot = mediabrowser?.getLibraryRoot(
-           null
-        )?.get()
-
-
-        log("rootMediaItem is ${myRoot?.value.toString()}")*/
+    fun navigateBack(context: Context? = null): Boolean {
+        if (navStack.isEmpty()) return false
+        
+        val lastPath = navStack.removeAt(navStack.size - 1)
+        browse(lastPath, addToStack = false, context = context)
+        return true
     }
 
     internal fun playMedia(mediaItem: MediaItem) {

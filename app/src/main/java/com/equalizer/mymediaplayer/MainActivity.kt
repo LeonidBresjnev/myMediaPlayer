@@ -27,11 +27,13 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -65,7 +67,6 @@ class MainActivity : ComponentActivity() {
 
 
     private val audioModel: AudioModel by viewModels()
-    private val wavData: WavMetaData by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
 
@@ -91,12 +92,11 @@ class MainActivity : ComponentActivity() {
                 TabRowItem(
                     title = "Media browser",
                     screen = {
-                        FileSelection(modifier=Modifier,
-                            wavData=wavData,
+                        MediaBrowserScreen(modifier=Modifier,
+                            audioModel=audioModel,
                             onSelect = { file ->
                                 selectedFile = file
-                            },
-                            context = this@MainActivity.applicationContext)
+                            } )
                     },
                     selectedIcon = Icons.AutoMirrored.Filled.List,
                     unselectedIcon = Icons.AutoMirrored.Outlined.List
@@ -109,18 +109,6 @@ class MainActivity : ComponentActivity() {
                     )},
                     selectedIcon = Icons.AutoMirrored.Filled.QueueMusic,
                     unselectedIcon = Icons.AutoMirrored.Outlined.QueueMusic
-                ),
-                TabRowItem(
-                    title = "test browser",
-                    screen = {
-                        MediaBrowserScreen(modifier=Modifier,
-                            audioModel=audioModel,
-                            onSelect = { file ->
-                                selectedFile = file
-                            } )
-                    },
-                    selectedIcon = Icons.AutoMirrored.Filled.List,
-                    unselectedIcon = Icons.AutoMirrored.Outlined.List
                 )
             )
             val pagerState = rememberPagerState {
@@ -160,13 +148,21 @@ class MainActivity : ComponentActivity() {
 
 
                     Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-                        TabRow(
+                        SecondaryTabRow(
+                            selectedTabIndex = selectedTabIndex,
                             modifier = Modifier.weight(0.1f),
-                            selectedTabIndex = selectedTabIndex
+                            containerColor = TabRowDefaults.primaryContainerColor,
+                            contentColor = TabRowDefaults.primaryContentColor,
+                            indicator = {
+                                TabRowDefaults.SecondaryIndicator(
+                                    Modifier.tabIndicatorOffset(selectedTabIndex)
+                                )
+                            },
+                            divider = { HorizontalDivider() }
                         ) {
                             tabRowItems.forEachIndexed { index, item ->
                                 Tab(
-                                    selected = /*pagerState.currentPage*/ selectedTabIndex == index,
+                                    selected = selectedTabIndex == index,
                                     selectedContentColor = MaterialTheme.colorScheme.primary,
                                     unselectedContentColor = MaterialTheme.colorScheme.primary.copy(
                                         alpha = 0.5f
