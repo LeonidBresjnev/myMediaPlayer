@@ -51,23 +51,71 @@ class AudioModel: ViewModel() {
             return _volumenLow
         }
 
+    private val _selectedPreset = MutableLiveData("Flat")
+    val selectedPreset: LiveData<String> = _selectedPreset
+
+    val presets = mapOf(
+        "Flat" to List(8) { 1.0f },
+        "Bass Boost" to listOf(1.5f, 1.4f, 1.2f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f),
+        "Treble Boost" to listOf(1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.2f, 1.4f, 1.6f),
+        "Vocal" to listOf(0.8f, 0.9f, 1.0f, 1.3f, 1.4f, 1.2f, 1.0f, 0.9f),
+        "Rock" to listOf(1.3f, 1.2f, 1.1f, 1.0f, 0.9f, 1.1f, 1.2f, 1.3f),
+        "Custom" to emptyList<Float>() // Handled specially
+    )
+
+    fun applyPreset(name: String) {
+        if (name == "Custom") {
+            _selectedPreset.value = "Custom"
+            return
+        }
+        
+        val values = presets[name] ?: return
+        _selectedPreset.value = name
+        _volumenLow.value = values
+        
+        if (::controller.isInitialized) {
+            values.forEachIndexed { i, v ->
+                val extras = Bundle().apply {
+                    putInt("KEY_INDEX", i)
+                    putFloat("KEY_VOLUME", v)
+                }
+                controller.sendCustomCommand(SessionCommand("setVolOnFreq", Bundle()), extras)
+            }
+        }
+    }
+
     val volumeRange = 0f..2f
 
     private var currentSlider=-1
 
     fun setVolumen(volumeInDb: Float, index: Int) {
-        currentSlider=index
+        // Switch to Custom if user adjusts a slider manually
+        if (_selectedPreset.value != "Custom") {
+            _selectedPreset.value = "Custom"
+        }
+
+        // Update local state immediately for better responsiveness
+        val currentList = _volumenLow.value?.toMutableList() ?: MutableList(8) { 1f }
+        if (index in 0 until 8) {
+            currentList[index] = volumeInDb
+            _volumenLow.value = currentList
+        }
+
+        currentSlider = index
         val extras = Bundle().apply {
             putInt("KEY_INDEX", index)
             putFloat("KEY_VOLUME", volumeInDb)
         }
         val customCommand = SessionCommand("setVolOnFreq", Bundle())
 
-        controller.sendCustomCommand(customCommand, extras)
-        /*_volumenLow.value = _volumenLow.value!!.mapIndexed { i, v -> if (i==index) volumeInDb else v }
-        viewModelScope.launch {
-            equalizer?.setVolumenLow(volumeInDb, index)
-        }*/
+        if (::controller.isInitialized) {
+            controller.sendCustomCommand(customCommand, extras)
+        }
+    }
+
+    fun resetEqualizer() {
+        Log.d("AudioModel", "resetEqualizer called")
+        applyPreset("Flat")
     }
 
 
@@ -175,8 +223,8 @@ class AudioModel: ViewModel() {
 
             @OptIn(UnstableApi::class)
             override fun onVolumeChanged(volume: Float) {
-                _volumenLow.value = _volumenLow.value!!.mapIndexed { i, v -> if (i==currentSlider) volume else v }
-//                log((controller as Equalizer).getVolOnFreqs().joinToString(", "))
+                // Remove this to prevent master volume changes from clobbering equalizer bands
+                // _volumenLow.value = _volumenLow.value!!.mapIndexed { i, v -> if (i==currentSlider) volume else v }
                 super.onVolumeChanged(volume)
             }
 
