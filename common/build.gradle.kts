@@ -20,7 +20,7 @@ android {
     val ndkEnv = System.getenv("ANDROID_NDK_HOME")
     val ndkBaseDir = if (sdkDir != null) file("$sdkDir/ndk") else null
     val latestNdk = if (ndkEnv != null && file(ndkEnv).exists()) file(ndkEnv) 
-                    else ndkBaseDir?.listFiles()?.filter { it.isDirectory }?.sortedByDescending { it.name }?.firstOrNull()
+                    else ndkBaseDir?.listFiles()?.filter { it.isDirectory }?.maxByOrNull { it.name }
 
     // Set ndkVersion to the latest one found if not already specified
     if (latestNdk != null) {
@@ -60,6 +60,7 @@ android {
 
         ndk {
             abiFilters += "arm64-v8a"
+            abiFilters += "x86_64"
         }
     }
 
