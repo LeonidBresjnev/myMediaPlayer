@@ -23,6 +23,9 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.lifecycle.viewModelScope
 import com.equalizer.common.OnlineInfo
 import com.equalizer.common.OnlineMetadataManager
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import com.google.common.util.concurrent.MoreExecutors
 
@@ -96,22 +99,37 @@ class AudioModel: ViewModel() {
     val onlineInfoMap = mutableStateMapOf<String, OnlineInfo>()
 
     private fun fetchOnlineData(context: Context, items: List<MediaItem>) {
-        items.forEach { item ->
-            val artist = item.mediaMetadata.artist?.toString()
-            val title = item.mediaMetadata.title?.toString()
-            
-            if (item.mediaMetadata.artworkUri == null && !artist.isNullOrBlank() && !title.isNullOrBlank()) {
-                val cacheKey = item.mediaId
-                if (!onlineArtworkMap.containsKey(cacheKey)) {
-                    viewModelScope.launch {
-                        val info = OnlineMetadataManager.getOnlineInfo(context, artist, title)
-                        if (info != null) {
-                            info.artworkUrl?.let { onlineArtworkMap[cacheKey] = it }
-                            onlineInfoMap[cacheKey] = info
+        viewModelScope.launch {
+            items.map { item ->
+                async {
+                    val artist = item.mediaMetadata.artist?.toString()
+                    val title = item.mediaMetadata.title?.toString()
+                    
+                    val cacheKey = item.mediaId
+                    val needsArtwork = item.mediaMetadata.artworkUri == null && !onlineArtworkMap.containsKey(cacheKey)
+                    val needsInfo = !onlineInfoMap.containsKey(cacheKey)
+                    
+                    if ((needsArtwork || needsInfo) && !artist.isNullOrBlank() && !title.isNullOrBlank()) {
+                        try {
+                            // Max wait 60 seconds per item (to allow for long queues in large folders)
+                            val info = withTimeoutOrNull(60000L) {
+                                OnlineMetadataManager.getOnlineInfo(context, artist, title)
+                            }
+                            
+                            if (info != null) {
+                                if (needsArtwork) info.artworkUrl?.let { onlineArtworkMap[cacheKey] = it }
+                                onlineInfoMap[cacheKey] = info
+                            } else {
+                                // Stop the loading spinner even if search failed or timed out
+                                onlineInfoMap[cacheKey] = OnlineInfo(isNotFound = true)
+                            }
+                        } catch (e: Exception) {
+                            Log.e("AudioModel", "Error in fetch async for $cacheKey: ${e.message}")
+                            onlineInfoMap[cacheKey] = OnlineInfo(isNotFound = true)
                         }
                     }
                 }
-            }
+            }.awaitAll()
         }
     }
 
@@ -253,11 +271,11 @@ class AudioModel: ViewModel() {
         }, MoreExecutors.directExecutor())
     }
 
-    fun navigateBack(): Boolean {
+    fun navigateBack(context: Context? = null): Boolean {
         if (navStack.isEmpty()) return false
         
         val lastPath = navStack.removeAt(navStack.size - 1)
-        browse(lastPath, addToStack = false)
+        browse(lastPath, addToStack = false, context = context)
         return true
     }
 

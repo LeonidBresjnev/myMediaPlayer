@@ -25,3 +25,5 @@
 -keep class com.equalizer.common.metadata.Mp3Meta { *; }
 -keep class com.equalizer.common.metadata.MusicMetaInterface  { *; }
 -keep class com.equalizer.common.metadata.WavMeta  { *; }
+-keep class com.equalizer.common.OnlineMetadataManager   { *; }
+-keep class com.equalizer.common.OnlineInfo  { *; }

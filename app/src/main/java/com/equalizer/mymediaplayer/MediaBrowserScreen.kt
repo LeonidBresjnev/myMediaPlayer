@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -41,12 +42,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.painterResource
 import androidx.media3.common.MediaItem
 import coil.compose.AsyncImage
 import java.io.File
@@ -85,7 +88,7 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
                     text = "< Back",
                     modifier = Modifier
                         .clickable {
-                            audioModel.navigateBack()
+                            audioModel.navigateBack(context = context)
                             selectedIdx = -1
                         }
                         .padding(end = 16.dp),
@@ -186,11 +189,13 @@ fun FileRow(mediaItem: MediaItem,
             .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        val musicPlaceholder = rememberVectorPainter(Icons.Default.MusicNote)
         AsyncImage(
             model = mediaItem.mediaMetadata.artworkUri ?: onlineArtworkUrl,
             contentDescription = null,
             modifier = Modifier.size(40.dp).clip(RoundedCornerShape(4.dp)),
-            fallback = null,
+            placeholder = musicPlaceholder,
+            error = musicPlaceholder,
             contentScale = ContentScale.Crop
         )
         Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
@@ -240,21 +245,15 @@ fun FolderGridItem(mediaItem: MediaItem,
             contentAlignment = Alignment.Center
         ) {
             val artworkModel = mediaItem.mediaMetadata.artworkUri ?: onlineArtworkUrl
-            if (artworkModel != null) {
-                AsyncImage(
-                    model = artworkModel,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Default.MusicNote,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            val musicPlaceholder = rememberVectorPainter(Icons.Default.MusicNote)
+            AsyncImage(
+                model = artworkModel,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                placeholder = musicPlaceholder,
+                error = musicPlaceholder,
+                contentScale = ContentScale.Crop
+            )
 
             IconButton(
                 onClick = onInfoClick,
@@ -308,21 +307,15 @@ fun MediaInfoDialog(mediaItem: MediaItem, onlineInfo: com.equalizer.common.Onlin
                     contentAlignment = Alignment.Center
                 ) {
                     val artworkModel = mediaItem.mediaMetadata.artworkUri ?: onlineInfo?.artworkUrl
-                    if (artworkModel != null) {
-                        AsyncImage(
-                            model = artworkModel,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.MusicNote,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    val musicPlaceholder = rememberVectorPainter(Icons.Default.MusicNote)
+                    AsyncImage(
+                        model = artworkModel,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        placeholder = musicPlaceholder,
+                        error = musicPlaceholder,
+                        contentScale = ContentScale.Crop
+                    )
                 }
 
                 Spacer(modifier = Modifier.size(16.dp))
@@ -336,6 +329,15 @@ fun MediaInfoDialog(mediaItem: MediaItem, onlineInfo: com.equalizer.common.Onlin
                     InfoField("Release Date", onlineInfo.releaseDate)
                     InfoField("Label", onlineInfo.label)
                     InfoField("Genres", onlineInfo.genres?.joinToString(", "))
+                } else {
+                    val artist = mediaItem.mediaMetadata.artist?.toString()
+                    val title = mediaItem.mediaMetadata.title?.toString()
+                    if (!artist.isNullOrBlank() && !title.isNullOrBlank()) {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        Text("Online data loading...", 
+                             style = MaterialTheme.typography.bodySmall, 
+                             color = Color.Gray)
+                    }
                 }
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))

@@ -60,8 +60,7 @@ class MediaThumbnailProvider : ContentProvider() {
             }
 
             return ParcelFileDescriptor.open(tempFile, ParcelFileDescriptor.MODE_READ_ONLY)
-        } catch (e: Exception) {
-            Log.e("ThumbnailProvider", "Error opening file: ${e.message}")
+        } catch (_: Exception) {
             return null
         } finally {
             retriever.release()

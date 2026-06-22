@@ -27,20 +27,23 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 
 class MyMediaService : MediaLibraryService() {
     private var mediaSession: MediaLibrarySession? = null
 
+    private val serviceJob = SupervisorJob()
+    private val serviceScope = CoroutineScope(Dispatchers.Main + serviceJob)
+
 
     private val setVolOnFreq = SessionCommand("setVolOnFreq" , Bundle.EMPTY)
     private val getVolOnFreq = SessionCommand("getVolOnFreq" , Bundle.EMPTY)
-
-    private fun log(message: String) {
-        Log.d("My Media Service", message)
-    }
 
     var currentlocation: String = Environment.getExternalStorageDirectory().absolutePath+"/Music"
 
@@ -151,7 +154,6 @@ class MyMediaService : MediaLibraryService() {
                     browser: MediaSession.ControllerInfo,
                     params: LibraryParams?,
                 ): ListenableFuture<LibraryResult<MediaItem>> {
-                    log("onGetLibraryRoot")
                     val rootItem = MediaItem.Builder()
                         .setMediaId("root")
                         .setMediaMetadata(
@@ -174,112 +176,142 @@ class MyMediaService : MediaLibraryService() {
                     pageSize: Int,
                     params: LibraryParams?,
                 ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
-                    log("onGetChildren for parentId: $parentId")
-                    val musicDir = File(Environment.getExternalStorageDirectory(), "Music")
-                    val parentDir = if (parentId == "root") {
-                        musicDir
-                    } else {
-                        File(parentId)
-                    }
-
-                    if (!parentDir.exists() || !parentDir.isDirectory) {
-                        return Futures.immediateFuture(LibraryResult.ofItemList(ImmutableList.of(), params))
-                    }
-
-                    val mediaItems = mutableListOf<MediaItem>()
-                    val filesList = parentDir.listFiles()?.sortedBy { it.name } ?: emptyList()
-
-                    for (file in filesList) {
-                        if (file.isDirectory) {
-                            // Try to find a thumbnail for the folder from its contents
-                            val firstWithArt = file.walk()
-                                .filter { it.isFile && (it.name.endsWith(".mp3", true) || it.name.endsWith(".m4a", true)) }
-                                .firstOrNull { 
-                                    val retriever = MediaMetadataRetriever()
-                                    try {
-                                        retriever.setDataSource(it.absolutePath)
-                                        retriever.embeddedPicture != null
-                                    } catch (e: Exception) {
-                                        false
-                                    } finally {
-                                        retriever.release()
-                                    }
-                                }
-
-                            val folderMetadataBuilder = MediaMetadata.Builder()
-                                .setIsBrowsable(true)
-                                .setIsPlayable(false)
-                                .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
-                                .setTitle(file.name)
-
-                            if (firstWithArt != null) {
-                                val artworkUri = MediaThumbnailProvider.CONTENT_URI.buildUpon()
-                                    .appendQueryParameter("path", firstWithArt.absolutePath)
-                                    .build()
-                                folderMetadataBuilder.setArtworkUri(artworkUri)
-                            }
-
-                            mediaItems.add(
-                                MediaItem.Builder()
-                                    .setMediaId(file.absolutePath)
-                                    .setMediaMetadata(folderMetadataBuilder.build())
-                                    .build()
-                            )
-                        } else if (file.isFile && (file.name.endsWith(".mp3", true) || 
-                                                 file.name.endsWith(".wav", true) || 
-                                                 file.name.endsWith(".m4a", true))) {
-                            
-                            val meta = MetaFactory.createMeta(file, applicationContext)
-                            val metadataBuilder = MediaMetadata.Builder()
-                                .setIsBrowsable(false)
-                                .setIsPlayable(true)
-                                .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
-                            
-                            // Set thumbnail for the file if it's MP3/M4A
-                            if (file.name.endsWith(".mp3", true) || file.name.endsWith(".m4a", true)) {
-                                val artworkUri = MediaThumbnailProvider.CONTENT_URI.buildUpon()
-                                    .appendQueryParameter("path", file.absolutePath)
-                                    .build()
-                                metadataBuilder.setArtworkUri(artworkUri)
-                            }
-
-                            if (meta != null) {
-                                when (meta) {
-                                    is Mp3Meta -> {
-                                        metadataBuilder.setTitle(meta.name)
-                                            .setArtist(meta.artist)
-                                            .setTrackNumber(meta.track)
-                                            .setTotalDiscCount(meta.sampleRate)
-                                            .setReleaseMonth(meta.numChannels)
-                                    }
-                                    is M4aMeta -> {
-                                        metadataBuilder.setTitle(meta.name)
-                                            .setArtist(meta.artist)
-                                            .setTrackNumber(meta.track)
-                                            .setTotalDiscCount(meta.sampleRate)
-                                            .setReleaseMonth(meta.numChannels)
-                                    }
-                                    is WavMeta -> {
-                                        metadataBuilder.setTitle(file.name)
-                                            .setTotalDiscCount(meta.sampleRate)
-                                            .setReleaseMonth(meta.numChannels)
-                                    }
-                                }
-                            } else {
-                                metadataBuilder.setTitle(file.name)
-                            }
-
-                            mediaItems.add(
-                                MediaItem.Builder()
-                                    .setMediaId(file.absolutePath)
-                                    .setMediaMetadata(metadataBuilder.build())
-                                    .setUri(Uri.fromFile(file))
-                                    .build()
-                            )
+                    val settable = SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
+                    serviceScope.launch {
+                        val musicDir = File(Environment.getExternalStorageDirectory(), "Music")
+                        val parentDir = if (parentId == "root") {
+                            musicDir
+                        } else {
+                            File(parentId)
                         }
-                    }
 
-                    return Futures.immediateFuture(LibraryResult.ofItemList(ImmutableList.copyOf(mediaItems), params))
+                        if (!parentDir.exists() || !parentDir.isDirectory) {
+                            settable.set(LibraryResult.ofItemList(ImmutableList.of(), params))
+                            return@launch
+                        }
+
+                        val filesList = parentDir.listFiles()?.sortedBy { it.name } ?: emptyList()
+
+                        val mediaItems = withContext(Dispatchers.IO) {
+                            filesList.map { file ->
+                                async {
+                                    if (file.isDirectory) {
+                                        var firstArtist: String? = null
+
+                                        // Try to find a thumbnail and metadata for the folder from its contents
+                                        val firstWithArt = file.walk()
+                                            .filter {
+                                                it.isFile && (it.name.endsWith(".mp3", true) || it.name.endsWith(
+                                                    ".m4a",
+                                                    true
+                                                ))
+                                            }
+                                            .onEach { songFile ->
+                                                if (firstArtist == null) {
+                                                    val meta =
+                                                        MetaFactory.createMeta(songFile, applicationContext)
+                                                    when (meta) {
+                                                        is Mp3Meta -> firstArtist = meta.artist
+                                                        is M4aMeta -> firstArtist = meta.artist
+                                                    }
+                                                }
+                                            }
+                                            .firstOrNull {
+                                                val retriever = MediaMetadataRetriever()
+                                                try {
+                                                    retriever.setDataSource(it.absolutePath)
+                                                    retriever.embeddedPicture != null
+                                                } catch (_: Exception) {
+                                                    false
+                                                } finally {
+                                                    retriever.release()
+                                                }
+                                            }
+
+                                        val folderMetadataBuilder = MediaMetadata.Builder()
+                                            .setIsBrowsable(true)
+                                            .setIsPlayable(false)
+                                            .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                                            .setTitle(file.name)
+                                            .setArtist(firstArtist)
+
+                                        if (firstWithArt != null) {
+                                            val artworkUri = MediaThumbnailProvider.CONTENT_URI.buildUpon()
+                                                .appendQueryParameter("path", firstWithArt.absolutePath)
+                                                .build()
+                                            folderMetadataBuilder.setArtworkUri(artworkUri)
+                                        }
+
+                                        MediaItem.Builder()
+                                            .setMediaId(file.absolutePath)
+                                            .setMediaMetadata(folderMetadataBuilder.build())
+                                            .build()
+                                    } else if (file.isFile && (file.name.endsWith(".mp3", true) ||
+                                                file.name.endsWith(".wav", true) ||
+                                                file.name.endsWith(".m4a", true))
+                                    ) {
+
+                                        val meta = MetaFactory.createMeta(file, applicationContext)
+                                        val metadataBuilder = MediaMetadata.Builder()
+                                            .setIsBrowsable(false)
+                                            .setIsPlayable(true)
+                                            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+
+                                        // Set thumbnail for the file if it has embedded artwork
+                                        val hasLocalArt = when (meta) {
+                                            is Mp3Meta -> meta.imageArray?.isNotEmpty() == true
+                                            is M4aMeta -> meta.imageArray?.isNotEmpty() == true
+                                            else -> false
+                                        }
+
+                                        if (hasLocalArt) {
+                                            val artworkUri = MediaThumbnailProvider.CONTENT_URI.buildUpon()
+                                                .appendQueryParameter("path", file.absolutePath)
+                                                .build()
+                                            metadataBuilder.setArtworkUri(artworkUri)
+                                        }
+
+                                        if (meta != null) {
+                                            when (meta) {
+                                                is Mp3Meta -> {
+                                                    metadataBuilder.setTitle(meta.name)
+                                                        .setArtist(meta.artist)
+                                                        .setTrackNumber(meta.track)
+                                                        .setTotalDiscCount(meta.sampleRate)
+                                                        .setReleaseMonth(meta.numChannels)
+                                                }
+
+                                                is M4aMeta -> {
+                                                    metadataBuilder.setTitle(meta.name)
+                                                        .setArtist(meta.artist)
+                                                        .setTrackNumber(meta.track)
+                                                        .setTotalDiscCount(meta.sampleRate)
+                                                        .setReleaseMonth(meta.numChannels)
+                                                }
+
+                                                is WavMeta -> {
+                                                    metadataBuilder.setTitle(file.name)
+                                                        .setTotalDiscCount(meta.sampleRate)
+                                                        .setReleaseMonth(meta.numChannels)
+                                                }
+                                            }
+                                        } else {
+                                            metadataBuilder.setTitle(file.name)
+                                        }
+
+                                        MediaItem.Builder()
+                                            .setMediaId(file.absolutePath)
+                                            .setMediaMetadata(metadataBuilder.build())
+                                            .setUri(Uri.fromFile(file))
+                                            .build()
+                                    } else null
+                                }
+                            }.awaitAll().filterNotNull()
+                        }
+
+                        settable.set(LibraryResult.ofItemList(ImmutableList.copyOf(mediaItems), params))
+                    }
+                    return settable
                 }
 /*
                 override fun onAddMediaItems(
@@ -346,6 +378,7 @@ class MyMediaService : MediaLibraryService() {
 
     // Remember to release the player and media session in onDestroy
     override fun onDestroy() {
+        serviceJob.cancel()
         mediaSession?.run {
             player.release()
             release()
