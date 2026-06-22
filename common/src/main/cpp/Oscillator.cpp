@@ -10,13 +10,15 @@ namespace equalizer {
 
     Oscillator::Oscillator() {
         formatManager.registerBasicFormats();
+        formatManager.registerFormat(new juce::FlacAudioFormat(), false);
+        formatManager.registerFormat(new juce::OggVorbisAudioFormat(), false);
+        formatManager.registerFormat(new juce::MP3AudioFormat(), false);
     }
 
     void Oscillator::onPlaybackStopped() {
         LOGD("onPlaybackStopped");
 
         reader.reset();
-        reader.release();
     }
 
     int32_t Oscillator::getSampleRate() const {
@@ -53,14 +55,19 @@ namespace equalizer {
         juce::File mp3File(fileName);
         // Enable support for MP3, WAV, etc.
         if (!mp3File.exists()) {
-            LOGD("File not found");
+            LOGD("File not found: %s", fileName.c_str());
             return false;
         }
 
-        reader =   std::unique_ptr<juce::AudioFormatReader>(formatManager.createReaderFor(mp3File));
+        reader = std::unique_ptr<juce::AudioFormatReader>(formatManager.createReaderFor(mp3File));
+        if (reader == nullptr) {
+            LOGD("Failed to create reader for: %s", fileName.c_str());
+            return false;
+        }
+
         LOGD("JUCE samplerate %f",reader->sampleRate);
         LOGD("JUCE channels %d",reader->numChannels);
-        LOGD("JUCE usesFloatingPointData %d",reader->usesFloatingPointData);
+        LOGD("JUCE usesFloatingPointData %d",(int)reader->usesFloatingPointData);
         numChannels=reader->numChannels;
         sampleRate = static_cast<int32_t>(reader->sampleRate);
 
