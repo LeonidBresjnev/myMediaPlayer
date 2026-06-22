@@ -1,4 +1,6 @@
 
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.jetbrains.kotlin.serialization)
@@ -7,6 +9,23 @@ plugins {
 android {
     namespace = "com.equalizer.common"
     compileSdk = 37
+    
+    // Find NDK dynamically from local.properties or common SDK locations
+    val localProperties = Properties()
+    val localPropertiesFile = project.rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localProperties.load(localPropertiesFile.inputStream())
+    }
+    val sdkDir = localProperties.getProperty("sdk.dir") ?: System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
+    val ndkEnv = System.getenv("ANDROID_NDK_HOME")
+    val ndkBaseDir = if (sdkDir != null) file("$sdkDir/ndk") else null
+    val latestNdk = if (ndkEnv != null && file(ndkEnv).exists()) file(ndkEnv) 
+                    else ndkBaseDir?.listFiles()?.filter { it.isDirectory }?.sortedByDescending { it.name }?.firstOrNull()
+
+    // Set ndkVersion to the latest one found if not already specified
+    if (latestNdk != null) {
+        ndkVersion = latestNdk.name
+    }
 
     defaultConfig {
         minSdk = 33
@@ -19,6 +38,23 @@ android {
                 arguments += "-DANDROID_STL=c++_shared"
                 arguments += "-DANDROID_NATIVE_API_LEVEL=33"
                 arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+
+                val vcpkgPath = file("src/main/cpp/vcpkg/scripts/buildsystems/vcpkg.cmake")
+                if (vcpkgPath.exists()) {
+                    val vcpkgPathStr = vcpkgPath.absolutePath.replace("\\", "/")
+                    arguments += "-DCMAKE_TOOLCHAIN_FILE=$vcpkgPathStr"
+                    arguments += "-DVCPKG_TARGET_TRIPLET=arm64-android"
+                    
+                    if (latestNdk != null) {
+                        val ndkPathStr = latestNdk.absolutePath.replace("\\", "/")
+                        arguments += "-DANDROID_NDK_HOME=$ndkPathStr"
+                        arguments += "-DANDROID_NDK=$ndkPathStr"
+                        arguments += "-DCMAKE_ANDROID_NDK=$ndkPathStr"
+                        
+                        val chainloadToolchain = "$ndkPathStr/build/cmake/android.toolchain.cmake"
+                        arguments += "-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=$chainloadToolchain"
+                    }
+                }
             }
         }
 

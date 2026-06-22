@@ -92,29 +92,25 @@ Java_com_equalizer_common_Equalizer_nativePlayWithVol(JNIEnv *env,
                                                       jobject thiz,
                                                       jlong synthesizer_handle,
                                                       jstring jFileName,
-
                                                       jfloatArray vol) {
     std::string fileName = jstringToString(env, jFileName);
 
     jint size = env->GetArrayLength(vol);
     jfloat *elements = env->GetFloatArrayElements(vol, nullptr);
-/*
-    std::array<float, 8> carray;
-    for (int i = 0; i < size; ++i) {
-        carray[i] = elements[i];
-        equalizer->setVolumenLow(elements[i], i);
-
-    }*/
-
 
     auto *equalizer = reinterpret_cast<equalizer::Equalizer *>(synthesizer_handle);
     if (equalizer) {
-        for (int i = 0; i < 8; i++) {
+        int bands = (size < 8) ? size : 8;
+        for (int i = 0; i < bands; i++) {
             equalizer->setVolumenLow(elements[i], i);
         }
         equalizer->play(fileName);
     } else {
         LOGD("synthesizer not created. please first create()");
+    }
+
+    if (elements) {
+        env->ReleaseFloatArrayElements(vol, elements, JNI_ABORT);
     }
 }
 

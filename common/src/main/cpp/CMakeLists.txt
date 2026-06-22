@@ -7,14 +7,16 @@
 cmake_minimum_required(VERSION 3.10)
 project("myMediaPlayer")
 
-# set(CMAKE_CXX_STANDARD 20)
-message(${CMAKE_PROJECT_NAME})
-set(JUCE_DIR vcpkg/packages/juce_arm64-android/share/juce)
-
-set(JUCE_OBOE_INCLUDE_DIR vcpkg/packages/oboe_arm64-android/include)
-set(JUCE_OBOE_LIBRARY vcpkg/packages/oboe_arm64-android/lib)
+# Use find_package to locate dependencies.
+# If building with vcpkg, the toolchain will set the search paths automatically.
 find_package(oboe REQUIRED CONFIG)
 find_package(JUCE REQUIRED CONFIG)
+
+# Enable MP3 support in JUCE modules
+add_compile_definitions(JUCE_USE_MP3AUDIOFORMAT=1)
+
+message(STATUS "Project: ${CMAKE_PROJECT_NAME}")
+message(STATUS "JUCE found: ${JUCE_FOUND}")
 
 # Add tasks subprojects
 add_library(${CMAKE_PROJECT_NAME} SHARED
@@ -26,13 +28,14 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         OboeAudioPlayer.cpp
 )
 
-find_package(oboe REQUIRED CONFIG)
 include_directories(include)
+
 target_link_libraries(${CMAKE_PROJECT_NAME}
         # List libraries link to the target library
         juce::juce_core
-        juce::juce_audio_basics # GUI module
+        juce::juce_audio_basics
         juce::juce_audio_formats
         android
         log
-        oboe::oboe)
+        oboe::oboe
+)
