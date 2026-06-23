@@ -119,6 +119,9 @@ class Equalizer(
         .add(COMMAND_SET_MEDIA_ITEM)
         .add(COMMAND_CHANGE_MEDIA_ITEMS)
         .add(COMMAND_GET_VOLUME)
+        .add(COMMAND_GET_TIMELINE)
+        .add(COMMAND_GET_CURRENT_MEDIA_ITEM)
+        .add(COMMAND_GET_METADATA)
         .build()
 
     private var playBackParameters = PlaybackParameters.DEFAULT
@@ -149,7 +152,7 @@ class Equalizer(
                 log("isPlaying: $isPlaying")
                 super.onIsPlayingChanged(isPlaying)
                 if (isPlaying) {
-                    val file = mediaItems[0].localConfiguration?.uri?.path?.let { File(it) }
+                    val file = mediaItems.getOrNull(0)?.localConfiguration?.uri?.path?.let { File(it) }
 
                     file?.let {
                         if (file.exists()) {
@@ -166,11 +169,11 @@ class Equalizer(
                     }
                 } else {
                     synchronized(equalizerMutex){
-                        createNativeHandleIfNotExists()
-                        nativeStop(equalizerHandle)
-                        equalizerHandle=0L
+                        if (equalizerHandle != 0L) {
+                            nativeStop(equalizerHandle)
+                        }
                     }
-                    mediaItems.clear()
+                    // DO NOT CLEAR MEDIA ITEMS ON PAUSE
                 }
             }
 
@@ -261,6 +264,15 @@ class Equalizer(
         log("setMediaItems1")
         this.mediaItems.clear()
         this.mediaItems.addAll(mediaItems)
+        listeners.sendEvent(EVENT_TIMELINE_CHANGED) { listener: Player.Listener ->
+            listener.onTimelineChanged(currentTimeline, Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED)
+        }
+        listeners.sendEvent(EVENT_MEDIA_METADATA_CHANGED) { listener: Player.Listener ->
+            listener.onMediaMetadataChanged(mediaMetadata)
+        }
+        listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { listener: Player.Listener ->
+            listener.onPlaybackStateChanged(playbackState)
+        }
     }
 
 
@@ -274,6 +286,15 @@ class Equalizer(
         this.mediaItems.clear()
         this.mediaItems.addAll(_mediaItems)
         log(mediaItems.joinToString(prefix="size=${mediaItems.size}") { "${it.mediaId}, ${it.mediaMetadata.title},  ${it.mediaMetadata.artist}, ${it.mediaMetadata.mediaType}" })
+        listeners.sendEvent(EVENT_TIMELINE_CHANGED) { listener: Player.Listener ->
+            listener.onTimelineChanged(currentTimeline, Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED)
+        }
+        listeners.sendEvent(EVENT_MEDIA_METADATA_CHANGED) { listener: Player.Listener ->
+            listener.onMediaMetadataChanged(mediaMetadata)
+        }
+        listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { listener: Player.Listener ->
+            listener.onPlaybackStateChanged(playbackState)
+        }
     }
 
     override fun addMediaItems(index: Int, mediaItems: List<MediaItem>) {
@@ -374,11 +395,18 @@ class Equalizer(
     }
 
     override fun release() {
-        TODO("Not yet implemented")
+        log("release")
+        synchronized(equalizerMutex) {
+            if (equalizerHandle != 0L) {
+                nativeDelete(equalizerHandle)
+                equalizerHandle = 0L
+            }
+        }
+        listeners.release()
     }
 
     override fun getCurrentTracks(): Tracks {
-        TODO("Not yet implemented")
+        return Tracks.EMPTY
     }
 
     override fun getTrackSelectionParameters(): TrackSelectionParameters = TrackSelectionParameters.DEFAULT
@@ -389,126 +417,114 @@ class Equalizer(
     }
 
     override fun getMediaMetadata(): MediaMetadata {
-        TODO("Not yet implemented")
+        return mediaItems.getOrNull(0)?.mediaMetadata ?: MediaMetadata.EMPTY
     }
 
     override fun getPlaylistMetadata(): MediaMetadata {
-        TODO("Not yet implemented")
+        return MediaMetadata.EMPTY
     }
 
     override fun setPlaylistMetadata(mediaMetadata: MediaMetadata) {
-        TODO("Not yet implemented")
     }
 
     override fun getCurrentTimeline(): Timeline {
-        TODO("Not yet implemented")
+        return EqualizerTimeline()
     }
 
     override fun getCurrentPeriodIndex(): Int {
-        TODO("Not yet implemented")
+        return if (mediaItems.isNotEmpty()) 0 else 0
     }
 
     override fun getCurrentMediaItemIndex(): Int {
-        TODO("Not yet implemented")
+        return if (mediaItems.isNotEmpty()) 0 else 0
     }
 
     override fun getDuration(): Long {
-        TODO("Not yet implemented")
+        return C.TIME_UNSET
     }
 
     override fun getCurrentPosition(): Long {
-        TODO("Not yet implemented")
+        return 0
     }
 
     override fun getBufferedPosition(): Long {
-        TODO("Not yet implemented")
+        return 0
     }
 
     override fun getTotalBufferedDuration(): Long {
-        TODO("Not yet implemented")
+        return 0
     }
 
     override fun isPlayingAd(): Boolean {
-        TODO("Not yet implemented")
+        return false
     }
 
     override fun getCurrentAdGroupIndex(): Int {
-        TODO("Not yet implemented")
+        return C.INDEX_UNSET
     }
 
     override fun getCurrentAdIndexInAdGroup(): Int {
-        TODO("Not yet implemented")
+        return C.INDEX_UNSET
     }
 
     override fun getContentPosition(): Long {
-        TODO("Not yet implemented")
+        return 0
     }
 
     override fun getContentBufferedPosition(): Long {
-        TODO("Not yet implemented")
+        return 0
     }
 
     override fun getAudioAttributes(): AudioAttributes {
-        TODO("Not yet implemented")
+        return AudioAttributes.DEFAULT
     }
 
     override fun setVolume(volume: Float) {
-        TODO("Not yet implemented")
+        // Not implemented for master volume yet
     }
 
-    override fun getVolume(): Float = volPerFreq[0]
+    override fun getVolume(): Float = 1f
     override fun mute() {
-        TODO("Not yet implemented")
     }
 
     override fun unmute() {
-        TODO("Not yet implemented")
     }
 
     override fun clearVideoSurface() {
-        TODO("Not yet implemented")
     }
 
     override fun clearVideoSurface(surface: Surface?) {
-        TODO("Not yet implemented")
     }
 
     override fun setVideoSurface(surface: Surface?) {
-        TODO("Not yet implemented")
     }
 
     override fun setVideoSurfaceHolder(surfaceHolder: SurfaceHolder?) {
-        TODO("Not yet implemented")
     }
 
     override fun clearVideoSurfaceHolder(surfaceHolder: SurfaceHolder?) {
-        TODO("Not yet implemented")
     }
 
     override fun setVideoSurfaceView(surfaceView: SurfaceView?) {
-        TODO("Not yet implemented")
     }
 
     override fun clearVideoSurfaceView(surfaceView: SurfaceView?) {
-        TODO("Not yet implemented")
     }
 
     override fun setVideoTextureView(textureView: TextureView?) {
-        TODO("Not yet implemented")
     }
 
     override fun clearVideoTextureView(textureView: TextureView?) {
-        TODO("Not yet implemented")
     }
 
     override fun getVideoSize(): VideoSize = VideoSize.UNKNOWN
 
     override fun getSurfaceSize(): Size {
-        TODO("Not yet implemented")
+        return Size.UNKNOWN
     }
 
     override fun getCurrentCues(): CueGroup {
-        TODO("Not yet implemented")
+        return CueGroup.EMPTY_TIME_ZERO
     }
 
     override fun getDeviceInfo(): DeviceInfo {
@@ -516,35 +532,30 @@ class Equalizer(
     }
 
     override fun getDeviceVolume(): Int {
-        TODO("Not yet implemented")
+        return 0
     }
 
     override fun isDeviceMuted(): Boolean {
-        TODO("Not yet implemented")
+        return false
     }
 
 
 
     override fun setDeviceVolume(volume: Int, flags: Int) {
-        TODO("Not yet implemented")
     }
 
     override fun increaseDeviceVolume(flags: Int) {
-        TODO("Not yet implemented")
     }
 
 
     override fun decreaseDeviceVolume(flags: Int) {
-        TODO("Not yet implemented")
     }
 
 
     override fun setDeviceMuted(muted: Boolean, flags: Int) {
-        TODO("Not yet implemented")
     }
 
     override fun setAudioAttributes(audioAttributes: AudioAttributes, handleAudioFocus: Boolean) {
-        TODO("Not yet implemented")
     }
 
     override fun seekTo(
@@ -553,28 +564,67 @@ class Equalizer(
         seekCommand: Int,
         isRepeatingCurrentItem: Boolean
     ) {
-        TODO("Not yet implemented")
     }
 
-    @Deprecated("Deprecated in Java", ReplaceWith("TODO(\"Not yet implemented\")"))
+    @Deprecated("Deprecated in Java")
     override fun setDeviceVolume(volume: Int) {
-        TODO("Not yet implemented")
     }
 
-    @Deprecated("Deprecated in Java", ReplaceWith("TODO(\"Not yet implemented\")"))
+    @Deprecated("Deprecated in Java")
     override fun increaseDeviceVolume() {
-        TODO("Not yet implemented")
     }
 
 
-    @Deprecated("Deprecated in Java", ReplaceWith("TODO(\"Not yet implemented\")"))
+    @Deprecated("Deprecated in Java")
     override fun decreaseDeviceVolume() {
-        TODO("Not yet implemented")
     }
 
-    @Deprecated("Deprecated in Java", ReplaceWith("TODO(\"Not yet implemented\")"))
+    @Deprecated("Deprecated in Java")
     override fun setDeviceMuted(muted: Boolean) {
-        TODO("Not yet implemented")
+    }
+
+    private inner class EqualizerTimeline : Timeline() {
+        override fun getWindowCount(): Int = if (mediaItems.isEmpty()) 0 else 1
+
+        override fun getWindow(windowIndex: Int, window: Window, defaultPositionProjectionUs: Long): Window {
+            if (mediaItems.isEmpty()) throw IndexOutOfBoundsException()
+            val mediaItem = mediaItems[0]
+            window.set(
+                Window.SINGLE_WINDOW_UID,
+                mediaItem,
+                /* manifest= */ null,
+                /* presentationStartTimeMs= */ C.TIME_UNSET,
+                /* windowStartTimeMs= */ C.TIME_UNSET,
+                /* elapsedRealtimeEpochOffsetMs= */ C.TIME_UNSET,
+                /* isSeekable= */ false,
+                /* isDynamic= */ false,
+                /* liveConfiguration= */ null,
+                /* defaultPositionUs= */ 0,
+                /* durationUs= */ C.TIME_UNSET,
+                /* firstPeriodIndex= */ 0,
+                /* lastPeriodIndex= */ 0,
+                /* positionInFirstPeriodUs= */ 0
+            )
+            return window
+        }
+
+        override fun getPeriodCount(): Int = if (mediaItems.isEmpty()) 0 else 1
+
+        override fun getPeriod(periodIndex: Int, period: Period, setIds: Boolean): Period {
+            if (mediaItems.isEmpty()) throw IndexOutOfBoundsException()
+            period.set(
+                /* id= */ if (setIds) 0 else null,
+                /* uid= */ if (setIds) 0 else null,
+                /* windowIndex= */ 0,
+                /* durationUs= */ C.TIME_UNSET,
+                /* positionInWindowUs= */ 0
+            )
+            return period
+        }
+
+        override fun getIndexOfPeriod(uid: Any): Int = if (uid == 0) 0 else C.INDEX_UNSET
+
+        override fun getUidOfPeriod(periodIndex: Int): Any = 0
     }
 
 }

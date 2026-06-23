@@ -28,6 +28,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import com.google.common.util.concurrent.MoreExecutors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class AudioModel: ViewModel() {
     companion object {
@@ -60,7 +62,7 @@ class AudioModel: ViewModel() {
         "Treble Boost" to listOf(1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.2f, 1.4f, 1.6f),
         "Vocal" to listOf(0.8f, 0.9f, 1.0f, 1.3f, 1.4f, 1.2f, 1.0f, 0.9f),
         "Rock" to listOf(1.3f, 1.2f, 1.1f, 1.0f, 0.9f, 1.1f, 1.2f, 1.3f),
-        "Custom" to emptyList<Float>() // Handled specially
+        "Custom" to emptyList() // Handled specially
     )
 
     fun applyPreset(name: String) {
@@ -148,39 +150,52 @@ class AudioModel: ViewModel() {
 
     private fun fetchOnlineData(context: Context, items: List<MediaItem>) {
         viewModelScope.launch {
-            items.map { item ->
-                async {
-                    val artist = item.mediaMetadata.artist?.toString()
-                    val title = item.mediaMetadata.title?.toString()
-                    
-                    val cacheKey = item.mediaId
-                    val needsArtwork = item.mediaMetadata.artworkUri == null && !onlineArtworkMap.containsKey(cacheKey)
-                    val needsInfo = !onlineInfoMap.containsKey(cacheKey)
-                    
-                    if ((needsArtwork || needsInfo) && !artist.isNullOrBlank() && !title.isNullOrBlank()) {
-                        try {
-                            // Max wait 60 seconds per item (to allow for long queues in large folders)
-                            val info = withTimeoutOrNull(60000L) {
-                                OnlineMetadataManager.getOnlineInfo(context, artist, title)
-                            }
-                            
-                            if (info != null) {
-                                if (needsArtwork) info.artworkUrl?.let { onlineArtworkMap[cacheKey] = it }
-                                onlineInfoMap[cacheKey] = info
-                            } else {
-                                // Stop the loading spinner even if search failed or timed out
+            withContext(Dispatchers.IO) {
+                items.map { item ->
+                    async {
+                        val artist = item.mediaMetadata.artist?.toString()
+                        val title = item.mediaMetadata.title?.toString()
+
+                        val cacheKey = item.mediaId
+                        val needsArtwork =
+                            item.mediaMetadata.artworkUri == null && !onlineArtworkMap.containsKey(
+                                cacheKey
+                            )
+                        val needsInfo = !onlineInfoMap.containsKey(cacheKey)
+
+                        if ((needsArtwork || needsInfo) && !artist.isNullOrBlank() && !title.isNullOrBlank()) {
+                            try {
+                                // Max wait 60 seconds per item (to allow for long queues in large folders)
+                                val info = withTimeoutOrNull(60000L) {
+                                    OnlineMetadataManager.getOnlineInfo(context, artist, title)
+                                }
+
+                                if (info != null) {
+                                    if (needsArtwork) info.artworkUrl?.let {
+                                        onlineArtworkMap[cacheKey] = it
+                                    }
+                                    onlineInfoMap[cacheKey] = info
+                                } else {
+                                    // Stop the loading spinner even if search failed or timed out
+                                    onlineInfoMap[cacheKey] = OnlineInfo(isNotFound = true)
+                                }
+                            } catch (e: Exception) {
+                                Log.e(
+                                    "AudioModel",
+                                    "Error in fetch async for $cacheKey: ${e.message}"
+                                )
                                 onlineInfoMap[cacheKey] = OnlineInfo(isNotFound = true)
                             }
-                        } catch (e: Exception) {
-                            Log.e("AudioModel", "Error in fetch async for $cacheKey: ${e.message}")
-                            onlineInfoMap[cacheKey] = OnlineInfo(isNotFound = true)
                         }
                     }
-                }
-            }.awaitAll()
+                }.awaitAll()
+            }
         }
     }
 
+
+    private val _mediaController = MutableLiveData<Player?>(null)
+    val mediaController: LiveData<Player?> = _mediaController
 
     private var mediaControllerFuture: ListenableFuture<MediaBrowser>? = null
 
@@ -281,6 +296,7 @@ class AudioModel: ViewModel() {
         mediaControllerFuture?.apply {
             addListener({
                 controller = get()
+                _mediaController.postValue(controller)
                 log("MediaController connected")
                 
                 // Initial browse
@@ -327,13 +343,21 @@ class AudioModel: ViewModel() {
         return true
     }
 
-    internal fun playMedia(mediaItem: MediaItem) {
+    internal fun loadMedia(mediaItem: MediaItem) {
+        if (!::controller.isInitialized) return
+        controller.setMediaItem(mediaItem)
+        controller.prepare()
+        log("Media loaded and prepared: ${mediaItem.mediaId}")
+    }
 
+    internal fun playMedia(mediaItem: MediaItem) {
+        if (!::controller.isInitialized) return
+        
         log("playbackState is ${controller.playbackState}, playwhenready=${controller.playWhenReady}")
 
         when (controller.playbackState) {
             Player.STATE_IDLE -> {
-                controller.addMediaItem(mediaItem)
+                controller.setMediaItem(mediaItem)
                 controller.prepare()
                 controller.play()
                 log("player is prepared, and playing")
@@ -351,7 +375,7 @@ class AudioModel: ViewModel() {
             }
             Player.STATE_ENDED -> {
                 log("The player is finished")
-                controller.addMediaItem(mediaItem)
+                controller.setMediaItem(mediaItem)
                 controller.prepare()
                 controller.play()
             }

@@ -1,5 +1,6 @@
 package com.equalizer.mymediaplayer
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
@@ -284,6 +286,29 @@ fun FolderGridItem(mediaItem: MediaItem,
 
 @Composable
 fun MediaInfoDialog(mediaItem: MediaItem, onlineInfo: com.equalizer.common.OnlineInfo?, onDismiss: () -> Unit) {
+    LaunchedEffect(mediaItem) {
+        val meta = mediaItem.mediaMetadata
+        Log.i("MediaInfo", "--- Metadata for ${mediaItem.mediaId} ---")
+        meta.title?.let { Log.i("MediaInfo", "Title: $it") }
+        meta.artist?.let { Log.i("MediaInfo", "Artist: $it") }
+        meta.albumTitle?.let { Log.i("MediaInfo", "Album: $it") }
+        meta.genre?.let { Log.i("MediaInfo", "Genre: $it") }
+        meta.releaseYear?.let { Log.i("MediaInfo", "Release Year: $it") }
+        meta.releaseMonth?.let { Log.i("MediaInfo", "Release Month: $it") }
+        meta.releaseDay?.let { Log.i("MediaInfo", "Release Day: $it") }
+        meta.trackNumber?.let { Log.i("MediaInfo", "Track Number: $it") }
+        meta.totalDiscCount?.let { Log.i("MediaInfo", "Total Disc Count: $it") }
+        meta.artworkUri?.let { Log.i("MediaInfo", "Artwork URI: $it") }
+        
+        if (onlineInfo != null) {
+            Log.i("MediaInfo", "--- Online Data ---")
+            onlineInfo.releaseDate?.let { Log.i("MediaInfo", "Online Release Date: $it") }
+            onlineInfo.label?.let { Log.i("MediaInfo", "Online Label: $it") }
+            onlineInfo.genres?.let { Log.i("MediaInfo", "Online Genres: ${it.joinToString(", ")}") }
+            onlineInfo.artworkUrl?.let { Log.i("MediaInfo", "Online Artwork URL: $it") }
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {

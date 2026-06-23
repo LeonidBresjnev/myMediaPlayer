@@ -55,7 +55,6 @@ Java_com_equalizer_common_Equalizer_nativeStop(JNIEnv *env, jobject thiz,
     } else {
         LOGD("Synthesize not create");
     }
-    delete equalizer;
 }
 
 JNIEXPORT void JNICALL
