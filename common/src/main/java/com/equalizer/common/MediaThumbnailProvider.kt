@@ -6,16 +6,15 @@ import android.database.Cursor
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.ParcelFileDescriptor
-import android.util.Log
+import androidx.core.net.toUri
 import java.io.File
 import java.io.FileOutputStream
-import java.io.IOException
 
 class MediaThumbnailProvider : ContentProvider() {
 
     companion object {
         const val AUTHORITY = "com.equalizer.mymediaplayer.thumbnail"
-        val CONTENT_URI: Uri = Uri.parse("content://$AUTHORITY")
+        val CONTENT_URI: Uri = "content://$AUTHORITY".toUri()
     }
 
     override fun onCreate(): Boolean = true

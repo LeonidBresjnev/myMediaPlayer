@@ -145,55 +145,6 @@ class AudioModel: ViewModel() {
 
     private val navStack = mutableListOf<String>()
 
-    val onlineArtworkMap = mutableStateMapOf<String, String>()
-    val onlineInfoMap = mutableStateMapOf<String, OnlineInfo>()
-
-    private fun fetchOnlineData(context: Context, items: List<MediaItem>) {
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                items.map { item ->
-                    async {
-                        val artist = item.mediaMetadata.artist?.toString()
-                        val title = item.mediaMetadata.title?.toString()
-
-                        val cacheKey = item.mediaId
-                        val needsArtwork =
-                            item.mediaMetadata.artworkUri == null && !onlineArtworkMap.containsKey(
-                                cacheKey
-                            )
-                        val needsInfo = !onlineInfoMap.containsKey(cacheKey)
-
-                        if ((needsArtwork || needsInfo) && !artist.isNullOrBlank() && !title.isNullOrBlank()) {
-                            try {
-                                // Max wait 60 seconds per item (to allow for long queues in large folders)
-                                val info = withTimeoutOrNull(60000L) {
-                                    OnlineMetadataManager.getOnlineInfo(context, artist, title)
-                                }
-
-                                if (info != null) {
-                                    if (needsArtwork) info.artworkUrl?.let {
-                                        onlineArtworkMap[cacheKey] = it
-                                    }
-                                    onlineInfoMap[cacheKey] = info
-                                } else {
-                                    // Stop the loading spinner even if search failed or timed out
-                                    onlineInfoMap[cacheKey] = OnlineInfo(isNotFound = true)
-                                }
-                            } catch (e: Exception) {
-                                Log.e(
-                                    "AudioModel",
-                                    "Error in fetch async for $cacheKey: ${e.message}"
-                                )
-                                onlineInfoMap[cacheKey] = OnlineInfo(isNotFound = true)
-                            }
-                        }
-                    }
-                }.awaitAll()
-            }
-        }
-    }
-
-
     private val _mediaController = MutableLiveData<Player?>(null)
     val mediaController: LiveData<Player?> = _mediaController
 
@@ -326,8 +277,7 @@ class AudioModel: ViewModel() {
                     }
                     _currentPath.value = parentId
                     
-                    // Trigger online data fetching
-                    context?.let { fetchOnlineData(it, result.value!!) }
+                    // Trigger online data fetching - REMOVED, now handled by service
                 }
             } catch (e: Exception) {
                 log("Error getting children: ${e.message}")

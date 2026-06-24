@@ -74,13 +74,14 @@ JNIEXPORT void JNICALL
 Java_com_equalizer_common_Equalizer_nativePlay(JNIEnv *env,
                                                jobject thiz,
                                                jlong synthesizer_handle,
-                                               jstring jFileName) {
+                                               jstring jFileName,
+                                               jint deviceId) {
 
     std::string fileName = jstringToString(env, jFileName);
 
     auto *equalizer = reinterpret_cast<equalizer::Equalizer *>(synthesizer_handle);
     if (equalizer) {
-        equalizer->play(fileName);
+        equalizer->play(fileName, deviceId);
     } else {
         LOGD("synthesizer not created. please first create()");
     }
@@ -91,7 +92,8 @@ Java_com_equalizer_common_Equalizer_nativePlayWithVol(JNIEnv *env,
                                                       jobject thiz,
                                                       jlong synthesizer_handle,
                                                       jstring jFileName,
-                                                      jfloatArray vol) {
+                                                      jfloatArray vol,
+                                                      jint deviceId) {
     std::string fileName = jstringToString(env, jFileName);
 
     jint size = env->GetArrayLength(vol);
@@ -103,7 +105,7 @@ Java_com_equalizer_common_Equalizer_nativePlayWithVol(JNIEnv *env,
         for (int i = 0; i < bands; i++) {
             equalizer->setVolumenLow(elements[i], i);
         }
-        equalizer->play(fileName);
+        equalizer->play(fileName, deviceId);
     } else {
         LOGD("synthesizer not created. please first create()");
     }

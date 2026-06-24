@@ -13,7 +13,7 @@ namespace equalizer {
         OboeAudioPlayer::stop();
     }
 
-    int32_t OboeAudioPlayer::play(int32_t _samplingRate,uint16_t channelCount_) {
+    int32_t OboeAudioPlayer::play(int32_t _samplingRate,uint16_t channelCount_, int32_t deviceId) {
         // Create an AudioStream using the Oboe's builder
         AudioStreamBuilder builder;
         const auto result =
@@ -28,7 +28,7 @@ namespace equalizer {
                                 // no other app should play back sound simultaneously
                         ->setSharingMode(SharingMode::Exclusive)
                         ->setFormat( AudioFormat::Float )
-                        /*->setDeviceId((int32_t)300 )*/
+                        ->setDeviceId(deviceId)
                         ->setContentType(ContentType::Music)
                         ->setUsage(Usage::Media)
                         ->setChannelCount(channelCount_ /*oboe::ChannelCount::Stereo*/)

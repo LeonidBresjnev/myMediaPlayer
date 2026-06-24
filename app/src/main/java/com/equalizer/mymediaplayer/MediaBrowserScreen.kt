@@ -1,6 +1,5 @@
 package com.equalizer.mymediaplayer
 
-import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,7 +31,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
@@ -65,9 +63,6 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
     val media = audioModel.subItemMediaList.observeAsState(emptyList())
     val currentPath by audioModel.currentPath.observeAsState("root")
     
-    val onlineArtwork = audioModel.onlineArtworkMap
-    val onlineInfo = audioModel.onlineInfoMap
-
     var selectedIdx by rememberSaveable {
         mutableIntStateOf(-1)
     }
@@ -127,7 +122,6 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
                     FileRow(
                         mediaItem = mediaItem,
                         isSelected = selectedIdx == (folders.size + idx),
-                        onlineArtworkUrl = onlineArtwork[mediaItem.mediaId],
                         onClick = {
                             selectedIdx = folders.size + idx
                             onSelect(File(mediaItem.mediaId))
@@ -153,7 +147,6 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
                 ) { _, mediaItem ->
                     FolderGridItem(
                         mediaItem = mediaItem,
-                        onlineArtworkUrl = onlineArtwork[mediaItem.mediaId],
                         onClick = {
                             audioModel.browse(mediaItem.mediaId, context = context)
                             selectedIdx = -1
@@ -170,7 +163,6 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
     if (infoItem != null) {
         MediaInfoDialog(
             mediaItem = infoItem!!,
-            onlineInfo = onlineInfo[infoItem!!.mediaId],
             onDismiss = { infoItem = null }
         )
     }
@@ -179,7 +171,6 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
 @Composable
 fun FileRow(mediaItem: MediaItem, 
             isSelected: Boolean, 
-            onlineArtworkUrl: String?,
             onClick: () -> Unit,
             onInfoClick: () -> Unit) {
     Row(
@@ -193,7 +184,7 @@ fun FileRow(mediaItem: MediaItem,
     ) {
         val musicPlaceholder = rememberVectorPainter(Icons.Default.MusicNote)
         AsyncImage(
-            model = mediaItem.mediaMetadata.artworkUri ?: onlineArtworkUrl,
+            model = mediaItem.mediaMetadata.artworkUri,
             contentDescription = null,
             modifier = Modifier.size(40.dp).clip(RoundedCornerShape(4.dp)),
             placeholder = musicPlaceholder,
@@ -228,7 +219,6 @@ fun FileRow(mediaItem: MediaItem,
 
 @Composable
 fun FolderGridItem(mediaItem: MediaItem, 
-                   onlineArtworkUrl: String?,
                    onClick: () -> Unit,
                    onInfoClick: () -> Unit) {
     Column(
@@ -246,7 +236,7 @@ fun FolderGridItem(mediaItem: MediaItem,
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center
         ) {
-            val artworkModel = mediaItem.mediaMetadata.artworkUri ?: onlineArtworkUrl
+            val artworkModel = mediaItem.mediaMetadata.artworkUri
             val musicPlaceholder = rememberVectorPainter(Icons.Default.MusicNote)
             AsyncImage(
                 model = artworkModel,
@@ -285,30 +275,7 @@ fun FolderGridItem(mediaItem: MediaItem,
 }
 
 @Composable
-fun MediaInfoDialog(mediaItem: MediaItem, onlineInfo: com.equalizer.common.OnlineInfo?, onDismiss: () -> Unit) {
-    LaunchedEffect(mediaItem) {
-        val meta = mediaItem.mediaMetadata
-        Log.i("MediaInfo", "--- Metadata for ${mediaItem.mediaId} ---")
-        meta.title?.let { Log.i("MediaInfo", "Title: $it") }
-        meta.artist?.let { Log.i("MediaInfo", "Artist: $it") }
-        meta.albumTitle?.let { Log.i("MediaInfo", "Album: $it") }
-        meta.genre?.let { Log.i("MediaInfo", "Genre: $it") }
-        meta.releaseYear?.let { Log.i("MediaInfo", "Release Year: $it") }
-        meta.releaseMonth?.let { Log.i("MediaInfo", "Release Month: $it") }
-        meta.releaseDay?.let { Log.i("MediaInfo", "Release Day: $it") }
-        meta.trackNumber?.let { Log.i("MediaInfo", "Track Number: $it") }
-        meta.totalDiscCount?.let { Log.i("MediaInfo", "Total Disc Count: $it") }
-        meta.artworkUri?.let { Log.i("MediaInfo", "Artwork URI: $it") }
-        
-        if (onlineInfo != null) {
-            Log.i("MediaInfo", "--- Online Data ---")
-            onlineInfo.releaseDate?.let { Log.i("MediaInfo", "Online Release Date: $it") }
-            onlineInfo.label?.let { Log.i("MediaInfo", "Online Label: $it") }
-            onlineInfo.genres?.let { Log.i("MediaInfo", "Online Genres: ${it.joinToString(", ")}") }
-            onlineInfo.artworkUrl?.let { Log.i("MediaInfo", "Online Artwork URL: $it") }
-        }
-    }
-
+fun MediaInfoDialog(mediaItem: MediaItem, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
@@ -331,7 +298,7 @@ fun MediaInfoDialog(mediaItem: MediaItem, onlineInfo: com.equalizer.common.Onlin
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
-                    val artworkModel = mediaItem.mediaMetadata.artworkUri ?: onlineInfo?.artworkUrl
+                    val artworkModel = mediaItem.mediaMetadata.artworkUri
                     val musicPlaceholder = rememberVectorPainter(Icons.Default.MusicNote)
                     AsyncImage(
                         model = artworkModel,
@@ -348,22 +315,8 @@ fun MediaInfoDialog(mediaItem: MediaItem, onlineInfo: com.equalizer.common.Onlin
                 InfoField("Title", mediaItem.mediaMetadata.title?.toString())
                 InfoField("Artist", mediaItem.mediaMetadata.artist?.toString())
                 
-                if (onlineInfo != null) {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                    Text("Online Information", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                    InfoField("Release Date", onlineInfo.releaseDate)
-                    InfoField("Label", onlineInfo.label)
-                    InfoField("Genres", onlineInfo.genres?.joinToString(", "))
-                } else {
-                    val artist = mediaItem.mediaMetadata.artist?.toString()
-                    val title = mediaItem.mediaMetadata.title?.toString()
-                    if (!artist.isNullOrBlank() && !title.isNullOrBlank()) {
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                        Text("Online data loading...", 
-                             style = MaterialTheme.typography.bodySmall, 
-                             color = Color.Gray)
-                    }
-                }
+                // Note: Extended online info (labels, genres) is currently not stored in MediaMetadata 
+                // but artwork is shared. If needed, we could pack more info into extras.
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                 InfoField("Sample Rate", mediaItem.mediaMetadata.totalDiscCount?.toString() ?: "N/A")

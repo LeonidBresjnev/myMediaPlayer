@@ -17,4 +17,5 @@
 
 <automotiveApp>
     <uses name="template"/>
+    <uses name="media"/>
 </automotiveApp>

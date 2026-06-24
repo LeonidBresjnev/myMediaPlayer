@@ -38,6 +38,17 @@
             </intent-filter>
         </activity>
 
+        <service
+            android:name="com.equalizer.common.MyMediaService"
+            android:exported="true"
+            tools:node="merge">
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+
     </application>
 
 </manifest>

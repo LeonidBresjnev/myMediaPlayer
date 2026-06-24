@@ -1,9 +1,6 @@
 package com.equalizer.carservice
 
-import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.net.Uri
-import android.os.Environment
 import android.text.SpannableString
 import android.text.Spanned
 import android.util.Log
@@ -16,154 +13,66 @@ import androidx.car.app.model.ForegroundCarColorSpan
 import androidx.car.app.model.Header
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
+import androidx.car.app.model.MessageTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.Template
 import androidx.core.graphics.drawable.IconCompat
 import androidx.media3.common.MediaItem
+import com.google.common.util.concurrent.MoreExecutors
 import java.io.File
-
 
 class MediaScreen(
     carContext: CarContext,
     val playControl: PlayControl
 ): Screen(carContext) {
 
+    private var currentPath = "root"
+    private var mediaItems: List<MediaItem> = emptyList()
+    private val navStack = mutableListOf<String>()
+    private var currentSelection = -1
 
-    var currentDir = ""
+    init {
+        browse(currentPath)
+    }
 
-    var folder = File(Environment.getExternalStorageDirectory(),"/Music")
-
-    var files =folder.listFiles()?.toList()?:emptyList()
-
-    var currentDepth = 0
-
-    private var fileItems: List<Row> = emptyList()
-
-    var currentSelection = -1
-
-    private fun makeRows() {
-        fileItems = files
-            .filter {
-                it.isDirectory || it.name.endsWith(
-                    ".wav",
-                    ignoreCase = true
-                ) || it.name.endsWith(
-                    ".mp3",
-                    ignoreCase = true
-                )
-            }
-            .mapIndexed { idx,it->
-            val row = Row.Builder()
-                .setTitle(it.name)
-                .setBrowsable(it.isDirectory)
-
-            if (it.isDirectory) {
-
-                it.listFiles()?.firstNotNullOfOrNull {
-                    val mp3Info =  MusicMeta(File(it.absolutePath))
-                    mp3Info._imageArray
-                }?.let { array ->
-                    if (array.isEmpty()) return@let
-                    val bitmap = BitmapFactory.decodeByteArray(array, 0, array.size)
-                    val musicIcon = CarIcon.Builder(IconCompat.createWithBitmap(bitmap)).build()
-                    row.setImage(musicIcon)
-                }
-
-                row.setOnClickListener {
-                    currentSelection=-1
-                    log("dir clicked")
-                    if ((currentDepth > 0) && idx == 0) {
-                        currentDepth--
-                        currentDir =
-                            currentDir.split("/").dropLast(1).joinToString(separator = "/")
-                        Log.d("file selection", "parent clicked")
-                    } else {
-                        currentDepth++
-                        Log.d("file selection", "folder clicked")
-                        currentDir = currentDir + "/" + it.name
-                    }
-                    folder = File(Environment.getExternalStorageDirectory()
-                        .absolutePath + "/Music$currentDir"
-                    )
-
-                    files = folder.listFiles()?.toList() ?: emptyList()
-                    if (currentDepth > 0) {
-                        val parent =
-                            currentDir.split("/").dropLast(1).joinToString(separator = "/")
-                        val parentFile =
-                            File(Environment.getExternalStorageDirectory().absolutePath + "/Music" + parent)
-                        files = listOf(parentFile) + files
-                    }
-                        //log(files.joinToString(separator = ", ") { it.name })
-
-                    makeRows()
-                    invalidate()
-                }
-                /* row.set {
-                log("dir clicked")
-            }*/
-            } else {
-                val mp3Info =  MusicMeta(File(it.absolutePath))
-
-
-                val string = SpannableString("artist: ${mp3Info._artist}")
-
-                if (idx == currentSelection) {
-                    string.setSpan(
-                        ForegroundCarColorSpan.create(CarColor.GREEN),
-                        0,
-                        string.length,
-                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                    )
-                }
-                val title = SpannableString(mp3Info._name)
-
-                row
-                    .setTitle(title)
-                    .addText(string)
-                    .setOnClickListener {
-                        currentSelection = idx
-                        makeRows()
+    private fun browse(parentId: String, addToStack: Boolean = true) {
+        if (playControl.mediaControllerFuture.isDone) {
+            val controller = playControl.controller
+            log("Browsing: $parentId")
+            val childrenFuture = controller.getChildren(parentId, 0, Int.MAX_VALUE, null)
+            childrenFuture.addListener({
+                try {
+                    val result = childrenFuture.get()
+                    if (result.value != null) {
+                        if (addToStack && parentId != currentPath) {
+                            navStack.add(currentPath)
+                        }
+                        currentPath = parentId
+                        mediaItems = result.value!!
+                        currentSelection = -1
                         invalidate()
                     }
-
-            }
-
-            row.build()
+                } catch (e: Exception) {
+                    log("Error getting children: ${e.message}")
+                }
+            }, MoreExecutors.directExecutor())
+        } else {
+            playControl.mediaControllerFuture.addListener({
+                browse(parentId, addToStack)
+            }, MoreExecutors.directExecutor())
         }
     }
 
-    init {
-        makeRows()
+    private fun navigateBack() {
+        if (navStack.isNotEmpty()) {
+            val lastPath = navStack.removeAt(navStack.size - 1)
+            browse(lastPath, addToStack = false)
+        }
     }
 
     private fun log(msg: String) {
         Log.d("Car Media Screen", msg)
     }
-
-    private val equalizerAction = Action.Builder()
-        .setIcon(CarIcon
-            .Builder(
-                IconCompat
-                    .createWithResource(
-                        carContext,
-                        R.drawable.lever_vert
-                    )
-                ).setTint(CarColor.createCustom(
-                Color.LTGRAY,
-                Color.DKGRAY
-            ))
-            .build())
-        .setOnClickListener {
-            this.screenManager.push(
-                EqualizerScreen(
-                    carContext = carContext,
-                    playControl
-                )
-            ) }
-        .setBackgroundColor(CarColor.RED)
-        .build()
-
 
     private val stopAction = Action
         .Builder()
@@ -175,86 +84,141 @@ class MediaScreen(
             ))
             .build())
         .setOnClickListener {
-
             log("stop clicked")
-            log("status is ${playControl.isPlaying}")
-
             playControl.controller.pause()
         }
         .setBackgroundColor(CarColor.BLUE)
         .build()
 
-
-    val playPauseBuilder = Action
-        .Builder()
-        .setIcon(CarIcon
-            .Builder(
-                IconCompat.createWithResource(carContext,
-                    R.drawable.play_solid)
-            )
-            .build())
+    private fun showInfo(item: MediaItem) {
+        log("show info")
+        val metadata = item.mediaMetadata
+        val message = StringBuilder()
+        message.append("Title: ${metadata.title ?: "Unknown"}\n")
+        message.append("Artist: ${metadata.artist ?: "Unknown"}\n")
+        metadata.totalDiscCount?.let { message.append("Sample Rate: $it\n") }
+        metadata.releaseMonth?.let { message.append("Channels: $it\n") }
+        
+        val template = MessageTemplate.Builder(message.toString())
+            .setTitle("Media Information")
+            .setHeaderAction(Action.BACK)
+            .build()
+        
+        this.screenManager.push(object : Screen(carContext) {
+            override fun onGetTemplate(): Template = template
+        })
+    }
 
     override fun onGetTemplate(): Template {
+        log("hello from auto")
         playControl.setInvalidate0 {
             invalidate()
         }
 
-        val playPause = playPauseBuilder
-
-            .setBackgroundColor(if (currentSelection>=0) CarColor.RED else CarColor.SECONDARY)
-
+        val playPause = Action.Builder()
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.play_solid)).build())
+            .setBackgroundColor(if (currentSelection >= 0) CarColor.RED else CarColor.SECONDARY)
             .setOnClickListener {
-                log("play clicked")
-
-                if (currentSelection<0) {
-                    log("returned: currentselection = $currentSelection")
-                    return@setOnClickListener
-                }
-                val file = File(files[currentSelection].absolutePath)
-                if (file.isDirectory) {
-                    log("returned: is directory")
-                    return@setOnClickListener
-                }
-                log("file: $file")
-                file.let {
-                    val myItem = MediaItem
-                        .Builder()
-                        .setMediaId("media-1")
-                        .setUri(Uri.fromFile(file))
-                        /*.setMediaMetadata(
-                            MediaMetadata.Builder()
-                                .build()
-                        )*/.build()
-                    playControl.playMedia(myItem)
+                if (currentSelection >= 0) {
+                    val item = mediaItems[currentSelection]
+                    if (item.mediaMetadata.isBrowsable != true) {
+                        playControl.playMedia(item)
+                    }
                 }
             }
             .build()
 
+        val itemListBuilder = ItemList.Builder()
+        
+        // Root menu link always at top
 
+        log(currentPath)
+        if (currentPath == "root") {
+            itemListBuilder.addItem(
+                Row.Builder()
+                    .setTitle("Equalizer Settings")
+                    .setImage(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.lever_vert)).build())
+                    .setOnClickListener {
+                        this.screenManager.push(EqualizerScreen(carContext, playControl))
+                    }
+                    .build()
+            )
+        } else if (navStack.isNotEmpty()) {
+            itemListBuilder.addItem(
+                Row.Builder()
+                    .setTitle(".. (Back to Albums)")
+                    .setOnClickListener { navigateBack() }
+                    .build()
+            )
+        }
 
+        mediaItems.forEachIndexed { idx, item ->
+            val metadata = item.mediaMetadata
+            
+            // At root, we only show albums/folders
+            if (currentPath == "root" && metadata.isBrowsable != true) {
+                return@forEachIndexed
+            }
 
-        val singleList = ItemList.Builder().apply {
-            fileItems.forEach { this.addItem(it) }
-        }.build()
+            val rowBuilder = Row.Builder()
+                .setTitle(metadata.title ?: "Unknown")
+                .setBrowsable(metadata.isBrowsable ?: false)
 
-        // 1. Create a Header object for your Title and Actions
-        val header = Header.Builder()
-            .setTitle("Media")
+            metadata.artist?.let {
+                val artistText = SpannableString("artist: $it")
+                if (idx == currentSelection) {
+                    artistText.setSpan(
+                        ForegroundCarColorSpan.create(CarColor.GREEN),
+                        0,
+                        artistText.length,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                }
+                rowBuilder.addText(artistText)
+            }
+
+            if (metadata.isBrowsable == true) {
+                metadata.artworkUri?.let { uri ->
+                    rowBuilder.setImage(CarIcon.Builder(IconCompat.createWithContentUri(uri)).build())
+                } ?: run {
+                    rowBuilder.setImage(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.lever_vert)).build())
+                }
+            }
+
+            if (metadata.isBrowsable != true) {
+                rowBuilder.addAction(
+                    Action.Builder()
+                        .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_artist)).build())
+                        .setOnClickListener { showInfo(item) }
+                        .build()
+                )
+            }
+
+            rowBuilder.setOnClickListener {
+                if (metadata.isBrowsable == true) {
+                    browse(item.mediaId)
+                } else {
+                    currentSelection = idx
+                    invalidate()
+                }
+            }
+            itemListBuilder.addItem(rowBuilder.build())
+        }
+
+        val headerBuilder = Header.Builder()
+            .setTitle(if (currentPath == "root") "Music Library" else File(currentPath).name)
             .addEndHeaderAction(if (playControl.isPlaying != PlayControl.Status.PLAYING) playPause else stopAction)
-            .addEndHeaderAction(equalizerAction)
-            .build()
+        
+        if (currentPath != "root") {
+            headerBuilder.setStartHeaderAction(Action.BACK)
+        } else {
+            // Ensure APP_ICON is visible as the header action on root if needed
+            headerBuilder.setStartHeaderAction(Action.APP_ICON)
+        }
 
-        // 2. Pass the header to the ListTemplate
         return ListTemplate.Builder()
-            .setSingleList(singleList)
-            .setHeader(header) // Use setHeader instead of setTitle/addAction
+            .setSingleList(itemListBuilder.build())
+            .setHeader(headerBuilder.build())
             .build()
-        /*
-        return ListTemplate.Builder()
-            .setTitle("Media")
-            .setSingleList(singleList)
-            .addAction(if (playControl.isPlaying != PlayControl.Status.PLAYING) playPause else stopAction)
-            .addAction(equalizerAction)
-            .build()*/
     }
 }

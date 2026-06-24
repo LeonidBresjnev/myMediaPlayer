@@ -16,6 +16,7 @@ import com.equalizer.common.metadata.M4aMeta
 import com.equalizer.common.metadata.Mp3Meta
 import com.equalizer.common.metadata.WavMeta
 import androidx.media3.session.LibraryResult
+import androidx.media3.session.SessionError
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSession.MediaItemsWithStartPosition
@@ -33,6 +34,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import androidx.core.net.toUri
 
 
 class MyMediaService : MediaLibraryService() {
@@ -48,105 +50,179 @@ class MyMediaService : MediaLibraryService() {
     var currentlocation: String = Environment.getExternalStorageDirectory().absolutePath+"/Music"
 
     private var volPerFreq = List(8) { 1f }
+
+    private suspend fun createMediaItemFromFile(file: File): MediaItem? {
+        if (!file.exists()) return null
+
+        return withContext(Dispatchers.IO) {
+            if (file.isDirectory) {
+                var firstArtist: String? = null
+                var firstTitle: String? = null
+
+                // Try to find a thumbnail and metadata for the folder from its contents
+                val firstWithArt = file.walk()
+                    .filter {
+                        it.isFile && (it.name.endsWith(".mp3", true) || it.name.endsWith(".m4a", true))
+                    }
+                    .onEach { songFile ->
+                        if (firstArtist == null) {
+                            when (val meta = MetaFactory.createMeta(songFile, applicationContext)) {
+                                is Mp3Meta -> {
+                                    firstArtist = meta.artist
+                                    firstTitle = meta.name
+                                }
+                                is M4aMeta -> {
+                                    firstArtist = meta.artist
+                                    firstTitle = meta.name
+                                }
+                            }
+                        }
+                    }
+                    .firstOrNull {
+                        val retriever = MediaMetadataRetriever()
+                        try {
+                            retriever.setDataSource(it.absolutePath)
+                            retriever.embeddedPicture != null
+                        } catch (_: Exception) {
+                            false
+                        } finally {
+                            retriever.release()
+                        }
+                    }
+
+                val folderMetadataBuilder = MediaMetadata.Builder()
+                    .setIsBrowsable(true)
+                    .setIsPlayable(false)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                    .setTitle(file.name)
+                    .setArtist(firstArtist)
+
+                if (firstWithArt != null) {
+                    val artworkUri = MediaThumbnailProvider.CONTENT_URI.buildUpon()
+                        .appendQueryParameter("path", firstWithArt.absolutePath)
+                        .build()
+                    folderMetadataBuilder.setArtworkUri(artworkUri)
+                } else if (firstArtist != null && firstTitle != null) {
+                    // Try online artwork if local is not found
+                    val onlineInfo = OnlineMetadataManager.getOnlineInfo(applicationContext,
+                        firstArtist, firstTitle
+                    )
+                    onlineInfo?.artworkUrl?.let {
+                        folderMetadataBuilder.setArtworkUri(it.toUri())
+                    }
+                }
+
+                MediaItem.Builder()
+                    .setMediaId(file.absolutePath)
+                    .setMediaMetadata(folderMetadataBuilder.build())
+                    .build()
+            } else if (file.isFile && (file.name.endsWith(".mp3", true) ||
+                        file.name.endsWith(".wav", true) ||
+                        file.name.endsWith(".m4a", true))
+            ) {
+
+                val meta = MetaFactory.createMeta(file, applicationContext)
+                val metadataBuilder = MediaMetadata.Builder()
+                    .setIsBrowsable(false)
+                    .setIsPlayable(true)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+
+                // Set thumbnail for the file if it has embedded artwork
+                val hasLocalArt = when (meta) {
+                    is Mp3Meta -> meta.imageArray?.isNotEmpty() == true
+                    is M4aMeta -> meta.imageArray?.isNotEmpty() == true
+                    else -> false
+                }
+
+                if (hasLocalArt) {
+                    val artworkUri = MediaThumbnailProvider.CONTENT_URI.buildUpon()
+                        .appendQueryParameter("path", file.absolutePath)
+                        .build()
+                    metadataBuilder.setArtworkUri(artworkUri)
+                }
+
+                if (meta != null) {
+                    val artist = when (meta) {
+                        is Mp3Meta -> meta.artist
+                        is M4aMeta -> meta.artist
+                        else -> null
+                    }
+                    val title = when (meta) {
+                        is Mp3Meta -> meta.name
+                        is M4aMeta -> meta.name
+                        else -> file.name
+                    }
+
+                    if (!hasLocalArt && !artist.isNullOrBlank() && !title.isNullOrBlank()) {
+                        val onlineInfo = OnlineMetadataManager.getOnlineInfo(applicationContext, artist, title)
+                        onlineInfo?.artworkUrl?.let {
+                            metadataBuilder.setArtworkUri(it.toUri())
+                        }
+                    }
+
+                    when (meta) {
+                        is Mp3Meta -> {
+                            metadataBuilder.setTitle(meta.name)
+                                .setArtist(meta.artist)
+                                .setTrackNumber(meta.track)
+                                .setTotalDiscCount(meta.sampleRate)
+                                .setReleaseMonth(meta.numChannels)
+                        }
+
+                        is M4aMeta -> {
+                            metadataBuilder.setTitle(meta.name)
+                                .setArtist(meta.artist)
+                                .setTrackNumber(meta.track)
+                                .setTotalDiscCount(meta.sampleRate)
+                                .setReleaseMonth(meta.numChannels)
+                        }
+
+                        is WavMeta -> {
+                            metadataBuilder.setTitle(file.name)
+                                .setTotalDiscCount(meta.sampleRate)
+                                .setReleaseMonth(meta.numChannels)
+                        }
+                    }
+                } else {
+                    metadataBuilder.setTitle(file.name)
+                }
+
+                MediaItem.Builder()
+                    .setMediaId(file.absolutePath)
+                    .setMediaMetadata(metadataBuilder.build())
+                    .setUri(Uri.fromFile(file))
+                    .build()
+            } else null
+        }
+    }
+
     // Create your Player and MediaSession in the onCreate lifecycle event
     @OptIn(UnstableApi::class)
     override fun onCreate() {
 
         super.onCreate()
-/*
-        val player0 = ExoPlayer
-            .Builder(this)
-            .setName("ExoPlayer")
-            .build()
 
-        val mediaItem = MediaItem.Builder()
-            .setUri( Uri.parse("/storage/emulated/0/Music/snothvalp.mp3"))
-            .build()
-        player0.setMediaItem(mediaItem)
-        player0.prepare()
-        player0.play()*/
         val player = Equalizer(context=this)
-      /*  val audioManager = this.getSystemService(AUDIO_SERVICE) as AudioManager
-        // Get available communication devices
-        val devices = audioManager.availableCommunicationDevices
-
-        log("devices:\n " + devices.joinToString("\n") { it.id.toString() + "  " + it.productName +" " + it.type})
-// Find Android Auto device (example: check for type or name)
-        val androidAutoDevice = devices.find {
-            it.type == AudioDeviceInfo.TYPE_REMOTE_SUBMIX
-        }
-        // Set the communication device
-        androidAutoDevice?.let { it->
-            val success = audioManager.setCommunicationDevice(it)
-            if (success) {
-                log("Audio routed to Android Auto")
-            } else {
-                log("Failed to route audio")
-            }
-        }?: log("No Android Auto device found")
-*/
-            /*
-                    val availableCommands = SessionCommands.Builder()
-                        .add(SessionCommand.COMMAND_CODE_CUSTOM)
-                        .build()*/
 
         mediaSession = MediaLibrarySession
             .Builder(this, player,object: MediaLibrarySession.Callback {
-/*
-                override fun onSetMediaItems(
-                    mediaSession: MediaSession,
-                    controller: MediaSession.ControllerInfo,
-                    mediaItems: MutableList<MediaItem>,
-                    startIndex: Int,
-                    startPositionMs: Long
-                ): ListenableFuture<MediaItemsWithStartPosition> {
-                    Log.d("My Media Service",
-                        "onSetMediaItems: ${mediaItems.map { it.mediaId}}")
-                    return super.onSetMediaItems(
-                        mediaSession,
-                        controller,
-                        mediaItems,
-                        startIndex,
-                        startPositionMs
-                    )
-                }*/
-
-
-/*
-                override fun onSetMediaItems(
-                    mediaSession: MediaSession,
-                    controller: MediaSession.ControllerInfo,
-                    mediaItems: List<MediaItem>,
-                    startIndex: Int,
-                    startPositionMs: Long
-                ): ListenableFuture<MediaItemsWithStartPosition> {
-                    return super.onSetMediaItems(
-                        mediaSession,
-                        controller,
-                        mediaItems,
-                        startIndex,
-                        startPositionMs
-                    )
-                }
-*/
 
                 override fun onConnect(
                     session: MediaSession,
                     controller: MediaSession.ControllerInfo
                 ): MediaSession.ConnectionResult {
-                    /*val result = super.onConnect(session, controller)
-                    result.availablePlayerCommands.buildUpon()*/
-                    return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                    val connectionResult = MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                         .setAvailableSessionCommands(
                             MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
                                 .add(setVolOnFreq)
                                 .add(getVolOnFreq)
                                 .add(SessionCommand.COMMAND_CODE_LIBRARY_GET_LIBRARY_ROOT)
                                 .add(SessionCommand.COMMAND_CODE_LIBRARY_GET_CHILDREN)
+                                .add(SessionCommand.COMMAND_CODE_LIBRARY_GET_ITEM)
                                 .build()
                         )
                         .build()
-
+                    return connectionResult
                 }
 
                 override fun onGetLibraryRoot(
@@ -162,6 +238,10 @@ class MyMediaService : MediaLibraryService() {
                                 .setIsPlayable(false)
                                 .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
                                 .setTitle("Music Library")
+                                .setExtras(Bundle().apply {
+                                    // Hint to Android Auto to start here instead of Now Playing
+                                    putBoolean("androidx.media.utils.MEDIA_BROWSER_SERVICE_HINT_BASE_BROWSE_ROOT", true)
+                                })
                                 .build()
                         )
                         .build()
@@ -195,116 +275,7 @@ class MyMediaService : MediaLibraryService() {
                         val mediaItems = withContext(Dispatchers.IO) {
                             filesList.map { file ->
                                 async {
-                                    if (file.isDirectory) {
-                                        var firstArtist: String? = null
-
-                                        // Try to find a thumbnail and metadata for the folder from its contents
-                                        val firstWithArt = file.walk()
-                                            .filter {
-                                                it.isFile && (it.name.endsWith(".mp3", true) || it.name.endsWith(
-                                                    ".m4a",
-                                                    true
-                                                ))
-                                            }
-                                            .onEach { songFile ->
-                                                if (firstArtist == null) {
-                                                    val meta =
-                                                        MetaFactory.createMeta(songFile, applicationContext)
-                                                    when (meta) {
-                                                        is Mp3Meta -> firstArtist = meta.artist
-                                                        is M4aMeta -> firstArtist = meta.artist
-                                                    }
-                                                }
-                                            }
-                                            .firstOrNull {
-                                                val retriever = MediaMetadataRetriever()
-                                                try {
-                                                    retriever.setDataSource(it.absolutePath)
-                                                    retriever.embeddedPicture != null
-                                                } catch (_: Exception) {
-                                                    false
-                                                } finally {
-                                                    retriever.release()
-                                                }
-                                            }
-
-                                        val folderMetadataBuilder = MediaMetadata.Builder()
-                                            .setIsBrowsable(true)
-                                            .setIsPlayable(false)
-                                            .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
-                                            .setTitle(file.name)
-                                            .setArtist(firstArtist)
-
-                                        if (firstWithArt != null) {
-                                            val artworkUri = MediaThumbnailProvider.CONTENT_URI.buildUpon()
-                                                .appendQueryParameter("path", firstWithArt.absolutePath)
-                                                .build()
-                                            folderMetadataBuilder.setArtworkUri(artworkUri)
-                                        }
-
-                                        MediaItem.Builder()
-                                            .setMediaId(file.absolutePath)
-                                            .setMediaMetadata(folderMetadataBuilder.build())
-                                            .build()
-                                    } else if (file.isFile && (file.name.endsWith(".mp3", true) ||
-                                                file.name.endsWith(".wav", true) ||
-                                                file.name.endsWith(".m4a", true))
-                                    ) {
-
-                                        val meta = MetaFactory.createMeta(file, applicationContext)
-                                        val metadataBuilder = MediaMetadata.Builder()
-                                            .setIsBrowsable(false)
-                                            .setIsPlayable(true)
-                                            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
-
-                                        // Set thumbnail for the file if it has embedded artwork
-                                        val hasLocalArt = when (meta) {
-                                            is Mp3Meta -> meta.imageArray?.isNotEmpty() == true
-                                            is M4aMeta -> meta.imageArray?.isNotEmpty() == true
-                                            else -> false
-                                        }
-
-                                        if (hasLocalArt) {
-                                            val artworkUri = MediaThumbnailProvider.CONTENT_URI.buildUpon()
-                                                .appendQueryParameter("path", file.absolutePath)
-                                                .build()
-                                            metadataBuilder.setArtworkUri(artworkUri)
-                                        }
-
-                                        if (meta != null) {
-                                            when (meta) {
-                                                is Mp3Meta -> {
-                                                    metadataBuilder.setTitle(meta.name)
-                                                        .setArtist(meta.artist)
-                                                        .setTrackNumber(meta.track)
-                                                        .setTotalDiscCount(meta.sampleRate)
-                                                        .setReleaseMonth(meta.numChannels)
-                                                }
-
-                                                is M4aMeta -> {
-                                                    metadataBuilder.setTitle(meta.name)
-                                                        .setArtist(meta.artist)
-                                                        .setTrackNumber(meta.track)
-                                                        .setTotalDiscCount(meta.sampleRate)
-                                                        .setReleaseMonth(meta.numChannels)
-                                                }
-
-                                                is WavMeta -> {
-                                                    metadataBuilder.setTitle(file.name)
-                                                        .setTotalDiscCount(meta.sampleRate)
-                                                        .setReleaseMonth(meta.numChannels)
-                                                }
-                                            }
-                                        } else {
-                                            metadataBuilder.setTitle(file.name)
-                                        }
-
-                                        MediaItem.Builder()
-                                            .setMediaId(file.absolutePath)
-                                            .setMediaMetadata(metadataBuilder.build())
-                                            .setUri(Uri.fromFile(file))
-                                            .build()
-                                    } else null
+                                    createMediaItemFromFile(file)
                                 }
                             }.awaitAll().filterNotNull()
                         }
@@ -313,23 +284,58 @@ class MyMediaService : MediaLibraryService() {
                     }
                     return settable
                 }
-/*
+
+                override fun onGetItem(
+                    session: MediaLibrarySession,
+                    browser: MediaSession.ControllerInfo,
+                    mediaId: String
+                ): ListenableFuture<LibraryResult<MediaItem>> {
+                    val settable = SettableFuture.create<LibraryResult<MediaItem>>()
+                    serviceScope.launch {
+                        try {
+                            val file = File(mediaId)
+                            val item = createMediaItemFromFile(file)
+                            if (item != null) {
+                                settable.set(LibraryResult.ofItem(item, null))
+                            } else {
+                                settable.set(LibraryResult.ofError(SessionError.ERROR_BAD_VALUE))
+                            }
+                        } catch (e: Exception) {
+                            settable.set(LibraryResult.ofError(SessionError.ERROR_UNKNOWN))
+                            e.message?.let {
+                                Log.d("Error in Mediaservice", it)
+                            }
+                        }
+                    }
+                    return settable
+                }
+
                 override fun onAddMediaItems(
                     mediaSession: MediaSession,
                     controller: MediaSession.ControllerInfo,
-                    mediaItems: MutableList<MediaItem>
-                ): ListenableFuture<MutableList<MediaItem>> {
-                    Log.d("My Media Service","onAddMediaItems: ${mediaItems.map { it.mediaId}}")
-                    return super.onAddMediaItems(mediaSession, controller, mediaItems)
-                }*/
+                    mediaItems: List<MediaItem>
+                ): ListenableFuture<List<MediaItem>> {
+                    Log.d("My Media Service", "onAddMediaItems: ${mediaItems.map { it.mediaId }}")
+                    val updatedItems = mediaItems.map { item ->
+                        if (item.localConfiguration == null) {
+                            // If it's a library item without local config, we need to rebuild it with the URI
+                            MediaItem.Builder()
+                                .setMediaId(item.mediaId)
+                                .setUri(Uri.fromFile(File(item.mediaId)))
+                                .setMediaMetadata(item.mediaMetadata)
+                                .build()
+                        } else {
+                            item
+                        }
+                    }
+                    return Futures.immediateFuture(updatedItems)
+                }
 
                 override fun onPlaybackResumption(
                     mediaSession: MediaSession, controller: MediaSession.ControllerInfo
                 ): ListenableFuture<MediaItemsWithStartPosition> {
                     val settable = SettableFuture.create<MediaItemsWithStartPosition>()
                     CoroutineScope(Dispatchers.Main).launch {
-                        // Your app is responsible for storing the playlist and the start position
-                        // to use here
                         val mylist = MediaItemsWithStartPosition(player.mediaItems,0,0)
                         Log.d("My Media Service",
                             "onPlaybackResumption: ${player.mediaItems.map { it.mediaId}}")
@@ -349,7 +355,6 @@ class MyMediaService : MediaLibraryService() {
                         val index = args.getInt("KEY_INDEX")
                         val volume = args.getFloat("KEY_VOLUME")
                         player.setVolOnFreq(volume,index)
-                        //Log.i("Media Service","setVolOnFreq $index $volume")
                     }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
@@ -359,24 +364,9 @@ class MyMediaService : MediaLibraryService() {
         mediaSession?.sessionExtras=Bundle().apply {
             putInt("Interval", 123)
         }
-
-
-/*
-        player.addListener(object : Player.Listener {
-
-            override fun onVolumeChanged(volume: Float) {
-                volPerFreq=player.getVolOnFreqs()
-                Log.d("My Media Service",volPerFreq.joinToString(", "))
-                super.onVolumeChanged(volume)
-
-            }
-        })*/
-
-
     }
 
 
-    // Remember to release the player and media session in onDestroy
     override fun onDestroy() {
         serviceJob.cancel()
         mediaSession?.run {
@@ -388,7 +378,6 @@ class MyMediaService : MediaLibraryService() {
         super.onDestroy()
     }
 
-    // The user dismissed the app from the recent tasks
     override fun onTaskRemoved(rootIntent: Intent?) {
         val player = mediaSession?.player
         if (player == null || !player.playWhenReady
@@ -399,11 +388,6 @@ class MyMediaService : MediaLibraryService() {
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? {
-
         return mediaSession
     }
-
-
-
-
 }

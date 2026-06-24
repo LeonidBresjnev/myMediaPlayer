@@ -2,6 +2,10 @@ package com.equalizer.common
 
 //import androidx.media3.common.util.Log
 import android.content.Context
+import android.media.AudioAttributes as AndroidAudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.os.Looper
 import android.view.Surface
 import android.view.SurfaceHolder
@@ -54,10 +58,11 @@ class Equalizer(
     private external fun nativeCreate(): Long
     private external fun nativeDelete(synthesizerHandle: Long)
     private external fun nativeStop(synthesizerHandle: Long)
-    private external fun nativePlay(synthesizerHandle: Long, name: String)
+    private external fun nativePlay(synthesizerHandle: Long, name: String, deviceId: Int)
     private external fun nativePlayWithVol(synthesizerHandle: Long,
                                            name: String,
-                                           vol: FloatArray)
+                                           vol: FloatArray,
+                                           deviceId: Int)
     private external fun nativeIsPlaying(synthesizerHandle: Long): Boolean
     private external fun nativeSetVolumenLow(synthesizerHandle: Long,volumeInDb: Float, freqInterval: Int)
 
@@ -144,6 +149,56 @@ class Equalizer(
         Log.d("Equalizer", message)
     }
 
+    private var audioFocusRequest: AudioFocusRequest? = null
+
+    private fun requestFocus(): Boolean {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val playbackAttributes = AndroidAudioAttributes.Builder()
+            .setUsage(AndroidAudioAttributes.USAGE_MEDIA)
+            .setContentType(AndroidAudioAttributes.CONTENT_TYPE_MUSIC)
+            .build()
+
+        val focusRequestBuilder = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(playbackAttributes)
+            .setAcceptsDelayedFocusGain(true)
+            .setOnAudioFocusChangeListener { focusChange ->
+                when (focusChange) {
+                    AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                        setPlayWhenReady(false)
+                    }
+                }
+            }
+        
+        audioFocusRequest = focusRequestBuilder.build()
+        val res = audioManager.requestAudioFocus(audioFocusRequest!!)
+        return res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+    }
+
+    private fun abandonFocus() {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+    }
+
+    private fun getBestDeviceId(): Int {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+
+        // Android Auto often uses TYPE_BUS (Automotive), TYPE_AUX_LINE or TYPE_REMOTE_SUBMIX (Projected)
+        val carDevice = devices.find {
+            it.type == AudioDeviceInfo.TYPE_BUS ||
+                    it.type == AudioDeviceInfo.TYPE_AUX_LINE ||
+                    it.type == AudioDeviceInfo.TYPE_REMOTE_SUBMIX ||
+                    it.type == AudioDeviceInfo.TYPE_TELEPHONY // Sometimes seen in AA
+        }
+
+        return if (carDevice != null) {
+            log("Best device for car: ${carDevice.productName} (type=${carDevice.type}, id=${carDevice.id})")
+            carDevice.id
+        } else {
+            0 // Default device
+        }
+    }
+
     init {
         log("inited")
         //this.playbackState= STATE_IDLE
@@ -152,6 +207,12 @@ class Equalizer(
                 log("isPlaying: $isPlaying")
                 super.onIsPlayingChanged(isPlaying)
                 if (isPlaying) {
+                    if (!requestFocus()) {
+                        log("Audio focus denied")
+                        setPlayWhenReady(false)
+                        return
+                    }
+
                     val file = mediaItems.getOrNull(0)?.localConfiguration?.uri?.path?.let { File(it) }
 
                     file?.let {
@@ -163,7 +224,8 @@ class Equalizer(
 
                                 nativePlayWithVol(equalizerHandle,
                                     file.absolutePath,
-                                    volPerFreq.toFloatArray())
+                                    volPerFreq.toFloatArray(),
+                                    getBestDeviceId())
                             }
                         }
                     }
@@ -173,6 +235,7 @@ class Equalizer(
                             nativeStop(equalizerHandle)
                         }
                     }
+                    abandonFocus()
                     // DO NOT CLEAR MEDIA ITEMS ON PAUSE
                 }
             }

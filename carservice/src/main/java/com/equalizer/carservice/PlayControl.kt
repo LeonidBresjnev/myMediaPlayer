@@ -7,7 +7,7 @@ import androidx.core.content.ContextCompat.getString
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
-import androidx.media3.session.MediaController
+import androidx.media3.session.MediaBrowser
 import androidx.media3.session.SessionToken
 import com.equalizer.common.MyMediaService
 import com.google.common.util.concurrent.ListenableFuture
@@ -31,12 +31,12 @@ class PlayControl( carContext: CarContext) {
         ComponentName(carContext, MyMediaService::class.java)
     )
 
-    private var mediaControllerFuture: ListenableFuture<MediaController> = MediaController
+    val mediaControllerFuture: ListenableFuture<MediaBrowser> = MediaBrowser
         .Builder(carContext, sessionToken)
         .buildAsync()
 
 
-    lateinit var controller: MediaController
+    lateinit var controller: MediaBrowser
 
     val frequencyLabels = listOf(
         getString(carContext,R.string.sub_bass_0_125_hz) ,

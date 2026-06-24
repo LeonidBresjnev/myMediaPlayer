@@ -17,7 +17,7 @@ namespace equalizer {
         Equalizer();
         ~Equalizer();
         void stop();
-        void play(const std::string&);
+        void play(const std::string&, int32_t deviceId = 0);
         bool isPlaying() const;
         void setVolumenLow(float , int);
 
