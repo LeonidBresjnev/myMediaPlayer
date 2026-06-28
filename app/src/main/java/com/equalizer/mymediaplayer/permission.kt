@@ -88,8 +88,12 @@ fun PermissionDemo() {
                     title = { Text(
                         text = "Request Single Permission",
                         color = Color.White) },
-            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                containerColor = MaterialTheme.colorScheme.primary
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                scrolledContainerColor = Color.Unspecified,
+                navigationIconContentColor = Color.Unspecified,
+                titleContentColor = Color.Unspecified,
+                actionIconContentColor = Color.Unspecified
             )
         )
     }) {

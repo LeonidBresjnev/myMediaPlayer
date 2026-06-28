@@ -6,22 +6,21 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.util.Log
-import androidx.annotation.OptIn
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
-import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import com.equalizer.common.metadata.MetaFactory
-import com.equalizer.common.metadata.M4aMeta
-import com.equalizer.common.metadata.Mp3Meta
-import com.equalizer.common.metadata.WavMeta
 import androidx.media3.session.LibraryResult
-import androidx.media3.session.SessionError
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSession.MediaItemsWithStartPosition
 import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
+import com.equalizer.common.metadata.M4aMeta
+import com.equalizer.common.metadata.MetaFactory
+import com.equalizer.common.metadata.Mp3Meta
+import com.equalizer.common.metadata.WavMeta
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -34,22 +33,21 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import androidx.core.net.toUri
 
-
+@UnstableApi
 class MyMediaService : MediaLibraryService() {
-    private var mediaSession: MediaLibrarySession? = null
+    var mediaSession: MediaLibrarySession? = null
 
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.Main + serviceJob)
 
 
-    private val setVolOnFreq = SessionCommand("setVolOnFreq" , Bundle.EMPTY)
-    private val getVolOnFreq = SessionCommand("getVolOnFreq" , Bundle.EMPTY)
+    private val setVolOnFreq = SessionCommand("setVolOnFreq", Bundle())
+    private val getVolOnFreq = SessionCommand("getVolOnFreq", Bundle())
 
-    var currentlocation: String = Environment.getExternalStorageDirectory().absolutePath+"/Music"
+    private var currentlocation = ""
 
-    private var volPerFreq = List(8) { 1f }
+    private val volPerFreq = MutableList(8) { 1.0f }
 
     private suspend fun createMediaItemFromFile(file: File): MediaItem? {
         if (!file.exists()) return null
@@ -108,7 +106,10 @@ class MyMediaService : MediaLibraryService() {
                         firstArtist, firstTitle
                     )
                     onlineInfo?.artworkUrl?.let {
-                        folderMetadataBuilder.setArtworkUri(it.toUri())
+                        val wrappedUri = MediaThumbnailProvider.CONTENT_URI.buildUpon()
+                            .appendQueryParameter("path", it)
+                            .build()
+                        folderMetadataBuilder.setArtworkUri(wrappedUri)
                     }
                 }
 
@@ -156,7 +157,10 @@ class MyMediaService : MediaLibraryService() {
                     if (!hasLocalArt && !artist.isNullOrBlank() && !title.isNullOrBlank()) {
                         val onlineInfo = OnlineMetadataManager.getOnlineInfo(applicationContext, artist, title)
                         onlineInfo?.artworkUrl?.let {
-                            metadataBuilder.setArtworkUri(it.toUri())
+                            val wrappedUri = MediaThumbnailProvider.CONTENT_URI.buildUpon()
+                                .appendQueryParameter("path", it)
+                                .build()
+                            metadataBuilder.setArtworkUri(wrappedUri)
                         }
                     }
 
@@ -196,194 +200,157 @@ class MyMediaService : MediaLibraryService() {
         }
     }
 
-    // Create your Player and MediaSession in the onCreate lifecycle event
-    @OptIn(UnstableApi::class)
     override fun onCreate() {
-
         super.onCreate()
+        Log.d("MyMediaService", "onCreate starting")
+        val player = Equalizer(context = this)
 
-        val player = Equalizer(context=this)
+        mediaSession = MediaLibrarySession.Builder(this, player, object : MediaLibrarySession.Callback {
 
-        mediaSession = MediaLibrarySession
-            .Builder(this, player,object: MediaLibrarySession.Callback {
+            override fun onConnect(
+                session: MediaSession,
+                controller: MediaSession.ControllerInfo
+            ): MediaSession.ConnectionResult {
+                Log.d("MyMediaService", "onConnect from: ${controller.packageName}")
+                val connectionResult = super.onConnect(session, controller)
+                val availableSessionCommands = connectionResult.availableSessionCommands.buildUpon()
+                availableSessionCommands.add(setVolOnFreq)
+                availableSessionCommands.add(getVolOnFreq)
+                return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                    .setAvailableSessionCommands(availableSessionCommands.build())
+                    .setAvailablePlayerCommands(connectionResult.availablePlayerCommands)
+                    .build()
+            }
 
-                override fun onConnect(
-                    session: MediaSession,
-                    controller: MediaSession.ControllerInfo
-                ): MediaSession.ConnectionResult {
-                    val connectionResult = MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                        .setAvailableSessionCommands(
-                            MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
-                                .add(setVolOnFreq)
-                                .add(getVolOnFreq)
-                                .add(SessionCommand.COMMAND_CODE_LIBRARY_GET_LIBRARY_ROOT)
-                                .add(SessionCommand.COMMAND_CODE_LIBRARY_GET_CHILDREN)
-                                .add(SessionCommand.COMMAND_CODE_LIBRARY_GET_ITEM)
-                                .build()
-                        )
-                        .build()
-                    return connectionResult
-                }
+            override fun onGetLibraryRoot(
+                session: MediaLibrarySession,
+                browser: MediaSession.ControllerInfo,
+                params: LibraryParams?
+            ): ListenableFuture<LibraryResult<MediaItem>> {
+                val rootItem = MediaItem.Builder()
+                    .setMediaId("root")
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setIsBrowsable(true)
+                            .setIsPlayable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                            .setTitle("Music Library")
+                            .build()
+                    )
+                    .build()
+                return Futures.immediateFuture(LibraryResult.ofItem(rootItem, params))
+            }
 
-                override fun onGetLibraryRoot(
-                    session: MediaLibrarySession,
-                    browser: MediaSession.ControllerInfo,
-                    params: LibraryParams?,
-                ): ListenableFuture<LibraryResult<MediaItem>> {
-                    val rootItem = MediaItem.Builder()
-                        .setMediaId("root")
-                        .setMediaMetadata(
-                            MediaMetadata.Builder()
-                                .setIsBrowsable(true)
-                                .setIsPlayable(false)
-                                .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
-                                .setTitle("Music Library")
-                                .setExtras(Bundle().apply {
-                                    // Hint to Android Auto to start here instead of Now Playing
-                                    putBoolean("androidx.media.utils.MEDIA_BROWSER_SERVICE_HINT_BASE_BROWSE_ROOT", true)
-                                })
-                                .build()
-                        )
-                        .build()
-                    return Futures.immediateFuture(LibraryResult.ofItem(rootItem, params))
-                }
-
-                override fun onGetChildren(
-                    session: MediaLibrarySession,
-                    browser: MediaSession.ControllerInfo,
-                    parentId: String,
-                    page: Int,
-                    pageSize: Int,
-                    params: LibraryParams?,
-                ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
-                    val settable = SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
-                    serviceScope.launch {
-                        val musicDir = File(Environment.getExternalStorageDirectory(), "Music")
-                        val parentDir = if (parentId == "root") {
-                            musicDir
-                        } else {
-                            File(parentId)
-                        }
-
-                        if (!parentDir.exists() || !parentDir.isDirectory) {
-                            settable.set(LibraryResult.ofItemList(ImmutableList.of(), params))
-                            return@launch
-                        }
-
-                        val filesList = parentDir.listFiles()?.sortedBy { it.name } ?: emptyList()
-
-                        val mediaItems = withContext(Dispatchers.IO) {
-                            filesList.map { file ->
-                                async {
-                                    createMediaItemFromFile(file)
-                                }
-                            }.awaitAll().filterNotNull()
-                        }
-
-                        settable.set(LibraryResult.ofItemList(ImmutableList.copyOf(mediaItems), params))
+            override fun onGetChildren(
+                session: MediaLibrarySession,
+                browser: MediaSession.ControllerInfo,
+                parentId: String,
+                page: Int,
+                pageSize: Int,
+                params: LibraryParams?
+            ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+                val settable = SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
+                serviceScope.launch {
+                    val musicDir = File(Environment.getExternalStorageDirectory(), "Music")
+                    val parentDir = if (parentId == "root") {
+                        musicDir
+                    } else {
+                        File(parentId)
                     }
-                    return settable
-                }
 
-                override fun onGetItem(
-                    session: MediaLibrarySession,
-                    browser: MediaSession.ControllerInfo,
-                    mediaId: String
-                ): ListenableFuture<LibraryResult<MediaItem>> {
-                    val settable = SettableFuture.create<LibraryResult<MediaItem>>()
-                    serviceScope.launch {
-                        try {
-                            val file = File(mediaId)
-                            val item = createMediaItemFromFile(file)
-                            if (item != null) {
-                                settable.set(LibraryResult.ofItem(item, null))
-                            } else {
-                                settable.set(LibraryResult.ofError(SessionError.ERROR_BAD_VALUE))
+                    if (!parentDir.exists() || !parentDir.isDirectory) {
+                        settable.set(LibraryResult.ofItemList(ImmutableList.of(), params))
+                        return@launch
+                    }
+
+                    val filesList = parentDir.listFiles()?.sortedBy { it.name } ?: emptyList()
+
+                    val mediaItems = withContext(Dispatchers.IO) {
+                        filesList.map { file ->
+                            async {
+                                createMediaItemFromFile(file)
                             }
-                        } catch (e: Exception) {
-                            settable.set(LibraryResult.ofError(SessionError.ERROR_UNKNOWN))
-                            e.message?.let {
-                                Log.d("Error in Mediaservice", it)
-                            }
-                        }
+                        }.awaitAll().filterNotNull()
                     }
-                    return settable
+
+                    settable.set(LibraryResult.ofItemList(ImmutableList.copyOf(mediaItems), params))
                 }
+                return settable
+            }
 
-                override fun onAddMediaItems(
-                    mediaSession: MediaSession,
-                    controller: MediaSession.ControllerInfo,
-                    mediaItems: List<MediaItem>
-                ): ListenableFuture<List<MediaItem>> {
-                    Log.d("My Media Service", "onAddMediaItems: ${mediaItems.map { it.mediaId }}")
-                    val updatedItems = mediaItems.map { item ->
-                        if (item.localConfiguration == null) {
-                            // If it's a library item without local config, we need to rebuild it with the URI
-                            MediaItem.Builder()
-                                .setMediaId(item.mediaId)
-                                .setUri(Uri.fromFile(File(item.mediaId)))
-                                .setMediaMetadata(item.mediaMetadata)
-                                .build()
-                        } else {
-                            item
-                        }
+            override fun onGetItem(
+                session: MediaLibrarySession,
+                browser: MediaSession.ControllerInfo,
+                mediaId: String
+            ): ListenableFuture<LibraryResult<MediaItem>> {
+                val settable = SettableFuture.create<LibraryResult<MediaItem>>()
+                serviceScope.launch {
+                    val item = createMediaItemFromFile(File(mediaId))
+                    if (item != null) {
+                        settable.set(LibraryResult.ofItem(item, null))
+                    } else {
+                        settable.set(LibraryResult.ofError(SessionError.ERROR_BAD_VALUE))
                     }
-                    return Futures.immediateFuture(updatedItems)
                 }
+                return settable
+            }
 
-                override fun onPlaybackResumption(
-                    mediaSession: MediaSession, controller: MediaSession.ControllerInfo
-                ): ListenableFuture<MediaItemsWithStartPosition> {
-                    val settable = SettableFuture.create<MediaItemsWithStartPosition>()
-                    CoroutineScope(Dispatchers.Main).launch {
-                        val mylist = MediaItemsWithStartPosition(player.mediaItems,0,0)
-                        Log.d("My Media Service",
-                            "onPlaybackResumption: ${player.mediaItems.map { it.mediaId}}")
-                        settable.set(mylist)
+            override fun onAddMediaItems(
+                mediaSession: MediaSession,
+                controller: MediaSession.ControllerInfo,
+                mediaItems: List<MediaItem>
+            ): ListenableFuture<List<MediaItem>> {
+                return Futures.immediateFuture(mediaItems)
+            }
+
+            override fun onPlaybackResumption(
+                mediaSession: MediaSession,
+                controller: MediaSession.ControllerInfo
+            ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+                // This would normally restore previous queue
+                return super.onPlaybackResumption(mediaSession, controller)
+            }
+
+            override fun onCustomCommand(
+                session: MediaSession,
+                controller: MediaSession.ControllerInfo,
+                customCommand: SessionCommand,
+                args: Bundle
+            ): ListenableFuture<SessionResult> {
+                if (customCommand.customAction == "setVolOnFreq") {
+                    val index = args.getInt("KEY_INDEX")
+                    val volume = args.getFloat("KEY_VOLUME")
+                    volPerFreq[index] = volume
+                    
+                    val player = session.player
+                    if (player is Equalizer) {
+                        player.setVolOnFreq(volume, index)
                     }
-                    return settable
-                }
 
-                override fun onCustomCommand(
-                    session: MediaSession,
-                    controller: MediaSession.ControllerInfo,
-                    command: SessionCommand,
-                    args: Bundle
-                ): ListenableFuture<SessionResult> {
-
-                    if (command.customAction == "setVolOnFreq") {
-                        val index = args.getInt("KEY_INDEX")
-                        val volume = args.getFloat("KEY_VOLUME")
-                        player.setVolOnFreq(volume,index)
-                    }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
-            })
-            .build()
+                return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
+            }
 
-        mediaSession?.sessionExtras=Bundle().apply {
-            putInt("Interval", 123)
-        }
+        }).build()
     }
 
-
     override fun onDestroy() {
-        serviceJob.cancel()
         mediaSession?.run {
             player.release()
             release()
             mediaSession = null
         }
-
+        serviceJob.cancel()
         super.onDestroy()
     }
 
-    override fun onTaskRemoved(rootIntent: Intent?) {
+    override fun onTaskRemoved(intent: Intent?) {
         val player = mediaSession?.player
-        if (player == null || !player.playWhenReady
-            || player.mediaItemCount == 0
-            || player.playbackState == Player.STATE_ENDED) {
-            stopSelf()
+        if (player != null) {
+            if (!player.playWhenReady || player.mediaItemCount == 0) {
+                stopSelf()
+            }
         }
     }
 

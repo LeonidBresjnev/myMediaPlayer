@@ -19,17 +19,7 @@ import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.equalizer.common.MyMediaService
 import com.google.common.util.concurrent.ListenableFuture
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.lifecycle.viewModelScope
-import com.equalizer.common.OnlineInfo
-import com.equalizer.common.OnlineMetadataManager
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.launch
 import com.google.common.util.concurrent.MoreExecutors
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 class AudioModel: ViewModel() {
     companion object {

@@ -1,15 +1,17 @@
 package com.equalizer.carservice
 
-import android.graphics.Color
 import android.text.SpannableString
 import android.text.Spanned
 import android.util.Log
+import androidx.annotation.OptIn
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
 import androidx.car.app.model.CarColor
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.ForegroundCarColorSpan
+import androidx.car.app.model.GridItem
+import androidx.car.app.model.GridTemplate
 import androidx.car.app.model.Header
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
@@ -18,35 +20,49 @@ import androidx.car.app.model.Row
 import androidx.car.app.model.Template
 import androidx.core.graphics.drawable.IconCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.util.UnstableApi
 import com.google.common.util.concurrent.MoreExecutors
 import java.io.File
+import kotlin.math.max
 
-class MediaScreen(
+class MediaScreen @OptIn(UnstableApi::class) constructor
+    (
     carContext: CarContext,
-    val playControl: PlayControl
+    val playControl: PlayControl,
+    initialPath: String = "root"
 ): Screen(carContext) {
 
-    private var currentPath = "root"
+    private var currentPath = initialPath
     private var mediaItems: List<MediaItem> = emptyList()
-    private val navStack = mutableListOf<String>()
     private var currentSelection = -1
+    
+    // Pagination state
+    private var pageOffset = 0
+    private val PAGE_LIMIT = 5 
+    
+    // Task step tracking
+    private var taskStepCount = 0
 
     init {
         browse(currentPath)
     }
 
-    private fun browse(parentId: String, addToStack: Boolean = true) {
+    private fun browse(parentId: String) {
         if (playControl.mediaControllerFuture.isDone) {
             val controller = playControl.controller
             log("Browsing: $parentId")
+            
+            mediaItems = emptyList()
+            currentSelection = -1
+            pageOffset = 0 
+            taskStepCount = 0 // Reset on new folder
+            invalidate()
+
             val childrenFuture = controller.getChildren(parentId, 0, Int.MAX_VALUE, null)
             childrenFuture.addListener({
                 try {
                     val result = childrenFuture.get()
                     if (result.value != null) {
-                        if (addToStack && parentId != currentPath) {
-                            navStack.add(currentPath)
-                        }
                         currentPath = parentId
                         mediaItems = result.value!!
                         currentSelection = -1
@@ -58,15 +74,8 @@ class MediaScreen(
             }, MoreExecutors.directExecutor())
         } else {
             playControl.mediaControllerFuture.addListener({
-                browse(parentId, addToStack)
+                browse(parentId)
             }, MoreExecutors.directExecutor())
-        }
-    }
-
-    private fun navigateBack() {
-        if (navStack.isNotEmpty()) {
-            val lastPath = navStack.removeAt(navStack.size - 1)
-            browse(lastPath, addToStack = false)
         }
     }
 
@@ -74,151 +83,204 @@ class MediaScreen(
         Log.d("Car Media Screen", msg)
     }
 
-    private val stopAction = Action
-        .Builder()
-        .setIcon(CarIcon
-            .Builder(IconCompat.createWithResource(carContext, R.drawable.stopplay )
-                ).setTint(CarColor.createCustom(
-                Color.LTGRAY,
-                Color.DKGRAY
-            ))
-            .build())
-        .setOnClickListener {
-            log("stop clicked")
-            playControl.controller.pause()
+    private fun createCarIcon( isBrowsable: Boolean): CarIcon {
+        return if (isBrowsable) {
+            CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.lever_vert)).build()
+        } else {
+            CarIcon.Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_artist)).build()
         }
-        .setBackgroundColor(CarColor.BLUE)
-        .build()
-
-    private fun showInfo(item: MediaItem) {
-        log("show info")
-        val metadata = item.mediaMetadata
-        val message = StringBuilder()
-        message.append("Title: ${metadata.title ?: "Unknown"}\n")
-        message.append("Artist: ${metadata.artist ?: "Unknown"}\n")
-        metadata.totalDiscCount?.let { message.append("Sample Rate: $it\n") }
-        metadata.releaseMonth?.let { message.append("Channels: $it\n") }
-        
-        val template = MessageTemplate.Builder(message.toString())
-            .setTitle("Media Information")
-            .setHeaderAction(Action.BACK)
-            .build()
-        
-        this.screenManager.push(object : Screen(carContext) {
-            override fun onGetTemplate(): Template = template
-        })
     }
 
-    override fun onGetTemplate(): Template {
-        log("hello from auto")
-        playControl.setInvalidate0 {
-            invalidate()
-        }
-
+    @OptIn(UnstableApi::class)
+    private fun createHeader(title: String): Header {
         val playPause = Action.Builder()
-            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.play_solid)).build())
-            .setBackgroundColor(if (currentSelection >= 0) CarColor.RED else CarColor.SECONDARY)
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, 
+                if (playControl.isPlaying == PlayControl.Status.PLAYING) R.drawable.stopplay else R.drawable.play_solid
+            )).build())
             .setOnClickListener {
-                if (currentSelection >= 0) {
-                    val item = mediaItems[currentSelection]
-                    if (item.mediaMetadata.isBrowsable != true) {
-                        playControl.playMedia(item)
-                    }
+                if (playControl.isPlaying == PlayControl.Status.PLAYING) {
+                    playControl.controller.pause()
+                } else if (currentSelection >= 0 && currentSelection < mediaItems.size) {
+                    playControl.playMedia(mediaItems[currentSelection])
                 }
             }
             .build()
 
-        val itemListBuilder = ItemList.Builder()
-        
-        // Root menu link always at top
+        val eqAction = Action.Builder()
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.lever_vert)).build())
+            .setOnClickListener {
+                this.screenManager.push(EqualizerScreen(carContext, playControl))
+            }
+            .build()
 
-        log(currentPath)
-        if (currentPath == "root") {
-            itemListBuilder.addItem(
-                Row.Builder()
-                    .setTitle("Equalizer Settings")
-                    .setImage(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.lever_vert)).build())
+        val headerBuilder = Header.Builder()
+            .setTitle(title)
+            .addEndHeaderAction(playPause)
+            .addEndHeaderAction(eqAction)
+        
+        if (currentPath != "root") {
+            headerBuilder.setStartHeaderAction(Action.BACK)
+        } else {
+            headerBuilder.setStartHeaderAction(Action.APP_ICON)
+        }
+        
+        return headerBuilder.build()
+    }
+
+    @OptIn(UnstableApi::class)
+    override fun onGetTemplate(): Template {
+        playControl.setInvalidate0 {
+            invalidate()
+        }
+
+        // SAFETY: If we are about to hit the 5th step, show a message template to reset the task.
+        if (taskStepCount >= 4) {
+            return MessageTemplate.Builder("Safety Limit: Please refresh to continue browsing.")
+                .setHeaderAction(Action.BACK)
+                .addAction(Action.Builder()
+                    .setTitle("Refresh")
                     .setOnClickListener {
-                        this.screenManager.push(EqualizerScreen(carContext, playControl))
+                        taskStepCount = 0
+                        invalidate()
                     }
-                    .build()
-            )
-        } else if (navStack.isNotEmpty()) {
-            itemListBuilder.addItem(
-                Row.Builder()
-                    .setTitle(".. (Back to Albums)")
-                    .setOnClickListener { navigateBack() }
+                    .build())
+                .build()
+        }
+
+        val hasFolders = mediaItems.any { it.mediaMetadata.isBrowsable == true }
+
+        return if (hasFolders || currentPath == "root") {
+            createAlbumGridTemplate()
+        } else {
+            createSongListTemplate()
+        }
+    }
+
+    private fun createAlbumGridTemplate(): Template {
+        val gridBuilder = ItemList.Builder()
+            .setNoItemsMessage("No albums found")
+
+        if (pageOffset > 0) {
+            gridBuilder.addItem(
+                GridItem.Builder()
+                    .setTitle("Previous Page")
+                    .setImage(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.play_solid)).build())
+                    .setOnClickListener {
+                        pageOffset = max(0, pageOffset - PAGE_LIMIT)
+                        taskStepCount++
+                        invalidate()
+                    }
                     .build()
             )
         }
 
-        mediaItems.forEachIndexed { idx, item ->
+        val itemsToShow = mediaItems.drop(pageOffset).take(PAGE_LIMIT)
+        itemsToShow.forEach { item ->
             val metadata = item.mediaMetadata
-            
-            // At root, we only show albums/folders
-            if (currentPath == "root" && metadata.isBrowsable != true) {
-                return@forEachIndexed
-            }
+            gridBuilder.addItem(
+                GridItem.Builder()
+                    .setTitle(metadata.title ?: "Unknown")
+                    .setText(metadata.artist ?: "")
+                    .setImage(createCarIcon( true), GridItem.IMAGE_TYPE_LARGE)
+                    .setOnClickListener {
+                        if (metadata.isBrowsable == true) {
+                            screenManager.push(MediaScreen(carContext, playControl, item.mediaId))
+                        } else {
+                            currentSelection = mediaItems.indexOf(item)
+                            taskStepCount++
+                            invalidate()
+                        }
+                    }
+                    .build()
+            )
+        }
 
+        if (pageOffset + itemsToShow.size < mediaItems.size) {
+            gridBuilder.addItem(
+                GridItem.Builder()
+                    .setTitle("Next Page")
+                    .setImage(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.play_solid)).build())
+                    .setOnClickListener {
+                        pageOffset += PAGE_LIMIT
+                        taskStepCount++
+                        invalidate()
+                    }
+                    .build()
+            )
+        }
+
+        return GridTemplate.Builder()
+            .setHeader(createHeader("Music Library"))
+            .setSingleList(gridBuilder.build())
+            .build()
+    }
+
+    private fun createSongListTemplate(): Template {
+        val itemListBuilder = ItemList.Builder()
+            .setNoItemsMessage("No songs found")
+
+        if (pageOffset > 0) {
+            itemListBuilder.addItem(
+                Row.Builder()
+                    .setTitle("Previous Page...")
+                    .setOnClickListener {
+                        pageOffset = max(0, pageOffset - PAGE_LIMIT)
+                        taskStepCount++
+                        invalidate()
+                    }
+                    .build()
+            )
+        }
+
+        val itemsToShow = mediaItems.drop(pageOffset).take(PAGE_LIMIT)
+        itemsToShow.forEach { item ->
+            val idx = mediaItems.indexOf(item)
+            val metadata = item.mediaMetadata
             val rowBuilder = Row.Builder()
                 .setTitle(metadata.title ?: "Unknown")
                 .setBrowsable(metadata.isBrowsable ?: false)
 
             metadata.artist?.let {
-                val artistText = SpannableString("artist: $it")
+                val artistText = SpannableString(it)
                 if (idx == currentSelection) {
                     artistText.setSpan(
                         ForegroundCarColorSpan.create(CarColor.GREEN),
-                        0,
-                        artistText.length,
-                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                        0, artistText.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
                     )
                 }
                 rowBuilder.addText(artistText)
             }
 
-            if (metadata.isBrowsable == true) {
-                metadata.artworkUri?.let { uri ->
-                    rowBuilder.setImage(CarIcon.Builder(IconCompat.createWithContentUri(uri)).build())
-                } ?: run {
-                    rowBuilder.setImage(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.lever_vert)).build())
-                }
-            }
-
-            if (metadata.isBrowsable != true) {
-                rowBuilder.addAction(
-                    Action.Builder()
-                        .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_artist)).build())
-                        .setOnClickListener { showInfo(item) }
-                        .build()
-                )
-            }
+            rowBuilder.setImage(createCarIcon( false), Row.IMAGE_TYPE_SMALL)
 
             rowBuilder.setOnClickListener {
                 if (metadata.isBrowsable == true) {
-                    browse(item.mediaId)
+                    screenManager.push(MediaScreen(carContext, playControl, item.mediaId))
                 } else {
                     currentSelection = idx
+                    taskStepCount++
                     invalidate()
                 }
             }
             itemListBuilder.addItem(rowBuilder.build())
         }
 
-        val headerBuilder = Header.Builder()
-            .setTitle(if (currentPath == "root") "Music Library" else File(currentPath).name)
-            .addEndHeaderAction(if (playControl.isPlaying != PlayControl.Status.PLAYING) playPause else stopAction)
-        
-        if (currentPath != "root") {
-            headerBuilder.setStartHeaderAction(Action.BACK)
-        } else {
-            // Ensure APP_ICON is visible as the header action on root if needed
-            headerBuilder.setStartHeaderAction(Action.APP_ICON)
+        if (pageOffset + itemsToShow.size < mediaItems.size) {
+            itemListBuilder.addItem(
+                Row.Builder()
+                    .setTitle("Next Page...")
+                    .setOnClickListener {
+                        pageOffset += PAGE_LIMIT
+                        taskStepCount++
+                        invalidate()
+                    }
+                    .build()
+            )
         }
 
         return ListTemplate.Builder()
+            .setHeader(createHeader(File(currentPath).name))
             .setSingleList(itemListBuilder.build())
-            .setHeader(headerBuilder.build())
             .build()
     }
 }

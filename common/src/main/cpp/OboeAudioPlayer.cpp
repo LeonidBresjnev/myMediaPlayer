@@ -17,36 +17,30 @@ namespace equalizer {
         // Create an AudioStream using the Oboe's builder
         AudioStreamBuilder builder;
         const auto result =
-                builder.setPerformanceMode(PerformanceMode::None)
-                                // we don't want to record the sound, just play back
+                builder.setPerformanceMode(PerformanceMode::LowLatency)
                         ->setDirection(Direction::Output)
                         ->setSampleRate(_samplingRate)
-                                // pass this instance as the audio callback
-                                // this ensures that onAudioReady is called at regular intervals
-                                // to generate audio
                         ->setDataCallback(this)
-                                // no other app should play back sound simultaneously
-                        ->setSharingMode(SharingMode::Exclusive)
+                        ->setSharingMode(SharingMode::Shared)
                         ->setFormat( AudioFormat::Float )
                         ->setDeviceId(deviceId)
                         ->setContentType(ContentType::Music)
                         ->setUsage(Usage::Media)
-                        ->setChannelCount(channelCount_ /*oboe::ChannelCount::Stereo*/)
-                                // if the audio device does not support the requested sampling
-                                // rate natively, it will have to resample the output;
-                                // the better the resampling quality the larger the workload
-                        ->setSampleRateConversionQuality(SampleRateConversionQuality::None)
-                                // open the stream for playback
+                        ->setChannelCount(channelCount_)
+                        ->setSampleRateConversionQuality(SampleRateConversionQuality::Medium)
                         ->openStream(_stream);
         this->channelCount=channelCount_;
 
         if (result != Result::OK) {
-            // indicate that stream creation has failed
+            LOGD("Stream creation failed: %s", convertToText(result));
             return static_cast<int32_t>(result);
         }
 
-        // request a playback start but don't wait for it to actually start
+        // request a playback start
         const auto playResult = _stream->requestStart();
+        if (playResult != Result::OK) {
+            LOGD("Playback start failed: %s", convertToText(playResult));
+        }
 
         return static_cast<int32_t>(playResult);
     }
