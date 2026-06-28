@@ -20,7 +20,7 @@ namespace equalizer {
 
 
 
-    void Equalizer::play(const std::string& fileName) {
+    void Equalizer::play(const std::string& fileName, int32_t deviceId) {
 
         const auto loadresult = _oscillator->load(fileName);
         if (!loadresult) {
@@ -34,7 +34,7 @@ namespace equalizer {
 
         _filterSource->setFilter(samplingRate,numChannels);
 
-        const auto result = _audioPlayer -> play(samplingRate, numChannels);
+        const auto result = _audioPlayer -> play(samplingRate, numChannels, deviceId);
         if (result == 0) {
             _isPlaying = true;
         } else {

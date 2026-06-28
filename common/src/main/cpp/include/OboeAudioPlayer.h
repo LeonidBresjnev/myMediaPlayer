@@ -16,7 +16,7 @@ namespace equalizer {
 
         ~OboeAudioPlayer();
 
-        int32_t play(int32_t ,uint16_t ) override;
+        int32_t play(int32_t ,uint16_t, int32_t deviceId = 0) override;
 
         void stop() override;
 

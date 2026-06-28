@@ -53,6 +53,7 @@ mp3agic = { module = "com.mpatric:mp3agic", version.ref = "mp3agic" }
 oboe = { module = "com.google.oboe:oboe", version.ref = "oboe" }
 
 androidx-app = { module = "androidx.car.app:app", version.ref = "app" }
+
 androidx-lifecycle-viewmodel-android = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-android", version.ref = "lifecycleViewmodelAndroid" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
