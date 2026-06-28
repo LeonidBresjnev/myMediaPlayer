@@ -71,7 +71,7 @@ class MainTabScreen(
         }
     }
 
-    private fun createCarIcon(metadata: androidx.media3.common.MediaMetadata, isBrowsable: Boolean): CarIcon {
+    private fun createCarIcon(metadata: androidx.media3.common.MediaMetadata): CarIcon {
         metadata.artworkUri?.let { uri ->
             val uriString = uri.toString()
             val finalUri = if (uriString.startsWith("content://${com.equalizer.common.MediaThumbnailProvider.AUTHORITY}")) {
@@ -85,11 +85,9 @@ class MainTabScreen(
         }
         
         // Fallbacks using standard Android resources
-        return if (isBrowsable) {
-            CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_gallery)).build()
-        } else {
-            CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_media_play)).build()
-        }
+        return CarIcon
+            .Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_gallery))
+            .build()
     }
 
     override fun onGetTemplate(): Template {
@@ -140,9 +138,13 @@ class MainTabScreen(
                 GridItem.Builder()
                     .setTitle(item.mediaMetadata.title ?: "Unknown")
                     .setText(item.mediaMetadata.artist ?: "")
-                    .setImage(createCarIcon(item.mediaMetadata, true), GridItem.IMAGE_TYPE_LARGE)
+                    .setImage(createCarIcon(item.mediaMetadata), GridItem.IMAGE_TYPE_LARGE)
                     .setOnClickListener {
-                        screenManager.push(SongListScreen(carContext, playControl, item.mediaId, item.mediaMetadata.title?.toString() ?: "Album"))
+                        if (item.mediaMetadata.isBrowsable == true) {
+                            screenManager.push(SongListScreen(carContext, playControl, item.mediaId, item.mediaMetadata.title?.toString() ?: "Album"))
+                        } else {
+                            screenManager.push(SongDetailScreen(carContext, playControl, item))
+                        }
                     }
                     .build()
             )
