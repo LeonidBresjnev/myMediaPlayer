@@ -9,9 +9,9 @@ import androidx.car.app.model.Action
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.GridItem
 import androidx.car.app.model.GridTemplate
-import androidx.car.app.model.Header
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
+import androidx.car.app.model.MessageTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.Tab
 import androidx.car.app.model.TabContents
@@ -20,11 +20,8 @@ import androidx.car.app.model.Template
 import androidx.core.graphics.drawable.IconCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.session.SessionCommand
 import com.google.common.util.concurrent.MoreExecutors
 import java.util.Locale
-import kotlin.math.max
-import kotlin.math.min
 
 @OptIn(UnstableApi::class)
 class MainTabScreen(
@@ -36,8 +33,8 @@ class MainTabScreen(
     private var mediaItems: List<MediaItem> = emptyList()
     private var isLoading = true
     
-    // Equalizer state
-    private var currentEqInterval = 0
+    // Task step tracking
+    private var taskStepCount = 0
 
     init {
         loadAlbums()
@@ -73,7 +70,7 @@ class MainTabScreen(
         }
     }
 
-    private fun createCarIcon(metadata: androidx.media3.common.MediaMetadata, isBrowsable: Boolean): CarIcon {
+    private fun createCarIcon(metadata: androidx.media3.common.MediaMetadata): CarIcon {
         metadata.artworkUri?.let { uri ->
             val uriString = uri.toString()
             val finalUri = if (uriString.startsWith("content://${com.equalizer.common.MediaThumbnailProvider.AUTHORITY}")) {
@@ -85,17 +82,26 @@ class MainTabScreen(
             }
             return CarIcon.Builder(IconCompat.createWithContentUri(finalUri)).build()
         }
-        
-        return if (isBrowsable) {
-            CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.lever_vert)).build()
-        } else {
-            CarIcon.Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_artist)).build()
-        }
+        return CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.lever_vert)).build()
     }
 
     override fun onGetTemplate(): Template {
         playControl.setInvalidate0 {
             invalidate()
+        }
+
+        // SAFETY: If we are about to hit the 5th step, show a message template to reset the task.
+        if (taskStepCount >= 4) {
+            return MessageTemplate.Builder("Safety Limit: Please refresh to continue.")
+                .setHeaderAction(Action.BACK)
+                .addAction(Action.Builder()
+                    .setTitle("Refresh")
+                    .setOnClickListener {
+                        taskStepCount = 0
+                        invalidate()
+                    }
+                    .build())
+                .build()
         }
 
         val libraryTab = Tab.Builder()
@@ -119,6 +125,7 @@ class MainTabScreen(
         return TabTemplate.Builder(object : TabTemplate.TabCallback {
             override fun onTabSelected(tabTag: String) {
                 activeTabId = tabTag
+                taskStepCount = 0 // Reset steps on tab switch
                 invalidate()
             }
         })
@@ -141,8 +148,9 @@ class MainTabScreen(
                 GridItem.Builder()
                     .setTitle(item.mediaMetadata.title ?: "Unknown")
                     .setText(item.mediaMetadata.artist ?: "")
-                    .setImage(createCarIcon(item.mediaMetadata, true), GridItem.IMAGE_TYPE_LARGE)
+                    .setImage(createCarIcon(item.mediaMetadata), GridItem.IMAGE_TYPE_LARGE)
                     .setOnClickListener {
+                        taskStepCount++
                         screenManager.push(SongListScreen(carContext, playControl, item.mediaId, item.mediaMetadata.title?.toString() ?: "Album"))
                     }
                     .build()
@@ -154,62 +162,24 @@ class MainTabScreen(
 
     private fun createEqualizerTemplate(): Template {
         val listBuilder = ItemList.Builder()
-            .setSelectedIndex(currentEqInterval)
-            .setOnSelectedListener {
-                currentEqInterval = it
-                invalidate()
-            }
 
-        // Build frequency rows dynamically based on latest data
+        // Build frequency rows. Tapping opens detail screen with +/- buttons.
         for (i in 0 until 8) {
             val vol = playControl.volPerFreq[i]
             listBuilder.addItem(
                 Row.Builder()
                     .setTitle(playControl.frequencyLabels[i])
                     .addText("Volume: ${String.format(Locale.GERMAN, "%.1f", vol)}")
+                    .setOnClickListener {
+                        taskStepCount++
+                        screenManager.push(BandDetailScreen(carContext, playControl, i))
+                    }
                     .build()
             )
         }
 
-        val actionPlus = Action.Builder()
-            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.mipmap.audio_plus)).build())
-            .setEnabled(playControl.volPerFreq[currentEqInterval] < 2.0f)
-            .setOnClickListener {
-                val newVal = min(2.0f, playControl.volPerFreq[currentEqInterval] + 0.1f)
-                updateFrequency(currentEqInterval, newVal)
-            }
-            .build()
-
-        val actionMinus = Action.Builder()
-            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.mipmap.audio_minus)).build())
-            .setEnabled(playControl.volPerFreq[currentEqInterval] > 0.0f)
-            .setOnClickListener {
-                val newVal = max(0.0f, playControl.volPerFreq[currentEqInterval] - 0.1f)
-                updateFrequency(currentEqInterval, newVal)
-            }
-            .build()
-
         return ListTemplate.Builder()
-            .setHeader(Header.Builder()
-                .setTitle("Equalizer")
-                .addEndHeaderAction(actionMinus)
-                .addEndHeaderAction(actionPlus)
-                .build())
             .setSingleList(listBuilder.build())
             .build()
-    }
-
-    private fun updateFrequency(index: Int, volume: Float) {
-        playControl.volPerFreq[index] = volume
-        invalidate()
-
-        val extras = Bundle().apply {
-            putInt("KEY_INDEX", index)
-            putFloat("KEY_VOLUME", volume)
-        }
-        val customCommand = SessionCommand("setVolOnFreq", Bundle())
-        if (playControl.mediaControllerFuture.isDone) {
-            playControl.controller.sendCustomCommand(customCommand, extras)
-        }
     }
 }

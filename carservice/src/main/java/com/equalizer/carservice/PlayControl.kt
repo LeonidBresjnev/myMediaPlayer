@@ -62,7 +62,7 @@ class PlayControl(carContext: CarContext) {
     }
 
     var volPerFreqSetter:  (x:Int) -> Unit  = { x ->
-        log("mystik")
+        log("volPerFreq not set yet, value= $x")
     }
 
     fun setVolPerFreqSetter0(func: (Int) -> Unit) {

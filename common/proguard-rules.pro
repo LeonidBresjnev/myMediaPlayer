@@ -27,3 +27,4 @@
 -keep class com.equalizer.common.metadata.WavMeta  { *; }
 -keep class com.equalizer.common.OnlineMetadataManager   { *; }
 -keep class com.equalizer.common.OnlineInfo  { *; }
+-keep class com.equalizer.common.MediaThumbnailProvider$Companion  { *; }
