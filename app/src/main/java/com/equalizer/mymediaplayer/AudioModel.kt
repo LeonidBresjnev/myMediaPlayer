@@ -12,7 +12,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.session.LibraryResult
+//import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaBrowser
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
@@ -22,15 +22,9 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 
 class AudioModel: ViewModel() {
-    companion object {
+    /*companion object {
         private const val MEDIA_ITEM_ID_KEY = "MEDIA_ITEM_ID_KEY"
-/*
-        fun createIntent(context: Context, mediaItemID: String): Intent {
-            val intent = Intent(context, PlayableFolderActivity::class.java)
-            intent.putExtra(MEDIA_ITEM_ID_KEY, mediaItemID)
-            return intent
-        }*/
-    }
+    }*/
 
     private fun log(message: String) {
         Log.i("AudioModel", message)
@@ -66,13 +60,10 @@ class AudioModel: ViewModel() {
         _volumenLow.value = values
         
         if (::controller.isInitialized) {
-            values.forEachIndexed { i, v ->
-                val extras = Bundle().apply {
-                    putInt("KEY_INDEX", i)
-                    putFloat("KEY_VOLUME", v)
-                }
-                controller.sendCustomCommand(SessionCommand("setVolOnFreq", Bundle()), extras)
+            val extras = Bundle().apply {
+                putFloatArray("KEY_VOLUMES", values.toFloatArray())
             }
+            controller.sendCustomCommand(SessionCommand("setAllVolOnFreq", Bundle()), extras)
         }
     }
 
@@ -96,9 +87,10 @@ class AudioModel: ViewModel() {
         currentSlider = index
         val extras = Bundle().apply {
             putInt("KEY_INDEX", index)
-            putFloat("KEY_VOLUME", volumeInDb)
+            putFloatArray("KEY_VOLUMES", currentList.toFloatArray())
         }
-        val customCommand = SessionCommand("setVolOnFreq", Bundle())
+        // Send as a bulk update for better sync
+        val customCommand = SessionCommand("setAllVolOnFreq", Bundle())
 
         if (::controller.isInitialized) {
             controller.sendCustomCommand(customCommand, extras)
@@ -112,10 +104,11 @@ class AudioModel: ViewModel() {
 
 
     private val _isPlaying = MutableLiveData(Status.STOPPED)
+    /*
     val isPlaying: LiveData<Status>
         get() {
             return _isPlaying
-        }
+        }*/
 
     enum class Status {
         PLAYING ,
@@ -142,29 +135,10 @@ class AudioModel: ViewModel() {
 
     private lateinit var controller: MediaBrowser
 
-    private lateinit var libResult : ListenableFuture<LibraryResult<MediaItem>>
-
-/*
-    val browserFuture = MediaBrowser.Builder(context, sessionToken).buildAsync()
-    browserFuture.addListener({
-        // MediaBrowser is available here with browserFuture.get()
-    }, MoreExecutors.directExecutor())
-
-
-    // Get the library root to start browsing the library tree.
-    val rootFuture = mediaBrowser.getLibraryRoot(/* params= */ null)
-    rootFuture.addListener({
-        // Root node MediaItem is available here with rootFuture.get().value
-    }, MoreExecutors.directExecutor())*/
-
+    //private lateinit var libResult : ListenableFuture<LibraryResult<MediaItem>>
 
     private fun handlePlaybackBasedOnState() {
-        /*if (controller.playbackState == Player.STATE_IDLE || controller.playbackState == Player.STATE_ENDED) {
-            playMedia()
-        } else */
-     //   libResult.addListener(object: )
-
-
+        // Standard Player listener for playback events
         controller.addListener(object : Player.Listener {
 
             override fun onIsPlayingChanged(isitplaying: Boolean) {
@@ -178,60 +152,41 @@ class AudioModel: ViewModel() {
             }
 
             @OptIn(UnstableApi::class)
-            override fun onVolumeChanged(volume: Float) {
-                // Remove this to prevent master volume changes from clobbering equalizer bands
-                // _volumenLow.value = _volumenLow.value!!.mapIndexed { i, v -> if (i==currentSlider) volume else v }
-                super.onVolumeChanged(volume)
-            }
-
-            @OptIn(UnstableApi::class)
             override fun onVideoSizeChanged(videoSize: VideoSize) {
+                // Keep for legacy compatibility if needed
                 _volumenLow.value = _volumenLow.value!!.mapIndexed { i, v -> if (i==videoSize.width) videoSize.pixelWidthHeightRatio else v }
-//                log((controller as Equalizer).getVolOnFreqs().joinToString(", "))
                 super.onVideoSizeChanged(videoSize)
             }
 
-
-
-/*
-            override fun onEvents(player: Player, events: Player.Events) {
-                super.onEvents(player, events)
-            }*/
-
-
             override fun onPlaybackStateChanged(playbackState: Int) {
-
                 when (playbackState) {
-                    Player.STATE_IDLE -> {
-                        log("Player is idle")
-                    }
-
-                    Player.STATE_BUFFERING -> {
-                        log("Player is buffering")
-                    }
-
-                    Player.STATE_ENDED -> {
-                        log("The player is finished")
-                    }
-
-                    Player.STATE_READY -> {
-                        log("Player is ready")
-                    }
+                    Player.STATE_IDLE -> log("Player is idle")
+                    Player.STATE_BUFFERING -> log("Player is buffering")
+                    Player.STATE_ENDED -> log("The player is finished")
+                    Player.STATE_READY -> log("Player is ready")
                 }
             }
-
-
-        }
-        )
-
+        })
     }
 
     @OptIn(UnstableApi::class)
     internal fun initializeMediaController(context: Context) {
         val sessionToken = SessionToken(context, ComponentName(context, MyMediaService::class.java))
 
+        // MediaController/Browser Listener for session-specific events like extras
+        val browserListener = object : MediaBrowser.Listener {
+            override fun onExtrasChanged(controller: MediaController, extras: Bundle) {
+                val eqState = extras.getFloatArray("EQ_STATE")
+                if (eqState != null && eqState.size == 8) {
+                    log("Updating phone UI from session extras")
+                    _volumenLow.postValue(eqState.toList())
+                }
+            }
+        }
+
         mediaControllerFuture = MediaBrowser
             .Builder(context, sessionToken)
+            .setListener(browserListener)
             .buildAsync()
 
         mediaControllerFuture?.apply {
@@ -241,10 +196,15 @@ class AudioModel: ViewModel() {
                 log("MediaController connected")
                 
                 // Initial browse
-                browse("root", context = context)
+                browse("root"/*, context = context*/)
 
-                // Ensure media is played appropriately based on state
-                log("INITIAL STATE = ${controller.playbackState}")
+                // Sync initial state if available
+                val sessionExtras = controller.sessionExtras
+                val eqState = sessionExtras.getFloatArray("EQ_STATE")
+                if (eqState != null && eqState.size == 8) {
+                    _volumenLow.postValue(eqState.toList())
+                }
+
                 handlePlaybackBasedOnState()
 
             }, MoreExecutors.directExecutor())
@@ -252,7 +212,7 @@ class AudioModel: ViewModel() {
     }
 
     @OptIn(UnstableApi::class)
-    fun browse(parentId: String, addToStack: Boolean = true, context: Context? = null) {
+    fun browse(parentId: String, addToStack: Boolean = true /*, context: Context? = null*/) {
         if (!::controller.isInitialized) return
         
         log("Browsing: $parentId")
@@ -266,8 +226,6 @@ class AudioModel: ViewModel() {
                         _currentPath.value?.let { navStack.add(it) }
                     }
                     _currentPath.value = parentId
-                    
-                    // Trigger online data fetching - REMOVED, now handled by service
                 }
             } catch (e: Exception) {
                 log("Error getting children: ${e.message}")
@@ -275,11 +233,11 @@ class AudioModel: ViewModel() {
         }, MoreExecutors.directExecutor())
     }
 
-    fun navigateBack(context: Context? = null): Boolean {
+    fun navigateBack(/*context: Context? = null*/): Boolean {
         if (navStack.isEmpty()) return false
         
         val lastPath = navStack.removeAt(navStack.size - 1)
-        browse(lastPath, addToStack = false, context = context)
+        browse(lastPath, addToStack = false/*, context = context*/)
         return true
     }
 
@@ -289,7 +247,7 @@ class AudioModel: ViewModel() {
         controller.prepare()
         log("Media loaded and prepared: ${mediaItem.mediaId}")
     }
-
+/*
     internal fun playMedia(mediaItem: MediaItem) {
         if (!::controller.isInitialized) return
         
@@ -302,13 +260,7 @@ class AudioModel: ViewModel() {
                 controller.play()
                 log("player is prepared, and playing")
             }
-
-
-            Player.STATE_BUFFERING -> {
-                log("Player is buffering")
-            }
-
-
+            Player.STATE_BUFFERING -> log("Player is buffering")
             Player.STATE_READY -> {
                 controller.play()
                 log("player is playing")
@@ -320,45 +272,17 @@ class AudioModel: ViewModel() {
                 controller.play()
             }
         }
-    }
-
-
-
-
+    }*/
+/*
     internal fun stopMedia() {
         controller.pause()
-       // controller.stop()
-
-    }
-
+    }*/
 
     override fun onCleared() {
-        super.onCleared()
+        //super.onCleared()
         mediaControllerFuture?.let {
             MediaController.releaseFuture(it)
         }
         controller.release()
     }
-/*
-    private fun displayFolder() {
-        val browser = this.controller ?: return
-        val id: String = intent.getStringExtra(MEDIA_ITEM_ID_KEY)!!
-        val mediaItemFuture = browser.getItem(id)
-        val childrenFuture =
-            browser.getChildren(id, /* page= */ 0, /* pageSize= */ Int.MAX_VALUE, /* params= */ null)
-        mediaItemFuture.addListener(
-            {
-                val result = mediaItemFuture.get()!!
-                val text = result.value!!.mediaMetadata.title
-            },
-            MoreExecutors.directExecutor()
-        )
-        childrenFuture.addListener(
-            {
-                val result = childrenFuture.get()!!
-                val subItemMediaList = result.value!!.toList()
-            },
-            MoreExecutors.directExecutor()
-        )
-    }*/
 }

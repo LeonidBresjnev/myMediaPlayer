@@ -48,7 +48,7 @@ class MediaThumbnailProvider : ContentProvider() {
         sortOrder: String?
     ): Cursor? = null
 
-    override fun getType(uri: Uri): String? = "image/png"
+    override fun getType(uri: Uri): String = "image/png"
 
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
 
@@ -67,6 +67,9 @@ class MediaThumbnailProvider : ContentProvider() {
         val path = try {
             URLDecoder.decode(pathParam, "UTF-8")
         } catch (e: Exception) {
+            e.message?.let {
+                Log.d("MediaThumbnailProvider", it)
+            }
             pathParam
         }
 
@@ -144,7 +147,7 @@ class MediaThumbnailProvider : ContentProvider() {
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return null
-                val body = response.body ?: return null
+                val body = response.body
                 val tempFile = File.createTempFile("download_", ".jpg", context?.cacheDir)
                 body.byteStream().use { input ->
                     FileOutputStream(tempFile).use { input.copyTo(it) }

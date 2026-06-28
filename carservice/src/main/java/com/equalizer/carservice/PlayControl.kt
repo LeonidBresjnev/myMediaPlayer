@@ -1,6 +1,7 @@
 package com.equalizer.carservice
 
 import android.content.ComponentName
+import android.os.Bundle
 import android.util.Log
 import androidx.car.app.CarContext
 import androidx.core.content.ContextCompat.getString
@@ -9,6 +10,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaBrowser
+import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.equalizer.common.MyMediaService
 import com.google.common.util.concurrent.ListenableFuture
@@ -33,8 +35,24 @@ class PlayControl(carContext: CarContext) {
         ComponentName(carContext, MyMediaService::class.java)
     )
 
+    // MediaController/Browser Listener for session-specific events like extras
+    private val browserListener = object : MediaBrowser.Listener {
+        override fun onExtrasChanged(controller: MediaController, extras: Bundle) {
+            val eqState = extras.getFloatArray("EQ_STATE")
+            if (eqState != null && eqState.size == 8) {
+                log("Updating car UI from session extras")
+                for (i in 0 until 8) {
+                    volPerFreq[i] = eqState[i]
+                }
+                invalidate()
+                volPerFreqSetter(-1) // Signal a full refresh to components
+            }
+        }
+    }
+
     val mediaControllerFuture: ListenableFuture<MediaBrowser> = MediaBrowser
         .Builder(carContext, sessionToken)
+        .setListener(browserListener)
         .buildAsync()
 
 
@@ -75,6 +93,8 @@ class PlayControl(carContext: CarContext) {
         mediaControllerFuture.apply {
             addListener({
                 controller = get()
+                
+                // Add Player.Listener for standard events
                 controller.addListener(object : Player.Listener {
                     override fun onIsPlayingChanged(isitplaying: Boolean) {
                         log("is it playing = $isitplaying")
@@ -96,6 +116,16 @@ class PlayControl(carContext: CarContext) {
                         super.onVideoSizeChanged(videoSize)
                     }
                 })
+
+                // Sync initial state if available
+                val initialExtras = controller.sessionExtras
+                val eqState = initialExtras.getFloatArray("EQ_STATE")
+                if (eqState != null && eqState.size == 8) {
+                    for (i in 0 until 8) volPerFreq[i] = eqState[i]
+                    invalidate()
+                    volPerFreqSetter(-1)
+                }
+
             }, MoreExecutors.directExecutor())
         }
     }

@@ -1,7 +1,6 @@
 package com.equalizer.carservice
 
 import android.os.Bundle
-import androidx.annotation.OptIn
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.Action

@@ -1,6 +1,5 @@
 package com.equalizer.carservice
 
-import android.os.Bundle
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.car.app.CarContext
@@ -60,6 +59,9 @@ class MainTabScreen(
                     }
                 } catch (e: Exception) {
                     isLoading = false
+                    e.message?.let {
+                        Log.d("Car -Main Tab Screen", it)
+                    }
                     invalidate()
                 }
             }, MoreExecutors.directExecutor())
@@ -70,7 +72,7 @@ class MainTabScreen(
         }
     }
 
-    private fun createCarIcon(metadata: androidx.media3.common.MediaMetadata): CarIcon {
+    private fun createCarIcon(metadata: androidx.media3.common.MediaMetadata, isBrowsable: Boolean): CarIcon {
         metadata.artworkUri?.let { uri ->
             val uriString = uri.toString()
             val finalUri = if (uriString.startsWith("content://${com.equalizer.common.MediaThumbnailProvider.AUTHORITY}")) {
@@ -82,7 +84,13 @@ class MainTabScreen(
             }
             return CarIcon.Builder(IconCompat.createWithContentUri(finalUri)).build()
         }
-        return CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.lever_vert)).build()
+        
+        // VISUAL REFINEMENT: Use distinct icons for folders vs songs
+        return if (isBrowsable) {
+            CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.lever_vert)).build()
+        } else {
+            CarIcon.Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_artist)).build()
+        }
     }
 
     override fun onGetTemplate(): Template {
@@ -148,7 +156,7 @@ class MainTabScreen(
                 GridItem.Builder()
                     .setTitle(item.mediaMetadata.title ?: "Unknown")
                     .setText(item.mediaMetadata.artist ?: "")
-                    .setImage(createCarIcon(item.mediaMetadata), GridItem.IMAGE_TYPE_LARGE)
+                    .setImage(createCarIcon(item.mediaMetadata, true), GridItem.IMAGE_TYPE_LARGE)
                     .setOnClickListener {
                         taskStepCount++
                         screenManager.push(SongListScreen(carContext, playControl, item.mediaId, item.mediaMetadata.title?.toString() ?: "Album"))

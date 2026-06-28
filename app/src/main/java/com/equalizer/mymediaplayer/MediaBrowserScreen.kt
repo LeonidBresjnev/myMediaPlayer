@@ -43,7 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
+//import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,7 +57,7 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
                        audioModel: AudioModel,
                        onSelect: (File?) -> Unit = {}
 ) {
-    val context = LocalContext.current
+    //val context = LocalContext.current
     val media = audioModel.subItemMediaList.observeAsState(emptyList())
     val currentPath by audioModel.currentPath.observeAsState("root")
     
@@ -83,7 +83,7 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
                     text = "< Back",
                     modifier = Modifier
                         .clickable {
-                            audioModel.navigateBack(context = context)
+                            audioModel.navigateBack(/*context = context*/)
                             selectedIdx = -1
                         }
                         .padding(end = 16.dp),
@@ -146,7 +146,7 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
                     FolderGridItem(
                         mediaItem = mediaItem,
                         onClick = {
-                            audioModel.browse(mediaItem.mediaId, context = context)
+                            audioModel.browse(mediaItem.mediaId /*, context = context*/)
                             selectedIdx = -1
                         },
                         onInfoClick = {

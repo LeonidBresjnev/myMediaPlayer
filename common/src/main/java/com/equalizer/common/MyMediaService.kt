@@ -6,8 +6,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.util.Log
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.C
+import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
@@ -41,11 +40,8 @@ class MyMediaService : MediaLibraryService() {
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.Main + serviceJob)
 
-
     private val setVolOnFreq = SessionCommand("setVolOnFreq", Bundle())
-    private val getVolOnFreq = SessionCommand("getVolOnFreq", Bundle())
-
-    private var currentlocation = ""
+    private val setAllVolOnFreq = SessionCommand("setAllVolOnFreq", Bundle())
 
     private val volPerFreq = MutableList(8) { 1.0f }
 
@@ -106,10 +102,7 @@ class MyMediaService : MediaLibraryService() {
                         firstArtist, firstTitle
                     )
                     onlineInfo?.artworkUrl?.let {
-                        val wrappedUri = MediaThumbnailProvider.CONTENT_URI.buildUpon()
-                            .appendQueryParameter("path", it)
-                            .build()
-                        folderMetadataBuilder.setArtworkUri(wrappedUri)
+                        folderMetadataBuilder.setArtworkUri(it.toUri())
                     }
                 }
 
@@ -157,10 +150,7 @@ class MyMediaService : MediaLibraryService() {
                     if (!hasLocalArt && !artist.isNullOrBlank() && !title.isNullOrBlank()) {
                         val onlineInfo = OnlineMetadataManager.getOnlineInfo(applicationContext, artist, title)
                         onlineInfo?.artworkUrl?.let {
-                            val wrappedUri = MediaThumbnailProvider.CONTENT_URI.buildUpon()
-                                .appendQueryParameter("path", it)
-                                .build()
-                            metadataBuilder.setArtworkUri(wrappedUri)
+                            metadataBuilder.setArtworkUri(it.toUri())
                         }
                     }
 
@@ -215,7 +205,7 @@ class MyMediaService : MediaLibraryService() {
                 val connectionResult = super.onConnect(session, controller)
                 val availableSessionCommands = connectionResult.availableSessionCommands.buildUpon()
                 availableSessionCommands.add(setVolOnFreq)
-                availableSessionCommands.add(getVolOnFreq)
+                availableSessionCommands.add(setAllVolOnFreq)
                 return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                     .setAvailableSessionCommands(availableSessionCommands.build())
                     .setAvailablePlayerCommands(connectionResult.availablePlayerCommands)
@@ -326,13 +316,31 @@ class MyMediaService : MediaLibraryService() {
                     if (player is Equalizer) {
                         player.setVolOnFreq(volume, index)
                     }
-
+                    pushEqualizerState(session)
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                } else if (customCommand.customAction == "setAllVolOnFreq") {
+                    val volumes = args.getFloatArray("KEY_VOLUMES")
+                    if (volumes != null && volumes.size == 8) {
+                        for (i in 0 until 8) volPerFreq[i] = volumes[i]
+                        val player = session.player
+                        if (player is Equalizer) {
+                            player.setAllVolOnFreq(volumes)
+                        }
+                        pushEqualizerState(session)
+                        return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                    }
                 }
                 return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
             }
 
         }).build()
+    }
+
+    private fun pushEqualizerState(session: MediaSession) {
+        val extras = Bundle().apply {
+            putFloatArray("EQ_STATE", volPerFreq.toFloatArray())
+        }
+        session.sessionExtras = extras
     }
 
     override fun onDestroy() {

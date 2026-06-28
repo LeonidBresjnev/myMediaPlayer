@@ -64,6 +64,7 @@ class Equalizer(
     private external fun nativeSetVolumenLow(synthesizerHandle: Long,volumeInDb: Float, freqInterval: Int)
 
     private val volPerFreq = MutableList(8) { 1f }
+
     fun setVolOnFreq(volumeInDb: Float, freqInterval: Int) {
         synchronized(equalizerMutex){
             createNativeHandleIfNotExists()
@@ -72,6 +73,22 @@ class Equalizer(
         volPerFreq[freqInterval] = volumeInDb
         listeners.sendEvent(1) { listener: Player.Listener ->
             listener.onVideoSizeChanged(VideoSize(freqInterval, 0, volumeInDb))
+        }
+    }
+
+    fun setAllVolOnFreq(volumes: FloatArray) {
+        synchronized(equalizerMutex) {
+            createNativeHandleIfNotExists()
+            for (i in 0 until volumes.size.coerceAtMost(8)) {
+                volPerFreq[i] = volumes[i]
+                nativeSetVolumenLow(equalizerHandle, volumes[i], i)
+            }
+        }
+        // Notify listener for each band to ensure UI updates
+        for (i in 0 until volumes.size.coerceAtMost(8)) {
+            listeners.sendEvent(1) { listener: Player.Listener ->
+                listener.onVideoSizeChanged(VideoSize(i, 0, volumes[i]))
+            }
         }
     }
 
@@ -169,7 +186,6 @@ class Equalizer(
                     }
 
                     val mediaItem = mediaItems.getOrNull(0)
-                    // Robust path extraction: check local URI first, then fall back to mediaId (absolute path in browser)
                     val path = mediaItem?.localConfiguration?.uri?.path ?: mediaItem?.mediaId
                     log("Attempting to play path: $path")
 
@@ -232,7 +248,7 @@ class Equalizer(
         log("setMediaItems1: size=${mediaItems.size}")
         this.mediaItems.clear()
         this.mediaItems.addAll(mediaItems)
-        listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) }
+        listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) }
         listeners.sendEvent(EVENT_MEDIA_METADATA_CHANGED) { it.onMediaMetadataChanged(mediaMetadata) }
         listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { it.onPlaybackStateChanged(playbackState) }
     }
@@ -241,7 +257,7 @@ class Equalizer(
         log("setMediaItems2: size=${_mediaItems.size}")
         this.mediaItems.clear()
         this.mediaItems.addAll(_mediaItems)
-        listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) }
+        listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) }
         listeners.sendEvent(EVENT_MEDIA_METADATA_CHANGED) { it.onMediaMetadataChanged(mediaMetadata) }
         listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { it.onPlaybackStateChanged(playbackState) }
     }

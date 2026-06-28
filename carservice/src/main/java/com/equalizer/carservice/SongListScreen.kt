@@ -45,6 +45,9 @@ class SongListScreen(
                     }
                 } catch (e: Exception) {
                     isLoading = false
+                    e.message?.let {
+                        Log.d("Car: SongList Screen", it)
+                    }
                     invalidate()
                 }
             }, MoreExecutors.directExecutor())
@@ -90,7 +93,6 @@ class SongListScreen(
                     .addText(item.mediaMetadata.artist ?: "")
                     .setImage(createCarIcon(item.mediaMetadata), Row.IMAGE_TYPE_SMALL)
                     .setOnClickListener {
-                        // Tapping a song now opens the Details screen
                         screenManager.push(SongDetailScreen(carContext, playControl, item))
                     }
                     .build()
