@@ -24,7 +24,6 @@ class ModernPlaybackScreen(
         if (uriString != null) {
             val finalUri = if (uriString.startsWith("content://${com.equalizer.common.MediaThumbnailProvider.AUTHORITY}")) {
                 uriString.toUri()
-                /*android.net.Uri.parse(uriString)*/
             } else {
                 com.equalizer.common.MediaThumbnailProvider.CONTENT_URI.buildUpon()
                     .appendQueryParameter("path", uriString)
@@ -32,7 +31,7 @@ class ModernPlaybackScreen(
             }
             return CarIcon.Builder(IconCompat.createWithContentUri(finalUri)).build()
         }
-        return CarIcon.Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_artist)).build()
+        return CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_media_play)).build()
     }
 
     override fun onGetTemplate(): Template {
@@ -57,7 +56,7 @@ class ModernPlaybackScreen(
         val isPlaying = playControl.isPlaying == PlayControl.Status.PLAYING
         val playPauseAction = Action.Builder()
             .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, 
-                if (isPlaying) R.drawable.stopplay else R.drawable.play_solid
+                if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
             )).build())
             .setOnClickListener {
                 if (isPlaying) {

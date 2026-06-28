@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.AlertDialog
@@ -181,12 +182,16 @@ fun FileRow(mediaItem: MediaItem,
         verticalAlignment = Alignment.CenterVertically
     ) {
         val musicPlaceholder = rememberVectorPainter(Icons.Default.MusicNote)
+        val folderPlaceholder = rememberVectorPainter(Icons.Default.Folder)
+        val isBrowsable = mediaItem.mediaMetadata.isBrowsable == true
+        val placeholder = if (isBrowsable) folderPlaceholder else musicPlaceholder
+        
         AsyncImage(
             model = mediaItem.mediaMetadata.artworkUri,
             contentDescription = null,
             modifier = Modifier.size(40.dp).clip(RoundedCornerShape(4.dp)),
-            placeholder = musicPlaceholder,
-            error = musicPlaceholder,
+            placeholder = placeholder,
+            error = placeholder,
             contentScale = ContentScale.Crop
         )
         Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {

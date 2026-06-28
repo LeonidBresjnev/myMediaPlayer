@@ -18,11 +18,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
-import androidx.compose.material.icons.automirrored.outlined.List
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.filled.DirectionsCarFilled
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -80,7 +80,8 @@ class MainActivity : ComponentActivity() {
                 TabRowItem(
                     title = "Media browser",
                     screen = {
-                        MediaBrowserScreen(modifier = Modifier,
+                        MediaBrowserScreen(
+                            modifier = Modifier,
                             audioModel = audioModel,
                             onSelect = { file ->
                                 file?.let {
@@ -97,8 +98,8 @@ class MainActivity : ComponentActivity() {
                                 }
                             })
                     },
-                    selectedIcon = Icons.AutoMirrored.Filled.List,
-                    unselectedIcon = Icons.AutoMirrored.Outlined.List
+                    selectedIcon = Icons.AutoMirrored.Filled.QueueMusic,
+                    unselectedIcon = Icons.AutoMirrored.Outlined.QueueMusic
                 ),
                 TabRowItem(
                     title = "Equalizer",
@@ -108,8 +109,8 @@ class MainActivity : ComponentActivity() {
                             equalizerViewModel = audioModel
                         )
                     },
-                    selectedIcon = Icons.AutoMirrored.Filled.QueueMusic,
-                    unselectedIcon = Icons.AutoMirrored.Outlined.QueueMusic
+                    selectedIcon = Icons.Default.Tune,
+                    unselectedIcon = Icons.Outlined.Tune
                 )
             )
             

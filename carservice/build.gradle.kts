@@ -46,6 +46,7 @@ dependencies {
     testImplementation(libs.junit)
 
     implementation(libs.androidx.media3.session)
+    implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.exoplayer)
 
     implementation(libs.mp3agic)

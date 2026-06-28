@@ -70,7 +70,9 @@ class SongListScreen(
             }
             return CarIcon.Builder(IconCompat.createWithContentUri(finalUri)).build()
         }
-        return CarIcon.Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_artist)).build()
+        
+        // Use standard Android music icon
+        return CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_media_play)).build()
     }
 
     override fun onGetTemplate(): Template {
