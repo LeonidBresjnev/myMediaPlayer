@@ -1,6 +1,5 @@
 package com.equalizer.carservice
 
-import android.os.Bundle
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.car.app.CarContext
@@ -9,10 +8,8 @@ import androidx.car.app.model.Action
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.GridItem
 import androidx.car.app.model.GridTemplate
-import androidx.car.app.model.Header
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
-import androidx.car.app.model.MessageTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.Tab
 import androidx.car.app.model.TabContents
@@ -21,11 +18,8 @@ import androidx.car.app.model.Template
 import androidx.core.graphics.drawable.IconCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.session.SessionCommand
 import com.google.common.util.concurrent.MoreExecutors
 import java.util.Locale
-import kotlin.math.max
-import kotlin.math.min
 
 @OptIn(UnstableApi::class)
 class MainTabScreen(
@@ -37,11 +31,8 @@ class MainTabScreen(
     private var mediaItems: List<MediaItem> = emptyList()
     private var isLoading = true
     
-    // Task step tracking
-    private var taskStepCount = 0
-    
     // Equalizer state
-    private var currentEqInterval = 0
+    //private var currentEqInterval = 0
 
     init {
         loadAlbums()
@@ -67,6 +58,9 @@ class MainTabScreen(
                     }
                 } catch (e: Exception) {
                     isLoading = false
+                    e.message?.let {
+                        Log.d("Car - Maintab", it)
+                    }
                     invalidate()
                 }
             }, MoreExecutors.directExecutor())
@@ -103,20 +97,6 @@ class MainTabScreen(
             invalidate()
         }
 
-        // SAFETY: If we are about to hit the 5th step, show a message template to reset the task.
-        if (taskStepCount >= 4) {
-            return MessageTemplate.Builder("Safety Limit: Please refresh to continue.")
-                .setHeaderAction(Action.BACK)
-                .addAction(Action.Builder()
-                    .setTitle("Refresh")
-                    .setOnClickListener {
-                        taskStepCount = 0
-                        invalidate()
-                    }
-                    .build())
-                .build()
-        }
-
         val libraryTab = Tab.Builder()
             .setTitle("Library")
             .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_gallery)).build())
@@ -138,7 +118,6 @@ class MainTabScreen(
         return TabTemplate.Builder(object : TabTemplate.TabCallback {
             override fun onTabSelected(tabTag: String) {
                 activeTabId = tabTag
-                taskStepCount = 0 // Reset steps on tab switch
                 invalidate()
             }
         })
@@ -163,7 +142,6 @@ class MainTabScreen(
                     .setText(item.mediaMetadata.artist ?: "")
                     .setImage(createCarIcon(item.mediaMetadata, true), GridItem.IMAGE_TYPE_LARGE)
                     .setOnClickListener {
-                        taskStepCount++
                         screenManager.push(SongListScreen(carContext, playControl, item.mediaId, item.mediaMetadata.title?.toString() ?: "Album"))
                     }
                     .build()
@@ -184,7 +162,6 @@ class MainTabScreen(
                     .setTitle(playControl.frequencyLabels[i])
                     .addText("Volume: ${String.format(Locale.GERMAN, "%.1f", vol)}")
                     .setOnClickListener {
-                        taskStepCount++
                         screenManager.push(BandDetailScreen(carContext, playControl, i))
                     }
                     .build()
@@ -195,7 +172,7 @@ class MainTabScreen(
             .setSingleList(listBuilder.build())
             .build()
     }
-
+/*
     private fun updateFrequency(index: Int, volume: Float) {
         playControl.volPerFreq[index] = volume
         invalidate()
@@ -208,5 +185,5 @@ class MainTabScreen(
         if (playControl.mediaControllerFuture.isDone) {
             playControl.controller.sendCustomCommand(customCommand, extras)
         }
-    }
+    }*/
 }
