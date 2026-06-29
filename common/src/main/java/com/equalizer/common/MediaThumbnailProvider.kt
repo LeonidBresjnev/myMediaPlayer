@@ -62,7 +62,7 @@ class MediaThumbnailProvider : ContentProvider() {
     ): Int = 0
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? {
-        val pathParam = uri.getQueryParameter("path") ?: return openFallbackIcon()
+        val pathParam = uri.getQueryParameter("path") ?: return null
         
         val path = try {
             URLDecoder.decode(pathParam, "UTF-8")
@@ -97,29 +97,13 @@ class MediaThumbnailProvider : ContentProvider() {
         }
 
         if (file == null || !file.exists()) {
-            return openFallbackIcon()
+            return null
         }
 
         return try {
             ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
         } catch (e: Exception) {
             Log.e(TAG, "openFile: Error opening PFD: ${e.message}")
-            openFallbackIcon()
-        }
-    }
-
-    private fun openFallbackIcon(): ParcelFileDescriptor? {
-        return try {
-            val fallbackFile = File(context?.cacheDir, "fallback_icon_v3.png")
-            if (!fallbackFile.exists() || fallbackFile.length() == 0L) {
-                val transparentPng = byteArrayOf(
-                    -119, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21, -60, -119, 0, 0, 0, 11, 73, 68, 65, 84, 8, -41, 99, 96, 0, 2, 0, 0, 5, 0, 1, -21, 38, -80, 50, 0, 0, 0, 0, 73, 69, 78, 68, -82, 66, 96, -126
-                )
-                FileOutputStream(fallbackFile).use { it.write(transparentPng) }
-            }
-            ParcelFileDescriptor.open(fallbackFile, ParcelFileDescriptor.MODE_READ_ONLY)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error providing fallback icon", e)
             null
         }
     }

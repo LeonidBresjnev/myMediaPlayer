@@ -13,6 +13,7 @@ import androidx.car.app.model.Row
 import androidx.car.app.model.Template
 import androidx.core.graphics.drawable.IconCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
 import com.google.common.util.concurrent.MoreExecutors
 
@@ -58,7 +59,7 @@ class SongListScreen(
         }
     }
 
-    private fun createCarIcon(metadata: androidx.media3.common.MediaMetadata): CarIcon {
+    private fun createCarIcon(metadata: MediaMetadata): CarIcon {
         metadata.artworkUri?.let { uri ->
             val uriString = uri.toString()
             val finalUri = if (uriString.startsWith("content://${com.equalizer.common.MediaThumbnailProvider.AUTHORITY}")) {
@@ -71,18 +72,9 @@ class SongListScreen(
             return CarIcon.Builder(IconCompat.createWithContentUri(finalUri)).build()
         }
         
-        // Use standard Android music icon
-        return CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_media_play)).build()
+        // Use Media3 built-in icon for songs
+        return CarIcon.Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_artist)).build()
     }
-
-    val eqAction = Action.Builder()
-        .setIcon(CarIcon
-            .Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_preferences))
-            .build())
-        .setOnClickListener {
-            this.screenManager.push(EqualizerScreen(carContext, playControl))
-        }
-        .build()
 
     override fun onGetTemplate(): Template {
         val builder = ListTemplate.Builder()
@@ -90,7 +82,6 @@ class SongListScreen(
             Header.Builder()
                 .setTitle(albumTitle)
                 .setStartHeaderAction(Action.BACK)
-                .addEndHeaderAction(eqAction)
                 .build()
         )
 
@@ -110,15 +101,6 @@ class SongListScreen(
                     .build()
             )
         }
-
-        val eqAction = Action.Builder()
-            .setIcon(CarIcon
-                .Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_preferences))
-                .build())
-            .setOnClickListener {
-                this.screenManager.push(EqualizerScreen(carContext, playControl))
-            }
-            .build()
 
         return builder
             .setSingleList(listBuilder.build())

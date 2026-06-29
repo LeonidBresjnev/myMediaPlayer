@@ -1,6 +1,5 @@
 package com.equalizer.carservice
 
-import androidx.annotation.OptIn
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
@@ -11,10 +10,9 @@ import androidx.car.app.model.PaneTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.Template
 import androidx.core.graphics.drawable.IconCompat
+import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
-import androidx.core.net.toUri
-import com.equalizer.carservice.R
 
 @UnstableApi
 class SongDetailScreen(
@@ -30,26 +28,6 @@ class SongDetailScreen(
         }
     }
 
-    @OptIn(UnstableApi::class)
-    private fun createHeader(title: String): Header {
-
-
-        val eqAction = Action.Builder()
-            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_settings /*R.drawable.lever_vert*/)).build())
-            .setOnClickListener {
-                this.screenManager.push(EqualizerScreen(carContext, playControl))
-            }
-            .build()
-
-        val headerBuilder = Header.Builder()
-            .setTitle(title)
-            .addEndHeaderAction(eqAction)
-
-        headerBuilder.setStartHeaderAction(Action.BACK)
-
-
-        return headerBuilder.build()
-    }
 
     private fun createCarIcon(uriString: String?): CarIcon {
         if (uriString != null) {
@@ -62,7 +40,7 @@ class SongDetailScreen(
             }
             return CarIcon.Builder(IconCompat.createWithContentUri(finalUri)).build()
         }
-        return CarIcon.Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_notification_small_icon)).build()
+        return CarIcon.Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_artist)).build()
     }
 
     override fun onGetTemplate(): Template {
@@ -75,7 +53,7 @@ class SongDetailScreen(
         val infoRow = Row.Builder()
             .setTitle(metadata.title ?: "Unknown Title")
             .addText(metadata.artist ?: "Unknown Artist")
-            .setImage(createCarIcon(metadata.artworkUri?.toString()), Row.IMAGE_TYPE_SMALL)
+            .setImage(createCarIcon(metadata.artworkUri?.toString()), Row.IMAGE_TYPE_LARGE)
             .build()
         
         paneBuilder.addRow(infoRow)
@@ -113,23 +91,15 @@ class SongDetailScreen(
 
         paneBuilder.addAction(playPauseAction)
 
-        val eqAction = Action.Builder()
-            .setIcon(CarIcon
-                .Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_preferences))
-                .build())
-            .setOnClickListener {
-                this.screenManager.push(EqualizerScreen(carContext, playControl))
-            }
-            .build()
-
         return PaneTemplate.Builder(paneBuilder.build())
             .setHeader(
                 Header.Builder()
                     .setTitle("Playback Control")
                     .setStartHeaderAction(Action.BACK)
-                    .addEndHeaderAction(eqAction)
+                   /* .addEndHeaderAction(eqAction)*/
                     .build()
             )
+
             .build()
     }
 }

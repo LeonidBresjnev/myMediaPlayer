@@ -17,6 +17,7 @@ import androidx.car.app.model.TabTemplate
 import androidx.car.app.model.Template
 import androidx.core.graphics.drawable.IconCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
 import com.equalizer.common.MediaThumbnailProvider
 import com.google.common.util.concurrent.MoreExecutors
@@ -31,9 +32,7 @@ class MainTabScreen(
     private var activeTabId = "library"
     private var mediaItems: List<MediaItem> = emptyList()
     private var isLoading = true
-    
-    // Equalizer state
-    //private var currentEqInterval = 0
+
 
     init {
         loadAlbums()
@@ -60,7 +59,7 @@ class MainTabScreen(
                 } catch (e: Exception) {
                     isLoading = false
                     e.message?.let {
-                        Log.d("Car - Maintab", it)
+                        Log.d("MainTabScreen", it)
                     }
                     invalidate()
                 }
@@ -72,23 +71,47 @@ class MainTabScreen(
         }
     }
 
-    private fun createCarIcon(metadata: androidx.media3.common.MediaMetadata): CarIcon {
-        metadata.artworkUri?.let { uri ->
+    private fun createCarIcon(metadata: MediaMetadata): CarIcon {
+
+        metadata
+            .artworkUri
+            ?.let { uri ->
             val uriString = uri.toString()
             val finalUri = if (uriString.startsWith("content://${MediaThumbnailProvider.AUTHORITY}")) {
                 uri
             } else {
-                MediaThumbnailProvider.CONTENT_URI.buildUpon()
+                MediaThumbnailProvider
+                    .CONTENT_URI
+                    .buildUpon()
                     .appendQueryParameter("path", uriString)
                     .build()
             }
             return CarIcon.Builder(IconCompat.createWithContentUri(finalUri)).build()
-        }
-        
-        // Fallbacks using standard Android resources
-        return CarIcon
-            .Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_radio))
-            .build()
+            }
+
+
+
+            // Fallbacks using Media3 built-in icons
+            return if (metadata.isBrowsable == true) {
+                CarIcon
+                    .Builder(
+                        IconCompat
+                            .createWithResource(
+                                carContext,
+                                androidx.media3.session.R.drawable.media3_icon_album
+                            )
+                    ).build()
+            } else {
+                CarIcon
+                    .Builder(
+                        IconCompat
+                            .createWithResource(
+                                carContext,
+                                androidx.media3.session.R.drawable.media3_icon_artist
+                            )
+                    ).build()
+
+}
     }
 
     override fun onGetTemplate(): Template {
@@ -98,7 +121,7 @@ class MainTabScreen(
 
         val libraryTab = Tab.Builder()
             .setTitle("Library")
-            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext,  android.R.drawable.ic_menu_gallery)).build())
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_gallery)).build())
             .setContentId("library")
             .build()
 
@@ -135,9 +158,6 @@ class MainTabScreen(
         val gridBuilder = ItemList.Builder().setNoItemsMessage("No albums found")
 
         mediaItems.forEach { item ->
-            item.mediaMetadata.artworkData
-
-
             gridBuilder.addItem(
                 GridItem.Builder()
                     .setTitle(item.mediaMetadata.title ?: "Unknown")
@@ -145,7 +165,8 @@ class MainTabScreen(
                     .setImage(createCarIcon(item.mediaMetadata), GridItem.IMAGE_TYPE_LARGE)
                     .setOnClickListener {
                         if (item.mediaMetadata.isBrowsable == true) {
-                            screenManager.push(SongListScreen(carContext, playControl, item.mediaId, item.mediaMetadata.title?.toString() ?: "Album"))
+                            screenManager
+                                .push(SongListScreen(carContext, playControl, item.mediaId, item.mediaMetadata.title?.toString() ?: "Album"))
                         } else {
                             screenManager.push(SongDetailScreen(carContext, playControl, item))
                         }
@@ -178,18 +199,4 @@ class MainTabScreen(
             .setSingleList(listBuilder.build())
             .build()
     }
-/*
-    private fun updateFrequency(index: Int, volume: Float) {
-        playControl.volPerFreq[index] = volume
-        invalidate()
-
-        val extras = Bundle().apply {
-            putInt("KEY_INDEX", index)
-            putFloat("KEY_VOLUME", volume)
-        }
-        val customCommand = SessionCommand("setVolOnFreq", Bundle())
-        if (playControl.mediaControllerFuture.isDone) {
-            playControl.controller.sendCustomCommand(customCommand, extras)
-        }
-    }*/
 }

@@ -20,9 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -42,9 +40,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
-//import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -181,10 +178,7 @@ fun FileRow(mediaItem: MediaItem,
             .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val musicPlaceholder = rememberVectorPainter(Icons.Default.MusicNote)
-        val folderPlaceholder = rememberVectorPainter(Icons.Default.Folder)
-        val isBrowsable = mediaItem.mediaMetadata.isBrowsable == true
-        val placeholder = if (isBrowsable) folderPlaceholder else musicPlaceholder
+        val placeholder = painterResource(androidx.media3.session.R.drawable.media3_icon_artist)
         
         AsyncImage(
             model = mediaItem.mediaMetadata.artworkUri,
@@ -240,13 +234,14 @@ fun FolderGridItem(mediaItem: MediaItem,
             contentAlignment = Alignment.Center
         ) {
             val artworkModel = mediaItem.mediaMetadata.artworkUri
-            val musicPlaceholder = rememberVectorPainter(Icons.Default.MusicNote)
+            val placeholder = painterResource(androidx.media3.session.R.drawable.media3_icon_album)
+            
             AsyncImage(
                 model = artworkModel,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
-                placeholder = musicPlaceholder,
-                error = musicPlaceholder,
+                placeholder = placeholder,
+                error = placeholder,
                 contentScale = ContentScale.Crop
             )
 
@@ -302,13 +297,18 @@ fun MediaInfoDialog(mediaItem: MediaItem, onDismiss: () -> Unit) {
                     contentAlignment = Alignment.Center
                 ) {
                     val artworkModel = mediaItem.mediaMetadata.artworkUri
-                    val musicPlaceholder = rememberVectorPainter(Icons.Default.MusicNote)
+                    val placeholder = if (mediaItem.mediaMetadata.isBrowsable == true) {
+                        painterResource(androidx.media3.session.R.drawable.media3_icon_album)
+                    } else {
+                        painterResource(androidx.media3.session.R.drawable.media3_icon_artist)
+                    }
+                    
                     AsyncImage(
                         model = artworkModel,
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
-                        placeholder = musicPlaceholder,
-                        error = musicPlaceholder,
+                        placeholder = placeholder,
+                        error = placeholder,
                         contentScale = ContentScale.Crop
                     )
                 }

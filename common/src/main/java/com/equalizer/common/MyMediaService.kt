@@ -292,14 +292,14 @@ class MyMediaService : MediaLibraryService() {
             ): ListenableFuture<List<MediaItem>> {
                 return Futures.immediateFuture(mediaItems)
             }
-/*
+
             override fun onPlaybackResumption(
                 mediaSession: MediaSession,
                 controller: MediaSession.ControllerInfo
             ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
                 // This would normally restore previous queue
                 return super.onPlaybackResumption(mediaSession, controller)
-            }*/
+            }
 
             override fun onCustomCommand(
                 session: MediaSession,
@@ -340,7 +340,7 @@ class MyMediaService : MediaLibraryService() {
         val extras = Bundle().apply {
             putFloatArray("EQ_STATE", volPerFreq.toFloatArray())
         }
-        session.sessionExtras = extras
+        session.setSessionExtras(extras)
     }
 
     override fun onDestroy() {
