@@ -1,5 +1,5 @@
 package com.equalizer.carservice
-
+/*
 import android.text.SpannableString
 import android.text.Spanned
 import android.util.Log
@@ -93,7 +93,7 @@ class MediaScreen @OptIn(UnstableApi::class) constructor
 
     @OptIn(UnstableApi::class)
     private fun createHeader(title: String): Header {
-        val playPause = Action.Builder()
+        /*val playPause = Action.Builder()
             .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, 
                 if (playControl.isPlaying == PlayControl.Status.PLAYING) R.drawable.stopplay else R.drawable.play_solid
             )).build())
@@ -104,7 +104,7 @@ class MediaScreen @OptIn(UnstableApi::class) constructor
                     playControl.playMedia(mediaItems[currentSelection])
                 }
             }
-            .build()
+            .build()*/
 
         val eqAction = Action.Builder()
             .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.lever_vert)).build())
@@ -115,7 +115,7 @@ class MediaScreen @OptIn(UnstableApi::class) constructor
 
         val headerBuilder = Header.Builder()
             .setTitle(title)
-            .addEndHeaderAction(playPause)
+           /* .addEndHeaderAction(playPause)*/
             .addEndHeaderAction(eqAction)
         
         if (currentPath != "root") {
@@ -284,3 +284,4 @@ class MediaScreen @OptIn(UnstableApi::class) constructor
             .build()
     }
 }
+*/

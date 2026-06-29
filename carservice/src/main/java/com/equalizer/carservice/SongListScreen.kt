@@ -75,12 +75,22 @@ class SongListScreen(
         return CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_media_play)).build()
     }
 
+    val eqAction = Action.Builder()
+        .setIcon(CarIcon
+            .Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_preferences))
+            .build())
+        .setOnClickListener {
+            this.screenManager.push(EqualizerScreen(carContext, playControl))
+        }
+        .build()
+
     override fun onGetTemplate(): Template {
         val builder = ListTemplate.Builder()
         builder.setHeader(
             Header.Builder()
                 .setTitle(albumTitle)
                 .setStartHeaderAction(Action.BACK)
+                .addEndHeaderAction(eqAction)
                 .build()
         )
 
@@ -101,6 +111,17 @@ class SongListScreen(
             )
         }
 
-        return builder.setSingleList(listBuilder.build()).build()
+        val eqAction = Action.Builder()
+            .setIcon(CarIcon
+                .Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_preferences))
+                .build())
+            .setOnClickListener {
+                this.screenManager.push(EqualizerScreen(carContext, playControl))
+            }
+            .build()
+
+        return builder
+            .setSingleList(listBuilder.build())
+            .build()
     }
 }

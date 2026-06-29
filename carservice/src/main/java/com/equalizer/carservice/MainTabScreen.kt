@@ -18,6 +18,7 @@ import androidx.car.app.model.Template
 import androidx.core.graphics.drawable.IconCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
+import com.equalizer.common.MediaThumbnailProvider
 import com.google.common.util.concurrent.MoreExecutors
 import java.util.Locale
 
@@ -74,10 +75,10 @@ class MainTabScreen(
     private fun createCarIcon(metadata: androidx.media3.common.MediaMetadata): CarIcon {
         metadata.artworkUri?.let { uri ->
             val uriString = uri.toString()
-            val finalUri = if (uriString.startsWith("content://${com.equalizer.common.MediaThumbnailProvider.AUTHORITY}")) {
+            val finalUri = if (uriString.startsWith("content://${MediaThumbnailProvider.AUTHORITY}")) {
                 uri
             } else {
-                com.equalizer.common.MediaThumbnailProvider.CONTENT_URI.buildUpon()
+                MediaThumbnailProvider.CONTENT_URI.buildUpon()
                     .appendQueryParameter("path", uriString)
                     .build()
             }
@@ -86,7 +87,7 @@ class MainTabScreen(
         
         // Fallbacks using standard Android resources
         return CarIcon
-            .Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_gallery))
+            .Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_radio))
             .build()
     }
 
@@ -97,7 +98,7 @@ class MainTabScreen(
 
         val libraryTab = Tab.Builder()
             .setTitle("Library")
-            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_gallery)).build())
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext,  android.R.drawable.ic_menu_gallery)).build())
             .setContentId("library")
             .build()
 
@@ -134,6 +135,9 @@ class MainTabScreen(
         val gridBuilder = ItemList.Builder().setNoItemsMessage("No albums found")
 
         mediaItems.forEach { item ->
+            item.mediaMetadata.artworkData
+
+
             gridBuilder.addItem(
                 GridItem.Builder()
                     .setTitle(item.mediaMetadata.title ?: "Unknown")

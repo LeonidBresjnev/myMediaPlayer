@@ -1,5 +1,5 @@
 package com.equalizer.carservice
-
+/*
 import androidx.annotation.OptIn
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
@@ -31,7 +31,7 @@ class ModernPlaybackScreen(
             }
             return CarIcon.Builder(IconCompat.createWithContentUri(finalUri)).build()
         }
-        return CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_media_play)).build()
+        return CarIcon.Builder(IconCompat.createWithResource(carContext, androidx.media3.ui.R.drawable.media3_icon_music)).build()
     }
 
     override fun onGetTemplate(): Template {
@@ -54,9 +54,10 @@ class ModernPlaybackScreen(
         paneBuilder.addRow(songRow)
 
         val isPlaying = playControl.isPlaying == PlayControl.Status.PLAYING
-        val playPauseAction = Action.Builder()
-            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, 
-                if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+
+       val playPauseAction = Action.Builder()
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext,
+                if (isPlaying) R.drawable.stopplay else R.drawable.play_solid
             )).build())
             .setOnClickListener {
                 if (isPlaying) {
@@ -79,3 +80,4 @@ class ModernPlaybackScreen(
             .build()
     }
 }
+*/
