@@ -53,10 +53,12 @@ class SongDetailScreen(
         val infoRow = Row.Builder()
             .setTitle(metadata.title ?: "Unknown Title")
             .addText(metadata.artist ?: "Unknown Artist")
-            .setImage(createCarIcon(metadata.artworkUri?.toString()), Row.IMAGE_TYPE_LARGE)
+           /* .setImage(createCarIcon(metadata.artworkUri?.toString()), Row.IMAGE_TYPE_LARGE)*/
             .build()
         
-        paneBuilder.addRow(infoRow)
+        paneBuilder
+            .setImage(createCarIcon(metadata.artworkUri?.toString()))
+            .addRow(infoRow)
         
         // Technical Info if available
         metadata.totalDiscCount?.let { 
@@ -99,6 +101,7 @@ class SongDetailScreen(
                    /* .addEndHeaderAction(eqAction)*/
                     .build()
             )
+
 
             .build()
     }

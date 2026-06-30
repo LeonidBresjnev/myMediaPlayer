@@ -10,6 +10,11 @@ import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.Player.COMMAND_PLAY_PAUSE
+import androidx.media3.common.Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM
+import androidx.media3.common.Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM
+import androidx.media3.common.Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM
+import androidx.media3.common.Player.COMMAND_STOP
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -206,9 +211,20 @@ class MyMediaService : MediaLibraryService() {
                 val availableSessionCommands = connectionResult.availableSessionCommands.buildUpon()
                 availableSessionCommands.add(setVolOnFreq)
                 availableSessionCommands.add(setAllVolOnFreq)
+                
+                val availablePlayerCommands = connectionResult.availablePlayerCommands.buildUpon()
+                    .add(COMMAND_PLAY_PAUSE)
+                    .add(COMMAND_STOP)
+                    .add(COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                    .add(COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                    .add(COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+                    .addAllCommands()
+                    .build()
+
                 return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                    .setAvailableSessionCommands(availableSessionCommands.build())
-                    .setAvailablePlayerCommands(connectionResult.availablePlayerCommands)
+                    .setAvailableSessionCommands(availableSessionCommands
+                        .build())
+                    .setAvailablePlayerCommands(availablePlayerCommands)
                     .build()
             }
 
@@ -340,7 +356,7 @@ class MyMediaService : MediaLibraryService() {
         val extras = Bundle().apply {
             putFloatArray("EQ_STATE", volPerFreq.toFloatArray())
         }
-        session.setSessionExtras(extras)
+        session.sessionExtras = extras
     }
 
     override fun onDestroy() {

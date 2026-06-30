@@ -61,7 +61,8 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-
+// Source: https://mvnrepository.com/artifact/org.jetbrains.kotlin/kotlin-dataframe
+    // Source: https://mvnrepository.com/artifact/ch.qos.logback/logback-classic
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.common)
     implementation(libs.androidx.media3.datasource)

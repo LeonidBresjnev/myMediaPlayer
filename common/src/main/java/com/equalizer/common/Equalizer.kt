@@ -52,15 +52,19 @@ class Equalizer(
         equalizerHandle = nativeCreate()
     }
 
+    private val commands = Player.Commands.Builder()
+        .addAllCommands()
+        .build()
+
     private external fun nativeCreate(): Long
     private external fun nativeDelete(synthesizerHandle: Long)
     private external fun nativeStop(synthesizerHandle: Long)
-    private external fun nativePlay(synthesizerHandle: Long, name: String, deviceId: Int)
+    //private external fun nativePlay(synthesizerHandle: Long, name: String, deviceId: Int)
     private external fun nativePlayWithVol(synthesizerHandle: Long,
                                            name: String,
                                            vol: FloatArray,
                                            deviceId: Int)
-    private external fun nativeIsPlaying(synthesizerHandle: Long): Boolean
+    //private external fun nativeIsPlaying(synthesizerHandle: Long): Boolean
     private external fun nativeSetVolumenLow(synthesizerHandle: Long,volumeInDb: Float, freqInterval: Int)
 
     private val volPerFreq = MutableList(8) { 1f }
@@ -92,7 +96,7 @@ class Equalizer(
         }
     }
 
-    fun getVolOnFreqs(): List<Float> = volPerFreq
+    //fun getVolOnFreqs(): List<Float> = volPerFreq
 
     private var applicationLooper: Looper= getCurrentOrMainLooper()
     private val clock = Clock.DEFAULT
@@ -102,17 +106,7 @@ class Equalizer(
             listener.onEvents(this, Player.Events(flags) )
         }
 
-    private val commands = Player.Commands.Builder()
-        .add(COMMAND_PREPARE)
-        .add(COMMAND_PLAY_PAUSE)
-        .add(COMMAND_STOP)
-        .add(COMMAND_SET_MEDIA_ITEM)
-        .add(COMMAND_CHANGE_MEDIA_ITEMS)
-        .add(COMMAND_GET_VOLUME)
-        .add(COMMAND_GET_TIMELINE)
-        .add(COMMAND_GET_CURRENT_MEDIA_ITEM)
-        .add(COMMAND_GET_METADATA)
-        .build()
+
 
     private var playBackParameters = PlaybackParameters.DEFAULT
     private val seekBackIncrementMs: Long = C.DEFAULT_SEEK_BACK_INCREMENT_MS
@@ -287,8 +281,10 @@ class Equalizer(
 
     override fun setPlayWhenReady(playWhenReady: Boolean) {
         log("setPlayWhenReady: $playWhenReady")
-        this.playWhenReady=playWhenReady
+        this.playWhenReady = playWhenReady
+        // Crucial for Dashboard sync: Notify BOTH ready and playing events
         listeners.sendEvent(EVENT_PLAY_WHEN_READY_CHANGED) { it.onPlayWhenReadyChanged(playWhenReady, PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) }
+        listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { it.onPlaybackStateChanged(getPlaybackState()) }
         listeners.sendEvent(EVENT_IS_PLAYING_CHANGED) { it.onIsPlayingChanged(playWhenReady) }
     }
 
@@ -325,9 +321,9 @@ class Equalizer(
     override fun getCurrentTimeline(): Timeline = EqualizerTimeline()
     override fun getCurrentPeriodIndex(): Int = 0
     override fun getCurrentMediaItemIndex(): Int = 0
-    override fun getDuration(): Long = C.TIME_UNSET
-    override fun getCurrentPosition(): Long = 0
-    override fun getBufferedPosition(): Long = 0
+    override fun getDuration(): Long = 300_000L // 5 minutes nominal for Dashboard support
+    override fun getCurrentPosition(): Long = 0L
+    override fun getBufferedPosition(): Long = 0L
     override fun getTotalBufferedDuration(): Long = 0
     override fun isPlayingAd(): Boolean = false
     override fun getCurrentAdGroupIndex(): Int = C.INDEX_UNSET
@@ -370,7 +366,8 @@ class Equalizer(
         override fun getWindowCount(): Int = if (mediaItems.isEmpty()) 0 else 1
         override fun getWindow(windowIndex: Int, window: Window, defaultPositionProjectionUs: Long): Window {
             if (mediaItems.isEmpty()) throw IndexOutOfBoundsException()
-            window.set(Window.SINGLE_WINDOW_UID, mediaItems[0], null, C.TIME_UNSET, C.TIME_UNSET, C.TIME_UNSET, false, false, null, 0, C.TIME_UNSET, 0, 0, 0)
+            // Set window duration to match getDuration() to enable dashboard controls
+            window.set(Window.SINGLE_WINDOW_UID, mediaItems[0], null, C.TIME_UNSET, C.TIME_UNSET, C.TIME_UNSET, true, false, null, 0, 300_000L, 0, 0, 0)
             return window
         }
         override fun getPeriodCount(): Int = if (mediaItems.isEmpty()) 0 else 1

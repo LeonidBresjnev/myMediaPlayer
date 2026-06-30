@@ -166,6 +166,11 @@ class AudioModel: ViewModel() {
                     Player.STATE_READY -> log("Player is ready")
                 }
             }
+
+            override fun onAvailableCommandsChanged(availableCommands: Player.Commands) {
+                super.onAvailableCommandsChanged(availableCommands)
+                log("commands changed$availableCommands")
+            }
         })
     }
 
@@ -191,8 +196,9 @@ class AudioModel: ViewModel() {
 
         mediaControllerFuture?.apply {
             addListener({
-                controller = get()
+                controller = this.get()
                 _mediaController.postValue(controller)
+                //log(controller.availableCommands.toString())
                 log("MediaController connected")
                 
                 // Initial browse
@@ -250,7 +256,7 @@ class AudioModel: ViewModel() {
 /*
     internal fun playMedia(mediaItem: MediaItem) {
         if (!::controller.isInitialized) return
-        
+
         log("playbackState is ${controller.playbackState}, playwhenready=${controller.playWhenReady}")
 
         when (controller.playbackState) {

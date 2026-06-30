@@ -1,5 +1,6 @@
 package com.equalizer.mymediaplayer
 
+
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -12,7 +13,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
@@ -47,12 +47,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.ui.PlayerControlView
 import com.equalizer.mymediaplayer.ui.theme.MyMediaPlayerTheme
+
 
 data class TabRowItem(
     val title: String,
@@ -213,46 +212,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-@UnstableApi
-@Composable
-private fun PlayControl(
-    modifier: Modifier,
-    audioModel: AudioModel
-) {
-    val controller by audioModel.mediaController.observeAsState()
-
-    androidx.compose.material3.Surface(
-        modifier = modifier
-            .height(100.dp),
-        tonalElevation = 4.dp,
-        color = MaterialTheme.colorScheme.surface
-    ) {
-        if (controller != null) {
-            AndroidView(
-                factory = { context ->
-                    PlayerControlView(context).apply {
-                        this.player = controller
-                        this.showTimeoutMs = 0 
-                        this.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                    }
-                },
-                update = { view ->
-                    view.player = controller
-                },
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = "Connecting to Player...",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
     }

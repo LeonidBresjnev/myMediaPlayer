@@ -4,22 +4,22 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.util.Log
-import io.ktor.client.*
-import io.ktor.client.call.*
-import io.ktor.client.engine.okhttp.*
-import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.client.request.*
-import io.ktor.serialization.kotlinx.json.*
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.request.parameter
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.decodeFromString
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.delay
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.time.Duration.Companion.milliseconds
 
 @Serializable
 data class MusicBrainzSearchResponse(
@@ -157,7 +157,7 @@ object OnlineMetadataManager {
             networkMutex.lock()
             try {
                 // Respect MusicBrainz rate limit: 1 request per second
-                delay(1100L)
+                delay(1100L.milliseconds)
                 
                 // Try searching by recording first (better for individual songs)
                 val recordingQuery = "recording:\"${escapeLucene(cleanTitle)}\" AND artist:\"${escapeLucene(cleanArtist)}\""
@@ -218,8 +218,8 @@ object OnlineMetadataManager {
             return null
         }
     }
-
+/*
     suspend fun getArtworkUrl(context: Context, artist: String, title: String): String? {
         return getOnlineInfo(context, artist, title)?.artworkUrl
-    }
+    }*/
 }
