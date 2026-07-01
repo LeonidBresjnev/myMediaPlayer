@@ -1,7 +1,6 @@
 package com.equalizer.mymediaplayer
 
 
-import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -47,8 +46,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
 import com.equalizer.mymediaplayer.ui.theme.MyMediaPlayerTheme
 
@@ -82,6 +79,10 @@ class MainActivity : ComponentActivity() {
                         MediaBrowserScreen(
                             modifier = Modifier,
                             audioModel = audioModel,
+                            onSelect = { playlist, index ->
+                                audioModel.loadMedia(playlist, index)
+
+                                 /*
                             onSelect = { file ->
                                 file?.let {
                                     val item = MediaItem.Builder()
@@ -94,7 +95,7 @@ class MainActivity : ComponentActivity() {
                                         ).build()
                                     // LOAD AND PREPARE ONLY - DO NOT AUTO-PLAY
                                     audioModel.loadMedia(item)
-                                }
+                                }*/
                             })
                     },
                     selectedIcon = Icons.AutoMirrored.Filled.QueueMusic,

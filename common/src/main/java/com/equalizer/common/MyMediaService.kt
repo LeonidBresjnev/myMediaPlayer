@@ -195,12 +195,16 @@ class MyMediaService : MediaLibraryService() {
         }
     }
 
+
     override fun onCreate() {
         super.onCreate()
         Log.d("MyMediaService", "onCreate starting")
         val player = Equalizer(context = this)
 
         mediaSession = MediaLibrarySession.Builder(this, player, object : MediaLibrarySession.Callback {
+
+
+
 
             override fun onConnect(
                 session: MediaSession,
@@ -211,7 +215,7 @@ class MyMediaService : MediaLibraryService() {
                 val availableSessionCommands = connectionResult.availableSessionCommands.buildUpon()
                 availableSessionCommands.add(setVolOnFreq)
                 availableSessionCommands.add(setAllVolOnFreq)
-                
+                /*
                 val availablePlayerCommands = connectionResult.availablePlayerCommands.buildUpon()
                     .add(COMMAND_PLAY_PAUSE)
                     .add(COMMAND_STOP)
@@ -219,12 +223,14 @@ class MyMediaService : MediaLibraryService() {
                     .add(COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
                     .add(COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
                     .addAllCommands()
-                    .build()
+                    .build()*/
 
                 return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                    .setAvailableSessionCommands(availableSessionCommands
+                    .setAvailableSessionCommands(availableSessionCommands.build())
+                    .setAvailablePlayerCommands(connectionResult
+                        .availablePlayerCommands.buildUpon()
+                        .addAllCommands() // This "unlocks" the skip buttons for the phone UI
                         .build())
-                    .setAvailablePlayerCommands(availablePlayerCommands)
                     .build()
             }
 

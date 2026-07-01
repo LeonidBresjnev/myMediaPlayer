@@ -246,12 +246,19 @@ class AudioModel: ViewModel() {
         browse(lastPath, addToStack = false/*, context = context*/)
         return true
     }
-
+/*
     internal fun loadMedia(mediaItem: MediaItem) {
         if (!::controller.isInitialized) return
         controller.setMediaItem(mediaItem)
         controller.prepare()
         log("Media loaded and prepared: ${mediaItem.mediaId}")
+    }*/
+    internal fun loadMedia(mediaItems: List<MediaItem>, startIndex: Int) {
+        if (!::controller.isInitialized) return
+        // Load the whole folder as a playlist starting at the selected song
+        controller.setMediaItems(mediaItems, startIndex, 0L)
+        controller.prepare()
+        controller.play()
     }
 /*
     internal fun playMedia(mediaItem: MediaItem) {

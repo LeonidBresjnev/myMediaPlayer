@@ -48,12 +48,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.MediaItem
 import coil.compose.AsyncImage
-import java.io.File
 
 @Composable
 fun MediaBrowserScreen(modifier: Modifier = Modifier,
                        audioModel: AudioModel,
-                       onSelect: (File?) -> Unit = {}
+                       onSelect: (List<MediaItem>, Int) -> Unit = { mediaItems, index -> }
 ) {
     //val context = LocalContext.current
     val media = audioModel.subItemMediaList.observeAsState(emptyList())
@@ -120,7 +119,8 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
                         isSelected = selectedIdx == (folders.size + idx),
                         onClick = {
                             selectedIdx = folders.size + idx
-                            onSelect(File(mediaItem.mediaId))
+                            onSelect(files, idx)
+                            //onSelect(File(mediaItem.mediaId))
                         },
                         onInfoClick = {
                             infoItem = mediaItem

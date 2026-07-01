@@ -1,5 +1,6 @@
 package com.equalizer.mymediaplayer
 
+import android.view.View.VISIBLE
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -37,14 +38,17 @@ fun PlayControl(
                         this.player = controller
                         this.showTimeoutMs = 0
 
+
                         // FORCE the buttons to stay on screen
                         this.setShowNextButton(true)
                         this.setShowPreviousButton(true)
+                        this.visibility = VISIBLE
+                        this.show()
                         // Optional: hide rewind/ff if you don't use them
-                       // this.setShowRewindButton(false)
-                      //  this.setShowFastForwardButton(false)
+                        this.setShowRewindButton(false)
+                        this.setShowFastForwardButton(false)
 
-                        this.setBackgroundColor(android.graphics.Color.BLUE)
+                       // this.setBackgroundColor(android.graphics.Color.TRANSPARENT)
                     }
                 },
                 update = { view ->
