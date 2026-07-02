@@ -57,10 +57,7 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
     //val context = LocalContext.current
     val media = audioModel.subItemMediaList.observeAsState(emptyList())
     val currentPath by audioModel.currentPath.observeAsState("root")
-    
-    var selectedIdx by rememberSaveable {
-        mutableIntStateOf(-1)
-    }
+    val nowPlayingId by audioModel.nowPlayingId.observeAsState()
 
     var infoItem by remember {
         mutableStateOf<MediaItem?>(null)
@@ -81,7 +78,6 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
                     modifier = Modifier
                         .clickable {
                             audioModel.navigateBack(/*context = context*/)
-                            selectedIdx = -1
                         }
                         .padding(end = 16.dp),
                     color = MaterialTheme.colorScheme.primary,
@@ -116,11 +112,9 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
                 ) { idx, mediaItem ->
                     FileRow(
                         mediaItem = mediaItem,
-                        isSelected = selectedIdx == (folders.size + idx),
+                        isSelected = mediaItem.mediaId == nowPlayingId,
                         onClick = {
-                            selectedIdx = folders.size + idx
                             onSelect(files, idx)
-                            //onSelect(File(mediaItem.mediaId))
                         },
                         onInfoClick = {
                             infoItem = mediaItem
@@ -145,7 +139,6 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
                         mediaItem = mediaItem,
                         onClick = {
                             audioModel.browse(mediaItem.mediaId /*, context = context*/)
-                            selectedIdx = -1
                         },
                         onInfoClick = {
                             infoItem = mediaItem

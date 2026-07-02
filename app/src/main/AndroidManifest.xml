@@ -52,6 +52,11 @@
             </intent-filter>
         </service>
 
+        <provider
+            android:name="com.equalizer.common.MediaThumbnailProvider"
+            android:authorities="com.equalizer.mymediaplayer.thumbnail"
+            android:exported="true" />
+
     </application>
 
 </manifest>

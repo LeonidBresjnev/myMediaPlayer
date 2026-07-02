@@ -1,9 +1,8 @@
 package com.equalizer.common
 
 import android.content.Context
-import android.media.AudioAttributes as AndroidAudioAttributes
-import android.media.AudioFocusRequest
 import android.media.AudioDeviceInfo
+import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Looper
 import android.view.Surface
@@ -17,12 +16,15 @@ import androidx.media3.common.BasePlayer
 import androidx.media3.common.C
 import androidx.media3.common.DeviceInfo
 import androidx.media3.common.FlagSet
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
+import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
@@ -35,6 +37,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util.getCurrentOrMainLooper
 import com.google.common.base.Preconditions
 import java.io.File
+import android.media.AudioAttributes as AndroidAudioAttributes
 
 @UnstableApi
 class Equalizer(
@@ -60,6 +63,8 @@ class Equalizer(
     private external fun nativeStop(synthesizerHandle: Long)
     private external fun nativePlayWithVol(synthesizerHandle: Long, name: String, vol: FloatArray, deviceId: Int)
     private external fun nativeSetVolumenLow(synthesizerHandle: Long, volumeInDb: Float, freqInterval: Int)
+    private external fun nativeGetDuration(synthesizerHandle: Long): Double
+    private external fun nativeGetCurrentPosition(synthesizerHandle: Long): Double
 
     private val volPerFreq = MutableList(8) { 1f }
 
@@ -87,11 +92,14 @@ class Equalizer(
 
     private var applicationLooper: Looper = getCurrentOrMainLooper()
     private val clock = Clock.DEFAULT
+    private val handler = android.os.Handler(applicationLooper)
 
     private var listeners: ListenerSet<Player.Listener> =
         ListenerSet(applicationLooper, clock) { listener: Player.Listener, flags: FlagSet ->
             listener.onEvents(this, Player.Events(flags))
         }
+
+    private var isAutoAdvancing = false
 
     private var playBackParameters = PlaybackParameters.DEFAULT
     private val seekBackIncrementMs: Long = C.DEFAULT_SEEK_BACK_INCREMENT_MS
@@ -230,6 +238,7 @@ class Equalizer(
         this.mediaItems.addAll(mediaItems)
         this.currentMediaItemIndex = 0
         listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) }
+        listeners.sendEvent(EVENT_TRACKS_CHANGED) { it.onTracksChanged(currentTracks) }
         listeners.sendEvent(EVENT_MEDIA_METADATA_CHANGED) { it.onMediaMetadataChanged(mediaMetadata) }
         listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { it.onPlaybackStateChanged(playbackState) }
     }
@@ -240,6 +249,7 @@ class Equalizer(
         this.mediaItems.addAll(_mediaItems)
         this.currentMediaItemIndex = if (startIndex in mediaItems.indices) startIndex else 0
         listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) }
+        listeners.sendEvent(EVENT_TRACKS_CHANGED) { it.onTracksChanged(currentTracks) }
         listeners.sendEvent(EVENT_MEDIA_METADATA_CHANGED) { it.onMediaMetadataChanged(mediaMetadata) }
         listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { it.onPlaybackStateChanged(playbackState) }
     }
@@ -272,24 +282,7 @@ class Equalizer(
         listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) }
     }
 
-    override fun getAvailableCommands(): Player.Commands {val allCommands = listOf(
-        COMMAND_PLAY_PAUSE,
-        COMMAND_PREPARE,
-        COMMAND_STOP,
-        COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM,
-        COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
-        COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
-        COMMAND_CHANGE_MEDIA_ITEMS,
-        COMMAND_GET_CURRENT_MEDIA_ITEM,
-        COMMAND_GET_TIMELINE
-    )
-
-        for (command in allCommands) {
-            Log.d("EQUALIZER", "$command = ${commands.contains(command)}")
-        }
-        return this.commands
-
-    }
+    override fun getAvailableCommands(): Player.Commands = this.commands
 
 
 
@@ -305,6 +298,13 @@ class Equalizer(
         listeners.sendEvent(EVENT_PLAY_WHEN_READY_CHANGED) { it.onPlayWhenReadyChanged(playWhenReady, PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) }
         listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { it.onPlaybackStateChanged(getPlaybackState()) }
         listeners.sendEvent(EVENT_IS_PLAYING_CHANGED) { it.onIsPlayingChanged(playWhenReady) }
+        
+        // FORCE metadata and timeline updates to refresh artwork and duration
+        if (playWhenReady) {
+            listeners.sendEvent(EVENT_MEDIA_METADATA_CHANGED) { it.onMediaMetadataChanged(mediaMetadata) }
+            listeners.sendEvent(EVENT_TRACKS_CHANGED) { it.onTracksChanged(currentTracks) }
+            listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, TIMELINE_CHANGE_REASON_SOURCE_UPDATE) }
+        }
     }
 
     override fun getPlayWhenReady(): Boolean = playWhenReady
@@ -333,7 +333,27 @@ class Equalizer(
         listeners.release()
     }
 
-    override fun getCurrentTracks(): Tracks = Tracks.EMPTY
+    override fun getCurrentTracks(): Tracks {
+        if (mediaItems.isEmpty()) return Tracks.EMPTY
+        
+        // Use a more descriptive format to help UI components identify the track
+        val metadata = getMediaMetadata()
+        val format = Format.Builder()
+            .setId("audio-${currentMediaItemIndex}")
+            .setLabel(metadata.title?.toString() ?: "Track")
+            .setSampleMimeType(MimeTypes.AUDIO_RAW)
+            .build()
+        val audioTrackGroup = TrackGroup(format)
+        
+        return Tracks(listOf(
+            Tracks.Group(
+                audioTrackGroup, 
+                false, 
+                intArrayOf(C.FORMAT_HANDLED), 
+                booleanArrayOf(true)
+            )
+        ))
+    }
     override fun getTrackSelectionParameters(): TrackSelectionParameters = TrackSelectionParameters.DEFAULT
     override fun setTrackSelectionParameters(parameters: TrackSelectionParameters) {}
 
@@ -342,8 +362,55 @@ class Equalizer(
     override fun setPlaylistMetadata(mediaMetadata: MediaMetadata) {}
     override fun getCurrentTimeline(): Timeline = EqualizerTimeline()
 
-    override fun getDuration(): Long = 300_000_000L // 5 minutes nominal
-    override fun getCurrentPosition(): Long = 0L
+    override fun getDuration(): Long {
+        synchronized(equalizerMutex) {
+            if (equalizerHandle == 0L) return C.TIME_UNSET
+            val durationSeconds = nativeGetDuration(equalizerHandle)
+            return (durationSeconds * 1000).toLong()
+        }
+    }
+    override fun getCurrentPosition(): Long {
+        synchronized(equalizerMutex) {
+            if (equalizerHandle == 0L) return 0L
+            val positionSeconds = nativeGetCurrentPosition(equalizerHandle)
+            val posMs = (positionSeconds * 1000).toLong()
+            
+            // Auto-advance check
+            val duration = getDuration()
+            if (duration > 0 && posMs >= (duration - 500) && playWhenReady && !isAutoAdvancing) {
+                // Buffer of 500ms to ensure we catch the end before silence
+                isAutoAdvancing = true
+                handler.post { handleEndOfSong() }
+            }
+            
+            return posMs
+        }
+    }
+
+    private fun handleEndOfSong() {
+        if (!playWhenReady) {
+            isAutoAdvancing = false
+            return
+        }
+        
+        when (repeatMode) {
+            REPEAT_MODE_ONE -> {
+                seekTo(currentMediaItemIndex, 0L)
+            }
+            REPEAT_MODE_ALL -> {
+                val nextIndex = (currentMediaItemIndex + 1) % mediaItems.size
+                seekTo(nextIndex, 0L)
+            }
+            else -> {
+                if (currentMediaItemIndex < mediaItems.size - 1) {
+                    seekTo(currentMediaItemIndex + 1, 0L)
+                } else {
+                    setPlayWhenReady(false)
+                    isAutoAdvancing = false
+                }
+            }
+        }
+    }
     override fun getBufferedPosition(): Long = 0L
     override fun getTotalBufferedDuration(): Long = 0L
     override fun isPlayingAd(): Boolean = false
@@ -382,6 +449,7 @@ class Equalizer(
 
     override fun seekTo(mediaItemIndex: Int, positionMs: Long, seekCommand: Int, isRepeatingCurrentItem: Boolean) {
         log("seekTo: index=$mediaItemIndex position=$positionMs")
+        isAutoAdvancing = false // Reset on any manual or auto seek
         if (mediaItemIndex in mediaItems.indices) {
             val oldIndex = currentMediaItemIndex
             currentMediaItemIndex = mediaItemIndex
@@ -390,6 +458,7 @@ class Equalizer(
                 if (playWhenReady) {
                     listeners.sendEvent(EVENT_IS_PLAYING_CHANGED) { it.onIsPlayingChanged(true) }
                 }
+                listeners.sendEvent(EVENT_TRACKS_CHANGED) { it.onTracksChanged(currentTracks) }
                 listeners.sendEvent(EVENT_MEDIA_ITEM_TRANSITION) { it.onMediaItemTransition(mediaItems[currentMediaItemIndex], MEDIA_ITEM_TRANSITION_REASON_SEEK) }
                 listeners.sendEvent(EVENT_MEDIA_METADATA_CHANGED) { it.onMediaMetadataChanged(mediaMetadata) }
             }
@@ -430,17 +499,17 @@ class Equalizer(
         override fun getWindowCount(): Int = mediaItems.size
         override fun getWindow(windowIndex: Int, window: Window, defaultPositionProjectionUs: Long): Window {
             if (windowIndex !in mediaItems.indices) throw IndexOutOfBoundsException()
-            // Set the duration in MICROSECONDS (300 million = 5 minutes)
-            // Change this line in your EqualizerTimeline class:
-            window.set(Window.SINGLE_WINDOW_UID, mediaItems[windowIndex], null, C.TIME_UNSET, C.TIME_UNSET, C.TIME_UNSET, true, false, null, 0, 300_000_000L, windowIndex, windowIndex, 0)
-
-// And also the period.set line right below it:
+            val mediaItem = mediaItems[windowIndex]
+            val durationUs = duration.let { if (it == C.TIME_UNSET) 300_000_000L else it * 1000 }
+            window.set(windowIndex, mediaItem, null, C.TIME_UNSET, C.TIME_UNSET, C.TIME_UNSET, true, false, null, 0, durationUs, windowIndex, windowIndex, 0)
             return window
         }
         override fun getPeriodCount(): Int = mediaItems.size
         override fun getPeriod(periodIndex: Int, period: Period, setIds: Boolean): Period {
             if (periodIndex !in mediaItems.indices) throw IndexOutOfBoundsException()
-            period.set(if (setIds) periodIndex else null, if (setIds) periodIndex else null, periodIndex, 300_000_000L, 0)
+            val id = if (setIds) periodIndex else null
+            val durationUs = duration.let { if (it == C.TIME_UNSET) 300_000_000L else it * 1000 }
+            period.set(id, id, periodIndex, durationUs, 0)
             return period
         }
         override fun getIndexOfPeriod(uid: Any): Int = if (uid is Int && uid in mediaItems.indices) uid else C.INDEX_UNSET

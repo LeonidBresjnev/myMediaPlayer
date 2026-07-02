@@ -104,11 +104,9 @@ class AudioModel: ViewModel() {
 
 
     private val _isPlaying = MutableLiveData(Status.STOPPED)
-    /*
-    val isPlaying: LiveData<Status>
-        get() {
-            return _isPlaying
-        }*/
+    
+    private val _nowPlayingId = MutableLiveData<String?>(null)
+    val nowPlayingId: LiveData<String?> = _nowPlayingId
 
     enum class Status {
         PLAYING ,
@@ -165,6 +163,12 @@ class AudioModel: ViewModel() {
                     Player.STATE_ENDED -> log("The player is finished")
                     Player.STATE_READY -> log("Player is ready")
                 }
+            }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                super.onMediaItemTransition(mediaItem, reason)
+                log("Track changed: ${mediaItem?.mediaId}")
+                _nowPlayingId.postValue(mediaItem?.mediaId)
             }
 
             override fun onAvailableCommandsChanged(availableCommands: Player.Commands) {

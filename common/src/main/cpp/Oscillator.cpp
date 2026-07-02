@@ -29,7 +29,25 @@ namespace equalizer {
         return this->numChannels;
     }
 
+    int64_t Oscillator::getLengthInSamples() const {
+        if (reader != nullptr) {
+            return reader->lengthInSamples;
+        }
+        return 0;
+    }
+
+    int64_t Oscillator::getCurrentPositionInSamples() const {
+        return currentposition;
+    }
+
     float Oscillator::getSample() {
+        if (reader == nullptr) return 0.0f;
+
+        // End of file detection
+        if (currentposition >= reader->lengthInSamples) {
+            return 0.0f;
+        }
+
         if (bufferpointer >= 1024) {
             //refill buffer;
             reader->read(&floatBuffer,

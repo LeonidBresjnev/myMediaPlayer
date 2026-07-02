@@ -11,6 +11,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
@@ -24,6 +25,7 @@ fun PlayControl(
     audioModel: AudioModel
 ) {
     val controller by audioModel.mediaController.observeAsState()
+    val primaryColor = MaterialTheme.colorScheme.primary
 
     Surface(
         modifier = modifier
@@ -38,21 +40,23 @@ fun PlayControl(
                         this.player = controller
                         this.showTimeoutMs = 0
 
-
                         // FORCE the buttons to stay on screen
                         this.setShowNextButton(true)
                         this.setShowPreviousButton(true)
                         this.visibility = VISIBLE
                         this.show()
+                        
                         // Optional: hide rewind/ff if you don't use them
                         this.setShowRewindButton(false)
                         this.setShowFastForwardButton(false)
 
-                       // this.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                        // Follow Primary Blue theme
+                        this.setBackgroundColor(primaryColor.toArgb())
                     }
                 },
                 update = { view ->
                     view.player = controller
+                    view.setBackgroundColor(primaryColor.toArgb())
                 },
                 modifier = Modifier.fillMaxSize()
             )

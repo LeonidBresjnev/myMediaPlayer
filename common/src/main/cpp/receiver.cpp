@@ -127,4 +127,24 @@ Java_com_equalizer_common_Equalizer_nativeIsPlaying(JNIEnv *env, jobject thiz,
     }
     return false;
 }
+
+JNIEXPORT jdouble JNICALL
+Java_com_equalizer_common_Equalizer_nativeGetDuration(JNIEnv *env, jobject thiz,
+                                                      jlong equalizer_handle) {
+    auto *equalizer = reinterpret_cast<equalizer::Equalizer *>(equalizer_handle);
+    if (equalizer) {
+        return equalizer->getDuration();
+    }
+    return 0.0;
+}
+
+JNIEXPORT jdouble JNICALL
+Java_com_equalizer_common_Equalizer_nativeGetCurrentPosition(JNIEnv *env, jobject thiz,
+                                                             jlong equalizer_handle) {
+    auto *equalizer = reinterpret_cast<equalizer::Equalizer *>(equalizer_handle);
+    if (equalizer) {
+        return equalizer->getCurrentPosition();
+    }
+    return 0.0;
+}
 }

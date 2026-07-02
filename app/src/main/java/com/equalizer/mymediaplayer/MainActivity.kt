@@ -1,6 +1,5 @@
 package com.equalizer.mymediaplayer
 
-
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -46,9 +45,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.PlayerView
 import com.equalizer.mymediaplayer.ui.theme.MyMediaPlayerTheme
-
 
 data class TabRowItem(
     val title: String,
@@ -81,21 +81,6 @@ class MainActivity : ComponentActivity() {
                             audioModel = audioModel,
                             onSelect = { playlist, index ->
                                 audioModel.loadMedia(playlist, index)
-
-                                 /*
-                            onSelect = { file ->
-                                file?.let {
-                                    val item = MediaItem.Builder()
-                                        .setMediaId(it.absolutePath)
-                                        .setUri(Uri.fromFile(it))
-                                        .setMediaMetadata(
-                                            MediaMetadata.Builder()
-                                                .setTitle(it.name)
-                                                .build()
-                                        ).build()
-                                    // LOAD AND PREPARE ONLY - DO NOT AUTO-PLAY
-                                    audioModel.loadMedia(item)
-                                }*/
                             })
                     },
                     selectedIcon = Icons.AutoMirrored.Filled.QueueMusic,
@@ -166,53 +151,106 @@ class MainActivity : ComponentActivity() {
                             .padding(innerPadding)
                             .background(MaterialTheme.colorScheme.surface)
                         ) {
-                            SecondaryTabRow(
-                                selectedTabIndex = selectedTabIndex,
-                                containerColor = TabRowDefaults.primaryContainerColor,
-                                contentColor = TabRowDefaults.primaryContentColor,
-                                indicator = {
-                                    TabRowDefaults.SecondaryIndicator(
-                                        Modifier.tabIndicatorOffset(selectedTabIndex)
-                                    )
-                                },
-                                divider = {} 
-                            ) {
-                                tabRowItems.forEachIndexed { index, item ->
-                                    Tab(
-                                        selected = selectedTabIndex == index,
-                                        selectedContentColor = MaterialTheme.colorScheme.primary,
-                                        unselectedContentColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                        onClick = { selectedTabIndex = index },
-                                        icon = {
-                                            Icon(
-                                                imageVector = if (index == selectedTabIndex) item.selectedIcon else item.unselectedIcon,
-                                                contentDescription = item.title
-                                            )
-                                        },
-                                        text = {
-                                            Text(
-                                                text = item.title,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                        }
-                                    )
-                                }
-                            }
+                            // ARTWORK PLAYER VIEW (Top 1/3)
+                            PlayerDisplay(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                audioModel = audioModel
+                            )
 
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                HorizontalPager(
-                                    state = pagerState,
-                                    modifier = Modifier.fillMaxSize(),
-                                    verticalAlignment = Alignment.Top,
-                                    userScrollEnabled = true
+                            // TABS & CONTENT (Bottom 2/3)
+                            Column(modifier = Modifier.weight(2f)) {
+                                SecondaryTabRow(
+                                    selectedTabIndex = selectedTabIndex,
+                                    containerColor = TabRowDefaults.primaryContainerColor,
+                                    contentColor = TabRowDefaults.primaryContentColor,
+                                    indicator = {
+                                        TabRowDefaults.SecondaryIndicator(
+                                            Modifier.tabIndicatorOffset(selectedTabIndex)
+                                        )
+                                    },
+                                    divider = {} 
                                 ) {
-                                    tabRowItems[it].screen()
+                                    tabRowItems.forEachIndexed { index, item ->
+                                        Tab(
+                                            selected = selectedTabIndex == index,
+                                            selectedContentColor = MaterialTheme.colorScheme.primary,
+                                            unselectedContentColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                            onClick = { selectedTabIndex = index },
+                                            icon = {
+                                                Icon(
+                                                    imageVector = if (index == selectedTabIndex) item.selectedIcon else item.unselectedIcon,
+                                                    contentDescription = item.title
+                                                )
+                                            },
+                                            text = {
+                                                Text(
+                                                    text = item.title,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    HorizontalPager(
+                                        state = pagerState,
+                                        modifier = Modifier.fillMaxSize(),
+                                        verticalAlignment = Alignment.Top,
+                                        userScrollEnabled = true
+                                    ) {
+                                        tabRowItems[it].screen()
+                                    }
                                 }
                             }
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@UnstableApi
+@Composable
+private fun PlayerDisplay(
+    modifier: Modifier,
+    audioModel: AudioModel
+) {
+    val controller by audioModel.mediaController.observeAsState()
+
+    androidx.compose.material3.Surface(
+        modifier = modifier,
+        color = Color.Black
+    ) {
+        if (controller != null) {
+            AndroidView(
+                factory = { context ->
+                    PlayerView(context).apply {
+                        this.player = controller
+                        this.useController = true
+                        this.artworkDisplayMode = PlayerView.ARTWORK_DISPLAY_MODE_FIT
+                        this.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                        this.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                        
+                        // Set a default artwork to confirm the view is working
+                        val defaultArt = context.getDrawable(android.R.drawable.ic_menu_gallery)
+                        this.defaultArtwork = defaultArt
+                        this.showController()
+                        controllerAutoShow=true
+                    }
+                },
+                update = { view ->
+                    view.player = controller
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(text = "Waiting for player...", color = Color.White)
             }
         }
     }

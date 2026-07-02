@@ -22,6 +22,8 @@ namespace equalizer {
 
         int32_t getSampleRate() const;
         uint16_t getChannelCount() const;
+        int64_t getLengthInSamples() const;
+        int64_t getCurrentPositionInSamples() const;
 
         bool load(const std::string& );
        // std::shared_ptr<std::ifstream> pmyfile;

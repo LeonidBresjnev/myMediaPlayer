@@ -104,7 +104,6 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += "META-INF/INDEX.LIST"
-            //excludes += "META-INF/io.netty.versions.properties"
         }
     }
 }
@@ -129,7 +128,6 @@ dependencies {
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
    // implementation(libs.material)
-    //runtimeOnly(libs.logback.classic)
     implementation(libs.slf4j.android)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

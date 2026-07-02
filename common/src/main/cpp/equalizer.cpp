@@ -47,6 +47,26 @@ namespace equalizer {
         return this->_isPlaying;
     }
 
+    double Equalizer::getDuration() const {
+        if (_oscillator) {
+            const int32_t samplingRate = _oscillator->getSampleRate();
+            if (samplingRate > 0) {
+                return (double)_oscillator->getLengthInSamples() / samplingRate;
+            }
+        }
+        return 0.0;
+    }
+
+    double Equalizer::getCurrentPosition() const {
+        if (_oscillator) {
+            const int32_t samplingRate = _oscillator->getSampleRate();
+            if (samplingRate > 0) {
+                return (double)_oscillator->getCurrentPositionInSamples() / samplingRate;
+            }
+        }
+        return 0.0;
+    }
+
     void Equalizer::setVolumenLow(float volumeInDb, int freqInterval) {
         _filterSource->setAmplitude(volumeInDb, freqInterval);
         //LOGD("VolumenLow set to %f", volumeInDb);
