@@ -21,6 +21,7 @@ namespace equalizer {
         bool isPlaying() const;
         double getDuration() const;
         double getCurrentPosition() const;
+        void seekTo(double positionSeconds);
         void setVolumenLow(float , int);
 
 

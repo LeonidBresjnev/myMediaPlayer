@@ -147,4 +147,14 @@ Java_com_equalizer_common_Equalizer_nativeGetCurrentPosition(JNIEnv *env, jobjec
     }
     return 0.0;
 }
+
+JNIEXPORT void JNICALL
+Java_com_equalizer_common_Equalizer_nativeSeekTo(JNIEnv *env, jobject thiz,
+                                                 jlong equalizer_handle,
+                                                 jdouble position_seconds) {
+    auto *equalizer = reinterpret_cast<equalizer::Equalizer *>(equalizer_handle);
+    if (equalizer) {
+        equalizer->seekTo(position_seconds);
+    }
+}
 }

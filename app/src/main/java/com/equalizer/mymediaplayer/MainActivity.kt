@@ -45,9 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.ui.PlayerView
 import com.equalizer.mymediaplayer.ui.theme.MyMediaPlayerTheme
 
 data class TabRowItem(
@@ -138,13 +136,13 @@ class MainActivity : ComponentActivity() {
                                     navigationIconContentColor = Color.White
                                 )
                             )
-                        },
+                        }/*,
                         bottomBar = {
                             PlayControl(
                                 modifier = Modifier.fillMaxWidth(),
                                 audioModel = audioModel
                             )
-                        }
+                        }*/
                     ) { innerPadding ->
                         Column(modifier = Modifier
                             .fillMaxSize()
@@ -179,7 +177,7 @@ class MainActivity : ComponentActivity() {
                                             unselectedContentColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
                                             onClick = { selectedTabIndex = index },
                                             icon = {
-                                                Icon(
+                                                ImageVectorIcon(
                                                     imageVector = if (index == selectedTabIndex) item.selectedIcon else item.unselectedIcon,
                                                     contentDescription = item.title
                                                 )
@@ -214,44 +212,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@UnstableApi
 @Composable
-private fun PlayerDisplay(
-    modifier: Modifier,
-    audioModel: AudioModel
-) {
-    val controller by audioModel.mediaController.observeAsState()
-
-    androidx.compose.material3.Surface(
-        modifier = modifier,
-        color = Color.Black
-    ) {
-        if (controller != null) {
-            AndroidView(
-                factory = { context ->
-                    PlayerView(context).apply {
-                        this.player = controller
-                        this.useController = true
-                        this.artworkDisplayMode = PlayerView.ARTWORK_DISPLAY_MODE_FIT
-                        this.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                        this.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                        
-                        // Set a default artwork to confirm the view is working
-                        val defaultArt = context.getDrawable(android.R.drawable.ic_menu_gallery)
-                        this.defaultArtwork = defaultArt
-                        this.showController()
-                        controllerAutoShow=true
-                    }
-                },
-                update = { view ->
-                    view.player = controller
-                },
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(text = "Waiting for player...", color = Color.White)
-            }
-        }
-    }
+fun ImageVectorIcon(imageVector: ImageVector, contentDescription: String?) {
+    Icon(imageVector = imageVector, contentDescription = contentDescription)
 }

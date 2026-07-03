@@ -21,7 +21,12 @@ namespace equalizer {
 
 
     void Equalizer::play(const std::string& fileName, int32_t deviceId) {
+        // 1. Explicitly stop and close the current Oboe stream before doing anything else.
+        // This terminates the audio callback thread and ensures no one is reading from the Oscillator.
+        _audioPlayer->stop();
+        _isPlaying = false;
 
+        // 2. Now it is 100% safe to load the new file into the Oscillator.
         const auto loadresult = _oscillator->load(fileName);
         if (!loadresult) {
             LOGD("Could not load file.");
@@ -65,6 +70,12 @@ namespace equalizer {
             }
         }
         return 0.0;
+    }
+
+    void Equalizer::seekTo(double positionSeconds) {
+        if (_oscillator) {
+            _oscillator->seekTo(positionSeconds);
+        }
     }
 
     void Equalizer::setVolumenLow(float volumeInDb, int freqInterval) {

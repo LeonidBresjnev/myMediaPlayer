@@ -10,11 +10,6 @@ import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.common.Player.COMMAND_PLAY_PAUSE
-import androidx.media3.common.Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM
-import androidx.media3.common.Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM
-import androidx.media3.common.Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM
-import androidx.media3.common.Player.COMMAND_STOP
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -314,14 +309,14 @@ class MyMediaService : MediaLibraryService() {
             ): ListenableFuture<List<MediaItem>> {
                 return Futures.immediateFuture(mediaItems)
             }
-
+/*
             override fun onPlaybackResumption(
                 mediaSession: MediaSession,
-                controller: MediaSession.ControllerInfo
+                controller: MediaSession.ControllerInfo, isForPlayback: Boolean
             ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
                 // This would normally restore previous queue
-                return super.onPlaybackResumption(mediaSession, controller)
-            }
+                return super.onPlaybackResumption(mediaSession, controller, isForPlayback)
+            }*/
 
             override fun onCustomCommand(
                 session: MediaSession,
