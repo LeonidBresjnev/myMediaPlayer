@@ -367,7 +367,20 @@ class MyMediaService : MediaLibraryService() {
                 controller: MediaSession.ControllerInfo,
                 mediaItems: List<MediaItem>
             ): ListenableFuture<List<MediaItem>> {
-                return Futures.immediateFuture(mediaItems)
+                val settable = SettableFuture.create<List<MediaItem>>()
+                serviceScope.launch {
+                    val resolvedItems = mediaItems.map { item ->
+                        // If the item already has a URI, we trust it. 
+                        // Otherwise, we try to resolve it from our local file system using the mediaId as path.
+                        if (item.localConfiguration?.uri != null) {
+                            item
+                        } else {
+                            createMediaItemFromFile(File(item.mediaId)) ?: item
+                        }
+                    }
+                    settable.set(resolvedItems)
+                }
+                return settable
             }
 /*
             override fun onPlaybackResumption(

@@ -227,6 +227,7 @@ class Equalizer(
     private var repeatMode = REPEAT_MODE_OFF
     private val deviceInfo: DeviceInfo = DeviceInfo.Builder(DeviceInfo.PLAYBACK_TYPE_LOCAL).build()
     private var playWhenReady = false
+    private var playbackState: Int = STATE_IDLE
 
     override fun getApplicationLooper(): Looper = this.applicationLooper
     override fun addListener(listener: Player.Listener) = listeners.add(listener)
@@ -240,6 +241,7 @@ class Equalizer(
         log("setMediaItems: size=${mediaItems.size} startIndex=$startIndex")
         val oldIndex = currentMediaItemIndex
         val oldItem = this.mediaItems.getOrNull(oldIndex)
+        val wasPlaying = isPlaying
 
         this.mediaItems.clear()
         this.mediaItems.addAll(mediaItems)
@@ -259,8 +261,21 @@ class Equalizer(
         val oldPos = PositionInfo(oldUid, oldIndex, oldItem, oldUid, oldIndex, 0L, 0L, C.INDEX_UNSET, C.INDEX_UNSET)
         val newPos = PositionInfo(currentUid, currentMediaItemIndex, newItem, currentUid, currentMediaItemIndex, finalPosMs, finalPosMs, C.INDEX_UNSET, C.INDEX_UNSET)
         
-        listeners.sendEvent(EVENT_POSITION_DISCONTINUITY) { it.onPositionDiscontinuity(oldPos, newPos, Player.DISCONTINUITY_REASON_AUTO_TRANSITION) }
-        listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { it.onPlaybackStateChanged(playbackState) }
+        listeners.sendEvent(EVENT_POSITION_DISCONTINUITY) { it.onPositionDiscontinuity(oldPos, newPos,
+            DISCONTINUITY_REASON_AUTO_TRANSITION
+        ) }
+        
+        if (this.mediaItems.isNotEmpty() && playbackState == STATE_IDLE) {
+            playbackState = STATE_READY
+            listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { it.onPlaybackStateChanged(playbackState) }
+        } else if (this.mediaItems.isEmpty() && playbackState != STATE_IDLE) {
+            playbackState = STATE_IDLE
+            listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { it.onPlaybackStateChanged(playbackState) }
+        }
+
+        if (wasPlaying != isPlaying) {
+            listeners.sendEvent(EVENT_IS_PLAYING_CHANGED) { it.onIsPlayingChanged(isPlaying) }
+        }
 
         if (playWhenReady) triggerNativeLoad()
     }
@@ -268,6 +283,11 @@ class Equalizer(
     override fun addMediaItems(index: Int, mediaItems: List<MediaItem>) {
         this.mediaItems.addAll(index, mediaItems)
         listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) }
+        
+        if (this.mediaItems.isNotEmpty() && playbackState == STATE_IDLE) {
+            playbackState = STATE_READY
+            listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { it.onPlaybackStateChanged(playbackState) }
+        }
     }
 
     override fun moveMediaItems(fromIndex: Int, toIndex: Int, newIndex: Int) {
@@ -291,23 +311,52 @@ class Equalizer(
     override fun removeMediaItems(fromIndex: Int, toIndex: Int) {
         repeat(toIndex - fromIndex) { if (fromIndex in mediaItems.indices) mediaItems.removeAt(fromIndex) }
         listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) }
+        
+        if (mediaItems.isEmpty() && playbackState != STATE_IDLE) {
+            playbackState = STATE_IDLE
+            listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { it.onPlaybackStateChanged(playbackState) }
+        }
     }
 
     override fun getAvailableCommands(): Player.Commands = this.commands
 
-    override fun prepare() { log("prepare()") }
-    override fun getPlaybackState(): Int = if (mediaItems.isNotEmpty()) STATE_READY else STATE_IDLE
+    override fun prepare() {
+        log("prepare() current state: $playbackState items: ${mediaItems.size}")
+        if (playbackState != STATE_IDLE) return
+        
+        val wasPlaying = isPlaying
+        if (mediaItems.isNotEmpty()) {
+            playbackState = STATE_BUFFERING
+            listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { it.onPlaybackStateChanged(playbackState) }
+            
+            // Concepts: Buffering finishes immediately in this simple sync model
+            playbackState = STATE_READY
+            listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { it.onPlaybackStateChanged(playbackState) }
+        }
+        
+        if (wasPlaying != isPlaying) {
+            listeners.sendEvent(EVENT_IS_PLAYING_CHANGED) { it.onIsPlayingChanged(isPlaying) }
+        }
+    }
+
+    override fun getPlaybackState(): Int = playbackState
     override fun getPlaybackSuppressionReason(): Int = PLAYBACK_SUPPRESSION_REASON_NONE
     override fun getPlayerError(): PlaybackException? = null
 
     override fun setPlayWhenReady(playWhenReady: Boolean) {
         log("setPlayWhenReady: $playWhenReady")
+        val wasPlaying = isPlaying
         this.playWhenReady = playWhenReady
+        
         listeners.sendEvent(EVENT_PLAY_WHEN_READY_CHANGED) { it.onPlayWhenReadyChanged(playWhenReady, PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) }
-        listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { it.onPlaybackStateChanged(getPlaybackState()) }
-        listeners.sendEvent(EVENT_IS_PLAYING_CHANGED) { it.onIsPlayingChanged(playWhenReady) }
+        
+        if (wasPlaying != isPlaying) {
+            listeners.sendEvent(EVENT_IS_PLAYING_CHANGED) { it.onIsPlayingChanged(isPlaying) }
+        }
         
         if (playWhenReady) {
+            if (playbackState == STATE_IDLE) prepare()
+
             listeners.sendEvent(EVENT_MEDIA_METADATA_CHANGED) { it.onMediaMetadataChanged(mediaMetadata) }
             listeners.sendEvent(EVENT_TRACKS_CHANGED) { it.onTracksChanged(currentTracks) }
             listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, TIMELINE_CHANGE_REASON_SOURCE_UPDATE) }
@@ -450,6 +499,7 @@ class Equalizer(
              if (dur != C.TIME_UNSET) finalPositionMs = finalPositionMs.coerceAtMost(dur)
         }
 
+        val wasAutoAdvancing = isAutoAdvancing
         isAutoAdvancing = false 
         
         if (mediaItemIndex in mediaItems.indices) {
@@ -457,8 +507,9 @@ class Equalizer(
             val indexChanged = (currentMediaItemIndex != mediaItemIndex)
             currentMediaItemIndex = mediaItemIndex
 
-            // Trigger load BEFORE signaling UI if track changed
-            if (indexChanged && playWhenReady) triggerNativeLoad()
+            // Trigger load if track changed OR if we are restarting the same track (repeat one)
+            val isRestart = !indexChanged && finalPositionMs == 0L && wasAutoAdvancing
+            if ((indexChanged || isRestart) && playWhenReady) triggerNativeLoad()
 
             synchronized(equalizerMutex) {
                 if (equalizerHandle != 0L) {
@@ -468,7 +519,7 @@ class Equalizer(
 
             if (indexChanged) {
                 listeners.sendEvent(EVENT_TRACKS_CHANGED) { it.onTracksChanged(currentTracks) }
-                listeners.sendEvent(EVENT_MEDIA_ITEM_TRANSITION) { it.onMediaItemTransition(mediaItems[currentMediaItemIndex], if (isAutoAdvancing) MEDIA_ITEM_TRANSITION_REASON_AUTO else MEDIA_ITEM_TRANSITION_REASON_SEEK) }
+                listeners.sendEvent(EVENT_MEDIA_ITEM_TRANSITION) { it.onMediaItemTransition(mediaItems[currentMediaItemIndex], if (wasAutoAdvancing) MEDIA_ITEM_TRANSITION_REASON_AUTO else MEDIA_ITEM_TRANSITION_REASON_SEEK) }
                 listeners.sendEvent(EVENT_MEDIA_METADATA_CHANGED) { it.onMediaMetadataChanged(mediaMetadata) }
                 
                 listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, TIMELINE_CHANGE_REASON_SOURCE_UPDATE) }

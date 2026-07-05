@@ -10,7 +10,6 @@ espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
 composeBom = "2026.06.01"
-logbackClassic = "1.5.37"
 materialIconsExtendedVersion = "1.7.8"
 media3SessionVersion = "1.10.1"
 appcompat = "1.7.1"
@@ -24,7 +23,7 @@ coil = "2.7.0"
 kotlinxSerializationJson = "1.11.0"
 ktor = "3.5.1"
 slf4jAndroid = "1.7.36"
-mockk = "1.13.12"
+mockk = "1.14.11"
 
 
 [libraries]
@@ -53,7 +52,6 @@ androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-man
 androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
-logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logbackClassic" }
 mp3agic = { module = "com.mpatric:mp3agic", version.ref = "mp3agic" }
 oboe = { module = "com.google.oboe:oboe", version.ref = "oboe" }
 slf4j-android = { module = "org.slf4j:slf4j-android", version.ref = "slf4jAndroid" }

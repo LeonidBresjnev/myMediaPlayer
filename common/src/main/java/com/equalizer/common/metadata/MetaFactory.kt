@@ -23,25 +23,37 @@ object MetaFactory {
         return buffer
     }
 
+    private fun parseTrackNumber(trackString: String?): Int? {
+        if (trackString.isNullOrBlank()) return null
+        return try {
+            // Handle "1/12" or "1 " formats
+            val cleanTrack = trackString.split("/")[0].trim()
+            cleanTrack.toInt()
+        } catch (e: Exception) {
+            e.message?.let { Log.d("meta factory", it) }
+            null
+        }
+    }
+
     fun createMeta(file: File, context: Context): MusicMetaInterface? {
 
         if (file.name.endsWith(suffix = "wav", ignoreCase = true)) {
-            var numberOfBytes: IntArray = intArrayOf(4, 4, 4, 4, 4, 2, 2, 4, 4, 2, 2, 4, 4)
-            var type: IntArray = intArrayOf(0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1)
-            var chunkSize = 0
-            var subChunk1Size = 0
-            var subChunk2Size = 1
-            var chunkID: String? = null
-            var format: String? = null
-            var subChunk1ID: String? = null
-            var subChunk2ID: String? = null
+            val numberOfBytes: IntArray = intArrayOf(4, 4, 4, 4, 4, 2, 2, 4, 4, 2, 2, 4, 4)
+            val type: IntArray = intArrayOf(0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1)
+            //var chunkSize = 0
+            //var subChunk1Size = 0
+            //var subChunk2Size = 1
+            //val chunkID: String? = null
+            //var format: String? = null
+            //val subChunk1ID: String? = null
+            var subChunk2ID: String?
             var audioFormat: Short = 0
             var _numChannels = 0.toShort()
             var _sampleRate = 0
             var byteRate = 0
-            var blockAlign: Short = 0
-            var bytePerSample = 0
-            var _bitsPerSample = 8.toShort()
+            //var blockAlign: Short = 0
+            //var bytePerSample = 0
+            //var _bitsPerSample = 8.toShort()
 
             FileInputStream(file).use { fileInputstream ->
                 var byteBuffer: ByteBuffer
@@ -50,11 +62,11 @@ object MetaFactory {
                     fileInputstream.read(byteArray, 0, numberOfBytes[i])
                     byteBuffer = byteArrayToNumber(byteArray, numberOfBytes[i], type[i])
                     when (i) {
-                        0 -> chunkID = String(byteArray)
-                        1 -> chunkSize = byteBuffer.getInt()
-                        2 -> format = String(byteArray)
-                        3 -> subChunk1ID = String(byteArray)
-                        4 -> subChunk1Size = byteBuffer.getInt()
+                        //0 -> chunkID = String(byteArray)
+                        //1 -> chunkSize = byteBuffer.getInt()
+                        //2 -> format = String(byteArray)
+                        //3 -> subChunk1ID = String(byteArray)
+                        //4 -> subChunk1Size = byteBuffer.getInt()
                         5 -> audioFormat = byteBuffer.getShort()
                         6 -> _numChannels = byteBuffer.getShort()
                         7 -> {
@@ -63,7 +75,7 @@ object MetaFactory {
                         }
 
                         8 -> byteRate = byteBuffer.getInt()
-                        9 -> blockAlign = byteBuffer.getShort()
+                        //9 -> blockAlign = byteBuffer.getShort()
                         10 -> { //_bitsPerSample.value =  byteBuffer.getShort()
                         }
 
@@ -80,21 +92,20 @@ object MetaFactory {
                                 val byteArray3 = ByteArray(temp)
                                 fileInputstream.read(byteArray3, 0, temp)
                                 fileInputstream.read(byteArray2, 0, 4)
-                                subChunk2ID = String(byteArray2)
+                                //subChunk2ID = String(byteArray2)
                             }
                         }
 
-                        12 -> subChunk2Size = byteBuffer.getInt()
+                        //12 -> subChunk2Size = byteBuffer.getInt()
                     }
                 }
-                bytePerSample = 4096 * _bitsPerSample / 8
+                //bytePerSample = 4096 * _bitsPerSample / 8
             }
             return WavMeta(
                 audioFormat = audioFormat,
                 numChannels = _numChannels.toInt(),
                 sampleRate = _sampleRate,
                 byteRate = byteRate
-
             )
         } else if (file.name.endsWith(suffix = "mp3", ignoreCase = true)) {
             return Mp3File(file).run {
@@ -105,7 +116,7 @@ object MetaFactory {
                     imageArray = id3v2Tag?.albumImage ?: byteArrayOf(),
                     artist = (id3v2Tag?.artist) ?: (id3v2Tag?.albumArtist) ?: (id3v1Tag?.artist)
                     ?: "",
-                    track = id3v2Tag?.track?.toInt() ?: id3v1Tag?.track?.toInt()
+                    track = parseTrackNumber(id3v2Tag?.track) ?: parseTrackNumber(id3v1Tag?.track)
                 )
             }
         } else if (file.name.endsWith(suffix = "m4a", ignoreCase = true)) {
@@ -125,8 +136,8 @@ object MetaFactory {
                 metadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)
                     ?.toInt() ?: 0
             val imagearray = metadataRetriever.embeddedPicture
-            val track = -1
-//                metadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER) ?.toInt() ?: 0
+            val trackString = metadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)
+            val track = parseTrackNumber(trackString) ?: -1
 
             metadataRetriever.release()
 
