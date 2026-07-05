@@ -57,11 +57,11 @@ class MyMediaService : MediaLibraryService() {
                 var firstTitle: String? = null
 
                 // Try to find a thumbnail and metadata for the folder from its contents
-                val firstWithArt = file.walk()
-                    .filter {
-                        it.isFile && (it.name.endsWith(".mp3", true) || it.name.endsWith(".m4a", true))
-                    }
-                    .onEach { songFile ->
+                // Limit scan to first 10 files to avoid hanging on large folders
+                val firstWithArt = file.listFiles()
+                    ?.filter { it.isFile && (it.name.endsWith(".mp3", true) || it.name.endsWith(".m4a", true)) }
+                    ?.take(10)
+                    ?.onEach { songFile ->
                         if (firstArtist == null) {
                             when (val meta = MetaFactory.createMeta(songFile, applicationContext)) {
                                 is Mp3Meta -> {
@@ -75,7 +75,7 @@ class MyMediaService : MediaLibraryService() {
                             }
                         }
                     }
-                    .firstOrNull {
+                    ?.firstOrNull {
                         val retriever = MediaMetadataRetriever()
                         try {
                             retriever.setDataSource(it.absolutePath)
@@ -197,6 +197,7 @@ class MyMediaService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         Log.d("MyMediaService", "onCreate starting")
+        MediaThumbnailProvider.init(this)
         val player = Equalizer(context = this)
 
         mediaSession = MediaLibrarySession.Builder(this, player, object : MediaLibrarySession.Callback {

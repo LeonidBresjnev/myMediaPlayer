@@ -13,8 +13,8 @@ android {
         applicationId = "com.equalizer.mymediaplayer"
         minSdk = 33
         targetSdk = 37
-        versionCode = 3
-        versionName = "3.0"
+        versionCode = 4
+        versionName = "4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -34,6 +34,11 @@ android {
         profilable {
 
         }*/
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            resValue("string", "app_name", "Media Player Dev")
+        }
 
     }
     compileOptions {
@@ -47,6 +52,7 @@ android {
     }*/
     buildFeatures {
         compose = true
+        resValues = true
     }
 }
 

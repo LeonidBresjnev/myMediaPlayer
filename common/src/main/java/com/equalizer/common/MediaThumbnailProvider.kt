@@ -1,5 +1,6 @@
 package com.equalizer.common
 
+import android.content.Context
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.database.Cursor
@@ -7,6 +8,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import android.util.LruCache
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -23,9 +25,15 @@ class MediaThumbnailProvider : ContentProvider() {
 
     companion object {
         private const val TAG = "MediaThumbnailProvider"
-        const val AUTHORITY = "com.equalizer.mymediaplayer.thumbnail"
-        val CONTENT_URI: Uri = "content://$AUTHORITY".toUri()
+        var AUTHORITY = "com.equalizer.mymediaplayer.thumbnail"
+        var CONTENT_URI: Uri = "content://$AUTHORITY".toUri()
         
+        fun init(context: Context) {
+            AUTHORITY = "${context.packageName}.thumbnail"
+            CONTENT_URI = "content://$AUTHORITY".toUri()
+            Log.d(TAG, "Initialized with authority: $AUTHORITY")
+        }
+
         private val client = OkHttpClient.Builder()
             .followRedirects(true)
             .followSslRedirects(true)
@@ -33,12 +41,17 @@ class MediaThumbnailProvider : ContentProvider() {
             .readTimeout(20, TimeUnit.SECONDS)
             .build()
 
-        private val executor = Executors.newSingleThreadExecutor()
+        private val executor = Executors.newFixedThreadPool(4)
         private val rateLimitLock = ReentrantLock()
         private var lastRequestTime = 0L
+
+        private val fileCache = LruCache<String, File>(50)
     }
 
-    override fun onCreate(): Boolean = true
+    override fun onCreate(): Boolean {
+        context?.let { init(it) }
+        return true
+    }
 
     override fun query(
         uri: Uri,
@@ -67,13 +80,14 @@ class MediaThumbnailProvider : ContentProvider() {
         val path = try {
             URLDecoder.decode(pathParam, "UTF-8")
         } catch (e: Exception) {
-            e.message?.let {
-                Log.d("MediaThumbnailProvider", it)
-            }
             pathParam
         }
 
-        Log.d(TAG, "openFile: requested path: $path")
+        fileCache.get(path)?.let {
+            if (it.exists() && it.length() > 0) {
+                return ParcelFileDescriptor.open(it, ParcelFileDescriptor.MODE_READ_ONLY)
+            }
+        }
         
         val file = if (path.startsWith("http")) {
             val cleanUrl = path.trim()
@@ -93,12 +107,20 @@ class MediaThumbnailProvider : ContentProvider() {
                 }
             }
         } else {
-            extractEmbeddedArt(path)
+            val fileName = "local_thumb_${path.hashCode()}.jpg"
+            val cacheFile = File(context?.cacheDir, fileName)
+            if (cacheFile.exists() && cacheFile.length() > 0) {
+                cacheFile
+            } else {
+                extractEmbeddedArt(path, cacheFile)
+            }
         }
 
         if (file == null || !file.exists()) {
             return null
         }
+
+        fileCache.put(path, file)
 
         return try {
             ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
@@ -145,17 +167,15 @@ class MediaThumbnailProvider : ContentProvider() {
         }
     }
 
-    private fun extractEmbeddedArt(filePath: String): File? {
+    private fun extractEmbeddedArt(filePath: String, cacheFile: File): File? {
         val file = File(filePath)
         if (!file.exists()) return null
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(file.absolutePath)
             val artwork = retriever.embeddedPicture ?: return null
-            val tempFile = File.createTempFile("thumb_", ".jpg", context?.cacheDir)
-            // DON'T delete on exit, as the car host might need it later
-            FileOutputStream(tempFile).use { it.write(artwork) }
-            return tempFile
+            FileOutputStream(cacheFile).use { it.write(artwork) }
+            return cacheFile
         } catch (e: Exception) {
             Log.e(TAG, "extractEmbeddedArt error: ${e.message}")
             return null

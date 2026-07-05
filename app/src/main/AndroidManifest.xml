@@ -54,7 +54,7 @@
 
         <provider
             android:name="com.equalizer.common.MediaThumbnailProvider"
-            android:authorities="com.equalizer.mymediaplayer.thumbnail"
+            android:authorities="${applicationId}.thumbnail"
             android:exported="true" />
 
     </application>

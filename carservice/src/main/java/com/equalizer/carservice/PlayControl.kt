@@ -20,6 +20,10 @@ import com.google.common.util.concurrent.MoreExecutors
 @UnstableApi
 class PlayControl(carContext: CarContext) {
 
+    init {
+        com.equalizer.common.MediaThumbnailProvider.init(carContext)
+    }
+
     private fun log(msg: String="") {
         Log.d("Car PlayControl", msg)
     }

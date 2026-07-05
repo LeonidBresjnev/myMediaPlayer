@@ -10,8 +10,8 @@
 
         <profileable android:shell="true" />
         <provider
-            android:name=".MediaThumbnailProvider"
-            android:authorities="com.equalizer.mymediaplayer.thumbnail"
+            android:name="com.equalizer.common.MediaThumbnailProvider"
+            android:authorities="${applicationId}.thumbnail"
             android:exported="true" />
         <service
             android:name=".MyMediaService"
