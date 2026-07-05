@@ -21,16 +21,22 @@ namespace equalizer {
 
 
     void Equalizer::play(const std::string& fileName, int32_t deviceId) {
+        bool isSameFile = (fileName == _currentFileName);
+
         // 1. Explicitly stop and close the current Oboe stream before doing anything else.
         // This terminates the audio callback thread and ensures no one is reading from the Oscillator.
         _audioPlayer->stop();
         _isPlaying = false;
 
-        // 2. Now it is 100% safe to load the new file into the Oscillator.
-        const auto loadresult = _oscillator->load(fileName);
-        if (!loadresult) {
-            LOGD("Could not load file.");
-            return;
+        // 2. Only load if it's a different file. If it's the same, we resume from currentposition.
+        if (!isSameFile) {
+            const auto loadresult = _oscillator->load(fileName);
+            if (!loadresult) {
+                LOGD("Could not load file.");
+                _currentFileName = "";
+                return;
+            }
+            _currentFileName = fileName;
         }
 
         const int32_t samplingRate = _oscillator->getSampleRate();

@@ -17,8 +17,8 @@ namespace equalizer {
 
     void Oscillator::onPlaybackStopped() {
         LOGD("onPlaybackStopped");
-        std::lock_guard<std::mutex> lock(_readerMutex);
-        reader.reset();
+        // We no longer reset the reader here to allow resuming from the same position.
+        // The reader will be replaced in load() when a new file is selected.
     }
 
     int32_t Oscillator::getSampleRate() const {
@@ -114,7 +114,7 @@ namespace equalizer {
         if (reader == nullptr) return;
 
         // Convert seconds to sample position
-        int64_t targetSample = static_cast<int64_t>(positionSeconds * sampleRate);
+        auto targetSample = static_cast<int64_t>(positionSeconds * sampleRate);
 
         // Clamp to valid range
         if (targetSample < 0) targetSample = 0;
