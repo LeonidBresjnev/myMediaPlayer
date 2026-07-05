@@ -29,13 +29,13 @@ class MainTabScreen(
     private val playControl: PlayControl
 ) : Screen(carContext) {
 
-    private var activeTabId = "library"
+    private var activeTabId = "playlists"
     private var mediaItems: List<MediaItem> = emptyList()
     private var isLoading = true
 
 
     init {
-        loadAlbums()
+        loadMediaItems("playlists_root")
         
         // Listen for real-time frequency changes from phone/engine
         playControl.setVolPerFreqSetter0 {
@@ -44,10 +44,14 @@ class MainTabScreen(
         }
     }
 
-    private fun loadAlbums() {
+    private fun loadMediaItems(parentId: String) {
+        isLoading = true
+        mediaItems = emptyList()
+        invalidate()
+
         if (playControl.mediaControllerFuture.isDone) {
             val controller = playControl.controller
-            val childrenFuture = controller.getChildren("root", 0, Int.MAX_VALUE, null)
+            val childrenFuture = controller.getChildren(parentId, 0, Int.MAX_VALUE, null)
             childrenFuture.addListener({
                 try {
                     val result = childrenFuture.get()
@@ -66,7 +70,7 @@ class MainTabScreen(
             }, MoreExecutors.directExecutor())
         } else {
             playControl.mediaControllerFuture.addListener({
-                loadAlbums()
+                loadMediaItems(parentId)
             }, MoreExecutors.directExecutor())
         }
     }
@@ -119,6 +123,12 @@ class MainTabScreen(
             invalidate()
         }
 
+        val playlistsTab = Tab.Builder()
+            .setTitle("Playlists")
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_agenda)).build())
+            .setContentId("playlists")
+            .build()
+
         val libraryTab = Tab.Builder()
             .setTitle("Library")
             .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_gallery)).build())
@@ -131,18 +141,25 @@ class MainTabScreen(
             .setContentId("equalizer")
             .build()
 
-        val currentContent: Template = if (activeTabId == "library") {
-            createAlbumGridTemplate()
-        } else {
-            createEqualizerTemplate()
+        val currentContent: Template = when (activeTabId) {
+            "playlists" -> createAlbumGridTemplate("No playlists found")
+            "library" -> createAlbumGridTemplate("No albums found")
+            else -> createEqualizerTemplate()
         }
 
         return TabTemplate.Builder(object : TabTemplate.TabCallback {
             override fun onTabSelected(tabTag: String) {
-                activeTabId = tabTag
-                invalidate()
+                if (activeTabId != tabTag) {
+                    activeTabId = tabTag
+                    when (tabTag) {
+                        "playlists" -> loadMediaItems("playlists_root")
+                        "library" -> loadMediaItems("music_library_root")
+                    }
+                    invalidate()
+                }
             }
         })
+        .addTab(playlistsTab)
         .addTab(libraryTab)
         .addTab(eqTab)
         .setActiveTabContentId(activeTabId)
@@ -151,11 +168,11 @@ class MainTabScreen(
         .build()
     }
 
-    private fun createAlbumGridTemplate(): Template {
+    private fun createAlbumGridTemplate(noItemsMessage: String): Template {
         val builder = GridTemplate.Builder()
         if (isLoading) return builder.setLoading(true).build()
 
-        val gridBuilder = ItemList.Builder().setNoItemsMessage("No albums found")
+        val gridBuilder = ItemList.Builder().setNoItemsMessage(noItemsMessage)
 
         mediaItems.forEach { item ->
             gridBuilder.addItem(

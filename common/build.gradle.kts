@@ -130,6 +130,7 @@ dependencies {
    // implementation(libs.material)
     implementation(libs.slf4j.android)
     testImplementation(libs.junit)
+    testImplementation(libs.mockk)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }

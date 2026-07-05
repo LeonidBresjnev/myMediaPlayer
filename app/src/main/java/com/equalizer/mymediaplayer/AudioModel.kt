@@ -3,6 +3,8 @@ package com.equalizer.mymediaplayer
 import android.content.ComponentName
 import android.content.Context
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.lifecycle.LiveData
@@ -108,6 +110,9 @@ class AudioModel: ViewModel() {
     private val _nowPlayingId = MutableLiveData<String?>(null)
     val nowPlayingId: LiveData<String?> = _nowPlayingId
 
+    private val _nextMediaItem = MutableLiveData<MediaItem?>(null)
+    val nextMediaItem: LiveData<MediaItem?> = _nextMediaItem
+
     enum class Status {
         PLAYING ,
         PAUSED,
@@ -124,7 +129,15 @@ class AudioModel: ViewModel() {
     private val _currentPath = MutableLiveData("root")
     val currentPath: LiveData<String> = _currentPath
 
+    private val _currentPlaybackContext = MutableLiveData<String?>(null)
+    val currentPlaybackContext: LiveData<String?> = _currentPlaybackContext
+
+    private val _playlists = MutableLiveData<List<MediaItem>>(emptyList())
+    val playlists: LiveData<List<MediaItem>> = _playlists
+
     private val navStack = mutableListOf<String>()
+
+    private val handler = Handler(Looper.getMainLooper())
 
     private val _mediaController = MutableLiveData<Player?>(null)
     val mediaController: LiveData<Player?> = _mediaController
@@ -169,6 +182,12 @@ class AudioModel: ViewModel() {
                 super.onMediaItemTransition(mediaItem, reason)
                 log("Track changed: ${mediaItem?.mediaId}")
                 _nowPlayingId.postValue(mediaItem?.mediaId)
+                updateNextMediaItem()
+            }
+
+            override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
+                super.onTimelineChanged(timeline, reason)
+                updateNextMediaItem()
             }
 
             override fun onAvailableCommandsChanged(availableCommands: Player.Commands) {
@@ -176,6 +195,22 @@ class AudioModel: ViewModel() {
                 log("commands changed$availableCommands")
             }
         })
+    }
+
+    private fun updateNextMediaItem() {
+        if (!::controller.isInitialized) return
+        val nextIndex = controller.nextMediaItemIndex
+        if (nextIndex != androidx.media3.common.C.INDEX_UNSET) {
+            val timeline = controller.currentTimeline
+            if (!timeline.isEmpty && nextIndex < timeline.windowCount) {
+                val mediaItem = timeline.getWindow(nextIndex, androidx.media3.common.Timeline.Window()).mediaItem
+                _nextMediaItem.postValue(mediaItem)
+            } else {
+                _nextMediaItem.postValue(null)
+            }
+        } else {
+            _nextMediaItem.postValue(null)
+        }
     }
 
     @OptIn(UnstableApi::class)
@@ -207,6 +242,7 @@ class AudioModel: ViewModel() {
                 
                 // Initial browse
                 browse("root"/*, context = context*/)
+                fetchPlaylists()
 
                 // Sync initial state if available
                 val sessionExtras = controller.sessionExtras
@@ -250,6 +286,50 @@ class AudioModel: ViewModel() {
         browse(lastPath, addToStack = false/*, context = context*/)
         return true
     }
+
+    fun fetchPlaylists() {
+        if (!::controller.isInitialized) return
+        val childrenFuture = controller.getChildren("playlists_root", 0, Int.MAX_VALUE, null)
+        childrenFuture.addListener({
+            try {
+                val result = childrenFuture.get()
+                if (result.value != null) {
+                    _playlists.postValue(result.value!!)
+                }
+            } catch (e: Exception) {
+                log("Error getting playlists: ${e.message}")
+            }
+        }, MoreExecutors.directExecutor())
+    }
+
+    fun createPlaylist(name: String) {
+        if (!::controller.isInitialized) return
+        val extras = Bundle().apply {
+            putString("NAME", name)
+        }
+        controller.sendCustomCommand(SessionCommand("createPlaylist", Bundle()), extras)
+        // Refresh playlists after a short delay
+        handler.postDelayed({ fetchPlaylists() }, 500)
+    }
+
+    fun addToPlaylist(songId: String, playlistId: String) {
+        if (!::controller.isInitialized) return
+        val extras = Bundle().apply {
+            putString("SONG_ID", songId)
+            putString("PLAYLIST_ID", playlistId)
+        }
+        controller.sendCustomCommand(SessionCommand("addToPlaylist", Bundle()), extras)
+    }
+
+    fun deletePlaylist(playlistId: String) {
+        if (!::controller.isInitialized) return
+        val extras = Bundle().apply {
+            putString("PLAYLIST_ID", playlistId)
+        }
+        controller.sendCustomCommand(SessionCommand("deletePlaylist", Bundle()), extras)
+        // Refresh playlists after a short delay
+        handler.postDelayed({ fetchPlaylists() }, 500)
+    }
 /*
     internal fun loadMedia(mediaItem: MediaItem) {
         if (!::controller.isInitialized) return
@@ -260,6 +340,7 @@ class AudioModel: ViewModel() {
     internal fun loadMedia(mediaItems: List<MediaItem>, startIndex: Int) {
         if (!::controller.isInitialized) return
         // Load the whole folder as a playlist starting at the selected song
+        _currentPlaybackContext.value = _currentPath.value
         controller.setMediaItems(mediaItems, startIndex, 0L)
         controller.prepare()
         controller.play()

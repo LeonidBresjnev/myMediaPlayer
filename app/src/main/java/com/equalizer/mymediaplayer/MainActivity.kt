@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.filled.DirectionsCarFilled
 import androidx.compose.material.icons.filled.Tune
@@ -72,7 +74,7 @@ class MainActivity : ComponentActivity() {
 
             val tabRowItems = listOf(
                 TabRowItem(
-                    title = "Media browser",
+                    title = "Library",
                     screen = {
                         MediaBrowserScreen(
                             modifier = Modifier,
@@ -83,6 +85,20 @@ class MainActivity : ComponentActivity() {
                     },
                     selectedIcon = Icons.AutoMirrored.Filled.QueueMusic,
                     unselectedIcon = Icons.AutoMirrored.Outlined.QueueMusic
+                ),
+                TabRowItem(
+                    title = "Playlists",
+                    screen = {
+                        PlaylistsScreen(
+                            audioModel = audioModel,
+                            onPlaylistClick = { playlistId ->
+                                audioModel.browse(playlistId)
+                                selectedTabIndex = 0
+                            }
+                        )
+                    },
+                    selectedIcon = Icons.AutoMirrored.Filled.PlaylistPlay,
+                    unselectedIcon = Icons.AutoMirrored.Outlined.PlaylistPlay
                 ),
                 TabRowItem(
                     title = "Equalizer",

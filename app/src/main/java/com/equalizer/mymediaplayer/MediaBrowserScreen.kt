@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -20,6 +22,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -27,7 +31,9 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
@@ -55,11 +61,14 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
     //val context = LocalContext.current
     val media = audioModel.subItemMediaList.observeAsState(emptyList())
     val currentPath by audioModel.currentPath.observeAsState("root")
+    val currentPlaybackContext by audioModel.currentPlaybackContext.observeAsState()
     val nowPlayingId by audioModel.nowPlayingId.observeAsState()
 
     var infoItem by remember {
         mutableStateOf<MediaItem?>(null)
     }
+
+    var showPlaylistDialog by remember { mutableStateOf<MediaItem?>(null) }
 
     val folders = media.value.filter { it.mediaMetadata.isBrowsable == true }
     val files = media.value.filter { it.mediaMetadata.isBrowsable != true }
@@ -89,6 +98,15 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
                  modifier = Modifier.weight(1f))
         }
 
+        if (currentPlaybackContext == currentPath && nowPlayingId != null) {
+            Text(
+                text = "Playing from this folder",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             modifier = Modifier.weight(1f),
@@ -98,9 +116,23 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
             // FILES SECTION (List at top)
             if (files.isNotEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Text("Files",
-                         style = MaterialTheme.typography.labelLarge,
-                         modifier = Modifier.padding(vertical = 8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Files", style = MaterialTheme.typography.labelLarge)
+                        
+                        Button(
+                            onClick = { onSelect(files, 0) },
+                            modifier = Modifier.height(32.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Play All", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
                 }
 
                 itemsIndexed(
@@ -116,6 +148,9 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
                         },
                         onInfoClick = {
                             infoItem = mediaItem
+                        },
+                        onAddClick = {
+                            showPlaylistDialog = mediaItem
                         }
                     )
                 }
@@ -153,32 +188,60 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
             onDismiss = { infoItem = null }
         )
     }
+
+    if (showPlaylistDialog != null) {
+        PlaylistSelectionDialog(
+            audioModel = audioModel,
+            mediaItem = showPlaylistDialog!!,
+            onDismiss = { showPlaylistDialog = null }
+        )
+    }
 }
 
 @Composable
 fun FileRow(mediaItem: MediaItem, 
             isSelected: Boolean, 
             onClick: () -> Unit,
-            onInfoClick: () -> Unit) {
+            onInfoClick: () -> Unit,
+            onAddClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(4.dp))
-            .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+            .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f) else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         val placeholder = painterResource(androidx.media3.session.R.drawable.media3_icon_artist)
         
-        AsyncImage(
-            model = mediaItem.mediaMetadata.artworkUri,
-            contentDescription = null,
-            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(4.dp)),
-            placeholder = placeholder,
-            error = placeholder,
-            contentScale = ContentScale.Crop
-        )
+        Box(modifier = Modifier.size(40.dp)) {
+            AsyncImage(
+                model = mediaItem.mediaMetadata.artworkUri,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(4.dp)),
+                placeholder = placeholder,
+                error = placeholder,
+                contentScale = ContentScale.Crop
+            )
+            
+            if (isSelected) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        }
+
         Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
             Text(
                 text = mediaItem.mediaMetadata.title?.toString() ?: "Unknown",
@@ -193,6 +256,13 @@ fun FileRow(mediaItem: MediaItem,
                 color = Color.Gray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
+            )
+        }
+        IconButton(onClick = onAddClick) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "Add to Playlist",
+                tint = MaterialTheme.colorScheme.primary
             )
         }
         IconButton(onClick = onInfoClick) {
@@ -317,6 +387,84 @@ fun MediaInfoDialog(mediaItem: MediaItem, onDismiss: () -> Unit) {
                 InfoField("Channels", mediaItem.mediaMetadata.releaseMonth?.toString() ?: "N/A")
                 InfoField("Type", if (mediaItem.mediaMetadata.isBrowsable == true) "Folder" else "Audio File")
                 InfoField("Path", mediaItem.mediaId)
+            }
+        }
+    )
+}
+
+@Composable
+fun PlaylistSelectionDialog(
+    audioModel: AudioModel,
+    mediaItem: MediaItem,
+    onDismiss: () -> Unit
+) {
+    val playlists by audioModel.playlists.observeAsState(emptyList())
+    var newPlaylistName by remember { mutableStateOf("") }
+    var isCreatingNew by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (isCreatingNew) "Create New Playlist" else "Add to Playlist") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                if (isCreatingNew) {
+                    OutlinedTextField(
+                        value = newPlaylistName,
+                        onValueChange = { newPlaylistName = it },
+                        label = { Text("Playlist Name") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    if (playlists.isEmpty()) {
+                        Text("No playlists found.", modifier = Modifier.padding(vertical = 8.dp))
+                    } else {
+                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                            playlists.forEach { playlist ->
+                                Text(
+                                    text = playlist.mediaMetadata.title?.toString() ?: "Unnamed",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            audioModel.addToPlaylist(mediaItem.mediaId, playlist.mediaId)
+                                            onDismiss()
+                                        }
+                                        .padding(vertical = 12.dp, horizontal = 8.dp),
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                HorizontalDivider()
+                            }
+                        }
+                    }
+                    TextButton(
+                        onClick = { isCreatingNew = true },
+                        modifier = Modifier.align(Alignment.End).padding(top = 8.dp)
+                    ) {
+                        Text("New Playlist")
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (isCreatingNew) {
+                Button(
+                    onClick = {
+                        if (newPlaylistName.isNotBlank()) {
+                            audioModel.createPlaylist(newPlaylistName)
+                            isCreatingNew = false
+                            newPlaylistName = ""
+                        }
+                    },
+                    enabled = newPlaylistName.isNotBlank()
+                ) {
+                    Text("Create")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = {
+                if (isCreatingNew) isCreatingNew = false else onDismiss()
+            }) {
+                Text("Cancel")
             }
         }
     )

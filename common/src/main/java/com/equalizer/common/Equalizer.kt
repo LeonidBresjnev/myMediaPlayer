@@ -233,29 +233,36 @@ class Equalizer(
     override fun removeListener(listener: Player.Listener) = listeners.remove(Preconditions.checkNotNull(listener))
 
     override fun setMediaItems(mediaItems: List<MediaItem>, resetPosition: Boolean) {
-        log("setMediaItems1: size=${mediaItems.size}")
-        this.mediaItems.clear()
-        this.mediaItems.addAll(mediaItems)
-        this.currentMediaItemIndex = 0
-        if (playWhenReady) triggerNativeLoad()
-        
-        listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) }
-        listeners.sendEvent(EVENT_TRACKS_CHANGED) { it.onTracksChanged(currentTracks) }
-        listeners.sendEvent(EVENT_MEDIA_METADATA_CHANGED) { it.onMediaMetadataChanged(mediaMetadata) }
-        listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { it.onPlaybackStateChanged(playbackState) }
+        setMediaItems(mediaItems, if (resetPosition) 0 else currentMediaItemIndex, C.TIME_UNSET)
     }
 
     override fun setMediaItems(mediaItems: List<MediaItem>, startIndex: Int, startPositionMs: Long) {
-        log("setMediaItems2: size=${mediaItems.size} startIndex=$startIndex")
+        log("setMediaItems: size=${mediaItems.size} startIndex=$startIndex")
+        val oldIndex = currentMediaItemIndex
+        val oldItem = this.mediaItems.getOrNull(oldIndex)
+
         this.mediaItems.clear()
         this.mediaItems.addAll(mediaItems)
         this.currentMediaItemIndex = if (startIndex in mediaItems.indices) startIndex else 0
-        if (playWhenReady) triggerNativeLoad()
+        
+        val newTimeline = currentTimeline
+        val newItem = this.mediaItems.getOrNull(currentMediaItemIndex)
 
-        listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) }
+        listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(newTimeline, TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) }
         listeners.sendEvent(EVENT_TRACKS_CHANGED) { it.onTracksChanged(currentTracks) }
         listeners.sendEvent(EVENT_MEDIA_METADATA_CHANGED) { it.onMediaMetadataChanged(mediaMetadata) }
+
+        val oldUid = oldItem?.mediaId ?: oldIndex.toString()
+        val currentUid = newItem?.mediaId ?: currentMediaItemIndex.toString()
+        val finalPosMs = if (startPositionMs == C.TIME_UNSET) 0L else startPositionMs
+        
+        val oldPos = PositionInfo(oldUid, oldIndex, oldItem, oldUid, oldIndex, 0L, 0L, C.INDEX_UNSET, C.INDEX_UNSET)
+        val newPos = PositionInfo(currentUid, currentMediaItemIndex, newItem, currentUid, currentMediaItemIndex, finalPosMs, finalPosMs, C.INDEX_UNSET, C.INDEX_UNSET)
+        
+        listeners.sendEvent(EVENT_POSITION_DISCONTINUITY) { it.onPositionDiscontinuity(oldPos, newPos, Player.DISCONTINUITY_REASON_AUTO_TRANSITION) }
         listeners.sendEvent(EVENT_PLAYBACK_STATE_CHANGED) { it.onPlaybackStateChanged(playbackState) }
+
+        if (playWhenReady) triggerNativeLoad()
     }
 
     override fun addMediaItems(index: Int, mediaItems: List<MediaItem>) {
@@ -351,7 +358,7 @@ class Equalizer(
     override fun getMediaMetadata(): MediaMetadata = mediaItems.getOrNull(currentMediaItemIndex)?.mediaMetadata ?: MediaMetadata.EMPTY
     override fun getPlaylistMetadata(): MediaMetadata = MediaMetadata.EMPTY
     override fun setPlaylistMetadata(mediaMetadata: MediaMetadata) {}
-    override fun getCurrentTimeline(): Timeline = EqualizerTimeline()
+    override fun getCurrentTimeline(): Timeline = EqualizerTimeline(mediaItems.toList())
 
     override fun getDuration(): Long {
         synchronized(equalizerMutex) {
@@ -489,21 +496,21 @@ class Equalizer(
     @Deprecated("Deprecated in Java") override fun decreaseDeviceVolume() {}
     @Deprecated("Deprecated in Java") override fun setDeviceMuted(muted: Boolean) {}
 
-    private inner class EqualizerTimeline : Timeline() {
-        override fun getWindowCount(): Int = mediaItems.size
+    private inner class EqualizerTimeline(private val itemsSnapshot: List<MediaItem>) : Timeline() {
+        override fun getWindowCount(): Int = itemsSnapshot.size
         override fun getWindow(windowIndex: Int, window: Window, defaultPositionProjectionUs: Long): Window {
-            if (windowIndex !in mediaItems.indices) throw IndexOutOfBoundsException()
-            val mediaItem = mediaItems[windowIndex]
+            if (windowIndex !in itemsSnapshot.indices) throw IndexOutOfBoundsException()
+            val mediaItem = itemsSnapshot[windowIndex]
             val durationUs = duration.let { if (it == C.TIME_UNSET) 300_000_000L else it * 1000 }
             // Use mediaId as UID
             val uid = mediaItem.mediaId
             window.set(uid, mediaItem, mediaItem, C.TIME_UNSET, C.TIME_UNSET, C.TIME_UNSET, true, false, null, 0, durationUs, windowIndex, windowIndex, 0)
             return window
         }
-        override fun getPeriodCount(): Int = mediaItems.size
+        override fun getPeriodCount(): Int = itemsSnapshot.size
         override fun getPeriod(periodIndex: Int, period: Period, setIds: Boolean): Period {
-            if (periodIndex !in mediaItems.indices) throw IndexOutOfBoundsException()
-            val mediaItem = mediaItems[periodIndex]
+            if (periodIndex !in itemsSnapshot.indices) throw IndexOutOfBoundsException()
+            val mediaItem = itemsSnapshot[periodIndex]
             val durationUs = duration.let { if (it == C.TIME_UNSET) 300_000_000L else it * 1000 }
             val uid = mediaItem.mediaId
             period.set(uid, uid, periodIndex, durationUs, 0)
@@ -511,9 +518,9 @@ class Equalizer(
         }
         override fun getIndexOfPeriod(uid: Any): Int {
             if (uid !is String) return C.INDEX_UNSET
-            val index = mediaItems.indexOfFirst { it.mediaId == uid }
+            val index = itemsSnapshot.indexOfFirst { it.mediaId == uid }
             return if (index != -1) index else C.INDEX_UNSET
         }
-        override fun getUidOfPeriod(periodIndex: Int): Any = mediaItems[periodIndex].mediaId
+        override fun getUidOfPeriod(periodIndex: Int): Any = itemsSnapshot[periodIndex].mediaId
     }
 }

@@ -77,11 +77,45 @@ class SongListScreen(
     }
 
     override fun onGetTemplate(): Template {
+        // Ensure this screen is invalidated when playback state changes
+        playControl.setInvalidate0 {
+            invalidate()
+        }
+
+        val isCurrentlyPlaying = playControl.isPlaying == PlayControl.Status.PLAYING
+        
+        val playAllAction = Action.Builder()
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(
+                carContext, 
+                if (isCurrentlyPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+            )).build())
+            .setOnClickListener {
+                if (playControl.mediaControllerFuture.isDone) {
+                    val controller = playControl.controller
+                    if (isCurrentlyPlaying) {
+                        controller.pause()
+                    } else {
+                        if (mediaItems.isNotEmpty()) {
+                            // Only replace media items if we are not already playing this context
+                            // (We'll simplify for now and reload to ensure the list matches)
+                            controller.setMediaItems(mediaItems, 0, 0L)
+                            controller.prepare()
+                            controller.play()
+                        } else {
+                            controller.play()
+                        }
+                    }
+                    invalidate()
+                }
+            }
+            .build()
+
         val builder = ListTemplate.Builder()
         builder.setHeader(
             Header.Builder()
                 .setTitle(albumTitle)
                 .setStartHeaderAction(Action.BACK)
+                .addEndHeaderAction(playAllAction)
                 .build()
         )
 
