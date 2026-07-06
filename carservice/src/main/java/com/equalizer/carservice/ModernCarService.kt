@@ -30,6 +30,13 @@ class ModernCarService : CarAppService() {
                 val apiLevel = carContext.carAppApiLevel
                 Log.d("ModernCarService", "Car App API Level: $apiLevel")
                 
+                // Show a toast with the detected API level for debugging
+                androidx.car.app.CarToast.makeText(
+                    carContext,
+                    "Detected Car API Level: $apiLevel",
+                    androidx.car.app.CarToast.LENGTH_LONG
+                ).show()
+
                 val playControl = PlayControl(carContext)
                 
                 // TabTemplate requires API Level 6+

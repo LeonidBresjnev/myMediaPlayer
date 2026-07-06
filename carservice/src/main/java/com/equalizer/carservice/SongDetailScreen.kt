@@ -93,16 +93,22 @@ class SongDetailScreen(
 
         paneBuilder.addAction(playPauseAction)
 
-        return PaneTemplate.Builder(paneBuilder.build())
-            .setHeader(
+        val builder = PaneTemplate.Builder(paneBuilder.build())
+        
+        if (carContext.carAppApiLevel >= 5) {
+            builder.setHeader(
                 Header.Builder()
                     .setTitle("Playback Control")
                     .setStartHeaderAction(Action.BACK)
-                   /* .addEndHeaderAction(eqAction)*/
                     .build()
             )
+        } else {
+            try {
+                builder.setTitle("Playback Control")
+                builder.setHeaderAction(Action.BACK)
+            } catch (_: Exception) {}
+        }
 
-
-            .build()
+        return builder.build()
     }
 }

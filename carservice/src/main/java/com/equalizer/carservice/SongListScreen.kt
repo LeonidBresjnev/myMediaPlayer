@@ -111,13 +111,22 @@ class SongListScreen(
             .build()
 
         val builder = ListTemplate.Builder()
-        builder.setHeader(
-            Header.Builder()
-                .setTitle(albumTitle)
-                .setStartHeaderAction(Action.BACK)
-                .addEndHeaderAction(playAllAction)
-                .build()
-        )
+        
+        if (carContext.carAppApiLevel >= 5) {
+            builder.setHeader(
+                Header.Builder()
+                    .setTitle(albumTitle)
+                    .setStartHeaderAction(Action.BACK)
+                    .addEndHeaderAction(playAllAction)
+                    .build()
+            )
+        } else {
+            // Legacy way for API < 5
+            try {
+                builder.setTitle(albumTitle)
+                builder.setHeaderAction(Action.BACK)
+            } catch (_: Exception) {}
+        }
 
         if (isLoading) return builder.setLoading(true).build()
 

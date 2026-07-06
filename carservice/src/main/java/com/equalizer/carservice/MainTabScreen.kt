@@ -16,6 +16,7 @@ import androidx.car.app.model.TabContents
 import androidx.car.app.model.TabTemplate
 import androidx.car.app.model.Template
 import androidx.core.graphics.drawable.IconCompat
+import androidx.car.app.annotations.RequiresCarApi
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
@@ -23,6 +24,7 @@ import com.equalizer.common.MediaThumbnailProvider
 import com.google.common.util.concurrent.MoreExecutors
 import java.util.Locale
 
+@RequiresCarApi(6)
 @OptIn(UnstableApi::class)
 class MainTabScreen(
     carContext: CarContext,

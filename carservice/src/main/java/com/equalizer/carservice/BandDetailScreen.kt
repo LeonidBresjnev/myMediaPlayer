@@ -64,14 +64,23 @@ class BandDetailScreen(
         paneBuilder.addAction(actionMinus)
         paneBuilder.addAction(actionPlus)
 
-        return PaneTemplate.Builder(paneBuilder.build())
-            .setHeader(
+        val builder = PaneTemplate.Builder(paneBuilder.build())
+        
+        if (carContext.carAppApiLevel >= 5) {
+            builder.setHeader(
                 Header.Builder()
                     .setTitle("Adjust Band")
                     .setStartHeaderAction(Action.BACK)
                     .build()
             )
-            .build()
+        } else {
+            try {
+                builder.setTitle("Adjust Band")
+                builder.setHeaderAction(Action.BACK)
+            } catch (_: Exception) {}
+        }
+
+        return builder.build()
     }
 
     private fun updateFrequency(volume: Float) {

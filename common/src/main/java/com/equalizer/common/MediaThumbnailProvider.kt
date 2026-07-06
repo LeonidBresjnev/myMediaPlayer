@@ -25,9 +25,14 @@ class MediaThumbnailProvider : ContentProvider() {
 
     companion object {
         private const val TAG = "MediaThumbnailProvider"
+        
+        @JvmField
         var AUTHORITY = "com.equalizer.mymediaplayer.thumbnail"
+        
+        @JvmField
         var CONTENT_URI: Uri = "content://$AUTHORITY".toUri()
         
+        @JvmStatic
         fun init(context: Context) {
             AUTHORITY = "${context.packageName}.thumbnail"
             CONTENT_URI = "content://$AUTHORITY".toUri()
