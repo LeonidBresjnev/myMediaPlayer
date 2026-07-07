@@ -1,6 +1,6 @@
 # My Media Player
 
-[![Build, Test and Deploy](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/deploy_appetize.yml/badge.svg)](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/deploy_appetize.yml)
+[![Build, Test and Deploy](https://github.com/LeonidBresjnev/myMediaPlayer/actions/workflows/deploy_appetize.yml/badge.svg)](https://github.com/LeonidBresjnev/myMediaPlayer/actions/workflows/deploy_appetize.yml)
 
 A high-performance Android Media Player featuring a custom C++ audio engine, 8-band parametric equalizer, and comprehensive Android Auto support.
 

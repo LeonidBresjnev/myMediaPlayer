@@ -18,6 +18,14 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          df -h
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -48,6 +56,11 @@ jobs:
           # Install both triplets needed for device (arm64) and emulator/appetize (x64)
           ./vcpkg install --triplet arm64-android --x-manifest-root=..
           ./vcpkg install --triplet x64-android --x-manifest-root=..
+          
+          # Clean up vcpkg build artifacts to save disk space for the emulator
+          rm -rf buildtrees
+          rm -rf packages
+          df -h
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
