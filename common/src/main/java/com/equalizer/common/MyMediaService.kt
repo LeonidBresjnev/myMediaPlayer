@@ -1,5 +1,6 @@
 package com.equalizer.common
 
+import android.app.PendingIntent
 import android.content.Intent
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -95,10 +96,16 @@ class MyMediaService : MediaLibraryService() {
                     .setArtist(firstArtist)
 
                 if (firstWithArt != null) {
-                    val artworkUri = MediaThumbnailProvider.CONTENT_URI.buildUpon()
-                        .appendQueryParameter("path", firstWithArt.absolutePath)
-                        .build()
+                    val artworkUri = MediaThumbnailProvider.getArtworkUri(applicationContext, firstWithArt.absolutePath)
                     folderMetadataBuilder.setArtworkUri(artworkUri)
+                    
+                    // Also set artwork data as fallback if possible
+                    try {
+                        val retriever = MediaMetadataRetriever()
+                        retriever.setDataSource(firstWithArt.absolutePath)
+                        folderMetadataBuilder.setArtworkData(retriever.embeddedPicture, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                        retriever.release()
+                    } catch (_: Exception) {}
                 } else if (firstArtist != null && firstTitle != null) {
                     // Try online artwork if local is not found
                     val onlineInfo = OnlineMetadataManager.getOnlineInfo(applicationContext,
@@ -132,10 +139,15 @@ class MyMediaService : MediaLibraryService() {
                 }
 
                 if (hasLocalArt) {
-                    val artworkUri = MediaThumbnailProvider.CONTENT_URI.buildUpon()
-                        .appendQueryParameter("path", file.absolutePath)
-                        .build()
+                    val artworkUri = MediaThumbnailProvider.getArtworkUri(applicationContext, file.absolutePath)
                     metadataBuilder.setArtworkUri(artworkUri)
+
+                    // Set artwork data as reliable fallback
+                    metadataBuilder.setArtworkData(when (meta) {
+                        is Mp3Meta -> meta.imageArray
+                        is M4aMeta -> meta.imageArray
+                        else -> null
+                    }, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
                 }
 
                 if (meta != null) {
@@ -199,6 +211,9 @@ class MyMediaService : MediaLibraryService() {
         Log.d("MyMediaService", "onCreate starting")
         MediaThumbnailProvider.init(this)
         val player = Equalizer(context = this)
+
+        val intent = packageManager.getLaunchIntentForPackage(packageName)
+        val pendingIntent = PendingIntent.getActivity(this, 0, intent!!, PendingIntent.FLAG_IMMUTABLE)
 
         mediaSession = MediaLibrarySession.Builder(this, player, object : MediaLibrarySession.Callback {
 
@@ -444,7 +459,7 @@ class MyMediaService : MediaLibraryService() {
                 return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
             }
 
-        }).build()
+        }).setId("MyMediaPlayerSession-$packageName").setSessionActivity(pendingIntent).build()
     }
 
     private fun pushEqualizerState(session: MediaSession) {

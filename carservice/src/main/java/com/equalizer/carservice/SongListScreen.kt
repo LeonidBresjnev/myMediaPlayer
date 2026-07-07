@@ -62,12 +62,10 @@ class SongListScreen(
     private fun createCarIcon(metadata: MediaMetadata): CarIcon {
         metadata.artworkUri?.let { uri ->
             val uriString = uri.toString()
-            val finalUri = if (uriString.startsWith("content://${com.equalizer.common.MediaThumbnailProvider.AUTHORITY}")) {
+            val finalUri = if (uriString.startsWith("content://${com.equalizer.common.MediaThumbnailProvider.getAuthority(carContext)}")) {
                 uri
             } else {
-                com.equalizer.common.MediaThumbnailProvider.CONTENT_URI.buildUpon()
-                    .appendQueryParameter("path", uriString)
-                    .build()
+                com.equalizer.common.MediaThumbnailProvider.getArtworkUri(carContext, uriString)
             }
             return CarIcon.Builder(IconCompat.createWithContentUri(finalUri)).build()
         }

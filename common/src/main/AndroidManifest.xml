@@ -12,7 +12,8 @@
         <provider
             android:name="com.equalizer.common.MediaThumbnailProvider"
             android:authorities="${applicationId}.thumbnail"
-            android:exported="true" />
+            android:exported="true"
+            android:grantUriPermissions="true" />
         <service
             android:name=".MyMediaService"
             android:foregroundServiceType="mediaPlayback"

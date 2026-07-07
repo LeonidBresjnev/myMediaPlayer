@@ -83,14 +83,10 @@ class MainTabScreen(
             .artworkUri
             ?.let { uri ->
             val uriString = uri.toString()
-            val finalUri = if (uriString.startsWith("content://${MediaThumbnailProvider.AUTHORITY}")) {
+            val finalUri = if (uriString.startsWith("content://${MediaThumbnailProvider.getAuthority(carContext)}")) {
                 uri
             } else {
-                MediaThumbnailProvider
-                    .CONTENT_URI
-                    .buildUpon()
-                    .appendQueryParameter("path", uriString)
-                    .build()
+                MediaThumbnailProvider.getArtworkUri(carContext, uriString)
             }
             return CarIcon.Builder(IconCompat.createWithContentUri(finalUri)).build()
             }

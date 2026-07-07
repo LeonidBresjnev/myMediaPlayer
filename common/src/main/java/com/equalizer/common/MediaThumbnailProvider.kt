@@ -26,6 +26,28 @@ class MediaThumbnailProvider : ContentProvider() {
     companion object {
         private const val TAG = "MediaThumbnailProvider"
         
+        @JvmStatic
+        fun getAuthority(context: Context): String {
+            return try {
+                val packageInfo = context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_PROVIDERS)
+                packageInfo.providers?.find { it.name == MediaThumbnailProvider::class.java.name }?.authority 
+                    ?: "${context.packageName}.thumbnail"
+            } catch (e: Exception) {
+                e.message?.let {Log.d("Thumbnail",it)}
+                "${context.packageName}.thumbnail"
+            }
+        }
+
+        @JvmStatic
+        fun getArtworkUri(context: Context, path: String): Uri {
+            return Uri.Builder()
+                .scheme("content")
+                .authority(getAuthority(context))
+                .appendPath("thumb.jpg") // Fake extension for better compatibility with some hosts
+                .appendQueryParameter("path", path)
+                .build()
+        }
+
         @JvmField
         var AUTHORITY = "com.equalizer.mymediaplayer.thumbnail"
         
@@ -34,7 +56,7 @@ class MediaThumbnailProvider : ContentProvider() {
         
         @JvmStatic
         fun init(context: Context) {
-            AUTHORITY = "${context.packageName}.thumbnail"
+            AUTHORITY = getAuthority(context)
             CONTENT_URI = "content://$AUTHORITY".toUri()
             Log.d(TAG, "Initialized with authority: $AUTHORITY")
         }
@@ -66,7 +88,9 @@ class MediaThumbnailProvider : ContentProvider() {
         sortOrder: String?
     ): Cursor? = null
 
-    override fun getType(uri: Uri): String = "image/png"
+    override fun getType(uri: Uri): String {
+        return if (uri.path?.endsWith(".png", true) == true) "image/png" else "image/jpeg"
+    }
 
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
 
@@ -85,6 +109,7 @@ class MediaThumbnailProvider : ContentProvider() {
         val path = try {
             URLDecoder.decode(pathParam, "UTF-8")
         } catch (e: Exception) {
+            e.message?.let { Log.e(TAG, "URL decoding failed: $it") }
             pathParam
         }
 
@@ -113,7 +138,12 @@ class MediaThumbnailProvider : ContentProvider() {
             }
         } else {
             val fileName = "local_thumb_${path.hashCode()}.jpg"
-            val cacheFile = File(context?.cacheDir, fileName)
+            val cacheDir = context?.cacheDir
+            if (cacheDir == null) {
+                Log.e(TAG, "openFile: cacheDir is null")
+                return null
+            }
+            val cacheFile = File(cacheDir, fileName)
             if (cacheFile.exists() && cacheFile.length() > 0) {
                 cacheFile
             } else {

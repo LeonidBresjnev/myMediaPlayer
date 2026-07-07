@@ -31,12 +31,10 @@ class SongDetailScreen(
 
     private fun createCarIcon(uriString: String?): CarIcon {
         if (uriString != null) {
-            val finalUri = if (uriString.startsWith("content://${com.equalizer.common.MediaThumbnailProvider.AUTHORITY}")) {
+            val finalUri = if (uriString.startsWith("content://${com.equalizer.common.MediaThumbnailProvider.getAuthority(carContext)}")) {
                 uriString.toUri()
             } else {
-                com.equalizer.common.MediaThumbnailProvider.CONTENT_URI.buildUpon()
-                    .appendQueryParameter("path", uriString)
-                    .build()
+                com.equalizer.common.MediaThumbnailProvider.getArtworkUri(carContext, uriString)
             }
             return CarIcon.Builder(IconCompat.createWithContentUri(finalUri)).build()
         }
