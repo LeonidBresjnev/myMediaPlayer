@@ -40,10 +40,17 @@ android {
                 arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
 
                 val vcpkgPath = file("src/main/cpp/vcpkg/scripts/buildsystems/vcpkg.cmake")
+                val triplet = when (project.properties["android.injected.build.abi"]) {
+                    "x86_64" -> "x64-android"
+                    "x86" -> "x86-android"
+                    "armeabi-v7a" -> "arm-android"
+                    else -> "arm64-android"
+                }
                 if (vcpkgPath.exists()) {
                     val vcpkgPathStr = vcpkgPath.absolutePath.replace("\\", "/")
                     arguments += "-DCMAKE_TOOLCHAIN_FILE=$vcpkgPathStr"
-                    arguments += "-DVCPKG_TARGET_TRIPLET=arm64-android"
+                    arguments += "-DVCPKG_TARGET_TRIPLET=$triplet"
+                    //arguments += "-DVCPKG_TARGET_TRIPLET=arm64-android"
                     
                     if (latestNdk != null) {
                         val ndkPathStr = latestNdk.absolutePath.replace("\\", "/")
@@ -60,6 +67,7 @@ android {
 
         ndk {
             abiFilters += "arm64-v8a"
+            abiFilters += "x86_64"
         }
     }
 

@@ -1,5 +1,7 @@
 # My Media Player
 
+[![Build, Test and Deploy](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/deploy_appetize.yml/badge.svg)](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/deploy_appetize.yml)
+
 A high-performance Android Media Player featuring a custom C++ audio engine, 8-band parametric equalizer, and comprehensive Android Auto support.
 
 ## 🚀 Key Features
@@ -49,14 +51,14 @@ A high-performance Android Media Player featuring a custom C++ audio engine, 8-b
 The project uses the standard Gradle build system. Ensure you have the **Android NDK** and **CMake** installed for compiling the native audio engine.
 
 ```bash
-# Build Debug APK
+# Build Debug APK (Includes ARM64 and x86_64)
 ./gradlew :app:assembleDebug
 
 # Build Release APK
 ./gradlew :app:assembleRelease
 ```
 
-*Note: The Release build uses a blue icon background for easy distinction from the Debug version (Red).*
+*Note: The app is configured to build for both physical devices (`arm64-v8a`) and emulators (`x86_64`), making it fully compatible with services like Appetize.io.*
 
 ## 📄 License
 
