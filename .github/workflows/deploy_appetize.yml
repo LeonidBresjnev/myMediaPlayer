@@ -53,7 +53,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run Integration Tests
-        uses: reactive-circus/android-emulator-runner@v2
+        uses: ReactiveCircus/android-emulator-runner@v2
         with:
           api-level: 33
           target: google_apis
