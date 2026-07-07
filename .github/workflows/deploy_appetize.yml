@@ -1,14 +1,17 @@
-name: Build and Deploy to Appetize
+name: Build, Test and Deploy
 
 on:
   push:
     branches:
       - master
+  pull_request:
+    branches:
+      - master
 
 jobs:
-  build-and-deploy:
+  test-and-deploy:
     runs-on: ubuntu-latest
-
+    # Need kvm for emulator
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -37,39 +40,50 @@ jobs:
 
       - name: Setup vcpkg
         run: |
-          # If vcpkg is not in the repo, clone it
           if [ ! -d "common/src/main/cpp/vcpkg" ]; then
             git clone https://github.com/microsoft/vcpkg.git common/src/main/cpp/vcpkg
           fi
           cd common/src/main/cpp/vcpkg
           ./bootstrap-vcpkg.sh
-          # Install dependencies defined in vcpkg.json
+          # Install both triplets needed for device (arm64) and emulator/appetize (x64)
           ./vcpkg install --triplet arm64-android --x-manifest-root=..
+          ./vcpkg install --triplet x64-android --x-manifest-root=..
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build with Gradle
+      - name: Run Integration Tests
+        uses: reactive-circus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: ./gradlew :app:connectedDebugAndroidTest
+
+      - name: Build Release APK
         run: |
-          ./gradlew assembleDebug \
+          ./gradlew assembleRelease \
             -Pandroid.builder.sdkDownload=true \
-            -Pandroid.native.buildOutput=verbose \
-            "-Pandroid.externalNativeBuild.cmake.arguments=-DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/common/src/main/cpp/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=arm64-android"
+            -Pandroid.native.buildOutput=verbose
 
       - name: Upload to Appetize
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         env:
           APPETIZE_API_TOKEN: ${{ secrets.APPETIZE_API_TOKEN }}
           APPETIZE_PUBLIC_KEY: ${{ secrets.APPETIZE_PUBLIC_KEY }}
         run: |
-          # Find the debug APK
-          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          # Find the release APK
+          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
           
           if [ -z "$APK_PATH" ]; then
-            echo "Error: APK not found"
+            echo "Error: Release APK not found"
             exit 1
           fi
           
-          echo "Found APK at $APK_PATH"
+          echo "Found Release APK at $APK_PATH"
           
           if [ -z "$APPETIZE_PUBLIC_KEY" ]; then
             echo "No APPETIZE_PUBLIC_KEY found. Creating a new app on Appetize..."
