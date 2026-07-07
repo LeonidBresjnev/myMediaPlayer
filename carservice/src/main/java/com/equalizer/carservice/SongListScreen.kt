@@ -13,6 +13,7 @@ import androidx.car.app.model.Row
 import androidx.car.app.model.Template
 import androidx.core.graphics.drawable.IconCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
 import com.google.common.util.concurrent.MoreExecutors
 
@@ -45,6 +46,9 @@ class SongListScreen(
                     }
                 } catch (e: Exception) {
                     isLoading = false
+                    e.message?.let {
+                        Log.d("Car: SongList Screen", it)
+                    }
                     invalidate()
                 }
             }, MoreExecutors.directExecutor())
@@ -55,29 +59,72 @@ class SongListScreen(
         }
     }
 
-    private fun createCarIcon(metadata: androidx.media3.common.MediaMetadata): CarIcon {
+    private fun createCarIcon(metadata: MediaMetadata): CarIcon {
         metadata.artworkUri?.let { uri ->
             val uriString = uri.toString()
-            val finalUri = if (uriString.startsWith("content://${com.equalizer.common.MediaThumbnailProvider.AUTHORITY}")) {
+            val finalUri = if (uriString.startsWith("content://${com.equalizer.common.MediaThumbnailProvider.getAuthority(carContext)}")) {
                 uri
             } else {
-                com.equalizer.common.MediaThumbnailProvider.CONTENT_URI.buildUpon()
-                    .appendQueryParameter("path", uriString)
-                    .build()
+                com.equalizer.common.MediaThumbnailProvider.getArtworkUri(carContext, uriString)
             }
             return CarIcon.Builder(IconCompat.createWithContentUri(finalUri)).build()
         }
+        
+        // Use Media3 built-in icon for songs
         return CarIcon.Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_artist)).build()
     }
 
     override fun onGetTemplate(): Template {
+        // Ensure this screen is invalidated when playback state changes
+        playControl.setInvalidate0 {
+            invalidate()
+        }
+
+        val isCurrentlyPlaying = playControl.isPlaying == PlayControl.Status.PLAYING
+        
+        val playAllAction = Action.Builder()
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(
+                carContext, 
+                if (isCurrentlyPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+            )).build())
+            .setOnClickListener {
+                if (playControl.mediaControllerFuture.isDone) {
+                    val controller = playControl.controller
+                    if (isCurrentlyPlaying) {
+                        controller.pause()
+                    } else {
+                        if (mediaItems.isNotEmpty()) {
+                            // Only replace media items if we are not already playing this context
+                            // (We'll simplify for now and reload to ensure the list matches)
+                            controller.setMediaItems(mediaItems, 0, 0L)
+                            controller.prepare()
+                            controller.play()
+                        } else {
+                            controller.play()
+                        }
+                    }
+                    invalidate()
+                }
+            }
+            .build()
+
         val builder = ListTemplate.Builder()
-        builder.setHeader(
-            Header.Builder()
-                .setTitle(albumTitle)
-                .setStartHeaderAction(Action.BACK)
-                .build()
-        )
+        
+        if (carContext.carAppApiLevel >= 5) {
+            builder.setHeader(
+                Header.Builder()
+                    .setTitle(albumTitle)
+                    .setStartHeaderAction(Action.BACK)
+                    .addEndHeaderAction(playAllAction)
+                    .build()
+            )
+        } else {
+            // Legacy way for API < 5
+            try {
+                builder.setTitle(albumTitle)
+                builder.setHeaderAction(Action.BACK)
+            } catch (_: Exception) {}
+        }
 
         if (isLoading) return builder.setLoading(true).build()
 
@@ -90,13 +137,14 @@ class SongListScreen(
                     .addText(item.mediaMetadata.artist ?: "")
                     .setImage(createCarIcon(item.mediaMetadata), Row.IMAGE_TYPE_SMALL)
                     .setOnClickListener {
-                        // Tapping a song now opens the Details screen
                         screenManager.push(SongDetailScreen(carContext, playControl, item))
                     }
                     .build()
             )
         }
 
-        return builder.setSingleList(listBuilder.build()).build()
+        return builder
+            .setSingleList(listBuilder.build())
+            .build()
     }
 }

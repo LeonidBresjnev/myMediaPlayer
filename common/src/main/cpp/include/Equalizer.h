@@ -19,11 +19,15 @@ namespace equalizer {
         void stop();
         void play(const std::string&, int32_t deviceId = 0);
         bool isPlaying() const;
+        double getDuration() const;
+        double getCurrentPosition() const;
+        void seekTo(double positionSeconds);
         void setVolumenLow(float , int);
 
 
     private:
         bool _isPlaying = false;
+        std::string _currentFileName;
         std::shared_ptr<Oscillator> _oscillator;
         std::shared_ptr<FilterSource> _filterSource;
         //std::shared_ptr<FilePlayer> _filePlayer;

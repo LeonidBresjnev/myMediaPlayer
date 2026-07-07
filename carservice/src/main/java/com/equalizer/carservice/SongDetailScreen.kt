@@ -3,7 +3,6 @@ package com.equalizer.carservice
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
-import androidx.car.app.model.CarColor
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.Header
 import androidx.car.app.model.Pane
@@ -11,6 +10,7 @@ import androidx.car.app.model.PaneTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.Template
 import androidx.core.graphics.drawable.IconCompat
+import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 
@@ -21,14 +21,20 @@ class SongDetailScreen(
     private val mediaItem: MediaItem
 ) : Screen(carContext) {
 
+    init {
+        // Listen for playback changes to refresh the Play/Pause button state
+        playControl.setInvalidate0 {
+            invalidate()
+        }
+    }
+
+
     private fun createCarIcon(uriString: String?): CarIcon {
         if (uriString != null) {
-            val finalUri = if (uriString.startsWith("content://${com.equalizer.common.MediaThumbnailProvider.AUTHORITY}")) {
-                android.net.Uri.parse(uriString)
+            val finalUri = if (uriString.startsWith("content://${com.equalizer.common.MediaThumbnailProvider.getAuthority(carContext)}")) {
+                uriString.toUri()
             } else {
-                com.equalizer.common.MediaThumbnailProvider.CONTENT_URI.buildUpon()
-                    .appendQueryParameter("path", uriString)
-                    .build()
+                com.equalizer.common.MediaThumbnailProvider.getArtworkUri(carContext, uriString)
             }
             return CarIcon.Builder(IconCompat.createWithContentUri(finalUri)).build()
         }
@@ -37,6 +43,7 @@ class SongDetailScreen(
 
     override fun onGetTemplate(): Template {
         val metadata = mediaItem.mediaMetadata
+        val isPlaying = playControl.isPlaying == PlayControl.Status.PLAYING
         
         val paneBuilder = Pane.Builder()
         
@@ -44,38 +51,62 @@ class SongDetailScreen(
         val infoRow = Row.Builder()
             .setTitle(metadata.title ?: "Unknown Title")
             .addText(metadata.artist ?: "Unknown Artist")
-            .setImage(createCarIcon(metadata.artworkUri?.toString()), Row.IMAGE_TYPE_SMALL)
+           /* .setImage(createCarIcon(metadata.artworkUri?.toString()), Row.IMAGE_TYPE_LARGE)*/
             .build()
         
-        paneBuilder.addRow(infoRow)
+        paneBuilder
+            .setImage(createCarIcon(metadata.artworkUri?.toString()))
+            .addRow(infoRow)
         
         // Technical Info if available
         metadata.totalDiscCount?.let { 
-            paneBuilder.addRow(Row.Builder().setTitle("Sample Rate").addText("${it} Hz").build())
+            paneBuilder.addRow(Row.Builder().setTitle("Sample Rate").addText("$it Hz").build())
         }
         metadata.releaseMonth?.let {
-            paneBuilder.addRow(Row.Builder().setTitle("Channels").addText("${it}").build())
+            paneBuilder.addRow(Row.Builder().setTitle("Channels").addText("$it").build())
         }
 
-        // Primary Play Action
-        val playAction = Action.Builder()
-            .setTitle("PLAY")
-            .setBackgroundColor(CarColor.BLUE)
-            .setOnClickListener {
-                playControl.playMedia(mediaItem)
-                screenManager.push(ModernPlaybackScreen(carContext, playControl))
-            }
-            .build()
+        // Integrated Toggle Action
+        val playPauseAction = if (isPlaying) {
+            Action.Builder()
+                .setIcon(CarIcon
+                    .Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_pause))
+                    .build())
+                .setOnClickListener {
+                    if (playControl.mediaControllerFuture.isDone) {
+                        playControl.controller.pause()
+                    }
+                }
+                .build()
+        } else {
+            Action.Builder()
+                .setIcon(CarIcon
+                    .Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_circular_play))
+                    .build())
+                .setOnClickListener {
+                    playControl.playMedia(mediaItem)
+                }
+                .build()
+        }
 
-        paneBuilder.addAction(playAction)
+        paneBuilder.addAction(playPauseAction)
 
-        return PaneTemplate.Builder(paneBuilder.build())
-            .setHeader(
+        val builder = PaneTemplate.Builder(paneBuilder.build())
+        
+        if (carContext.carAppApiLevel >= 5) {
+            builder.setHeader(
                 Header.Builder()
-                    .setTitle("Song Details")
+                    .setTitle("Playback Control")
                     .setStartHeaderAction(Action.BACK)
                     .build()
             )
-            .build()
+        } else {
+            try {
+                builder.setTitle("Playback Control")
+                builder.setHeaderAction(Action.BACK)
+            } catch (_: Exception) {}
+        }
+
+        return builder.build()
     }
 }

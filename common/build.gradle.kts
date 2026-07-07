@@ -99,6 +99,13 @@ android {
             version = "3.22.1"
         }
     }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/INDEX.LIST"
+        }
+    }
 }
 
 
@@ -110,7 +117,7 @@ dependencies {
   //  implementation(libs.androidx.media3.common)
 
     implementation(libs.androidx.media3.session)
-    implementation(libs.androidx.media3.exoplayer)
+    //implementation(libs.androidx.media3.exoplayer)
     implementation(libs.oboe)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
@@ -121,7 +128,9 @@ dependencies {
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
    // implementation(libs.material)
+    implementation(libs.slf4j.android)
     testImplementation(libs.junit)
+    testImplementation(libs.mockk)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }

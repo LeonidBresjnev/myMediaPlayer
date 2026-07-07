@@ -6,13 +6,14 @@
         <profileable android:shell="true" />
         <meta-data
             android:name="androidx.car.app.minCarApiLevel"
-            android:value="1"/>
+            android:value="8"/>
 
         <service
             android:name=".ModernCarService"
             android:exported="true">
             <intent-filter>
                 <action android:name="androidx.car.app.CarAppService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
                 <category android:name="androidx.car.app.category.MEDIA"/>
             </intent-filter>
         </service>

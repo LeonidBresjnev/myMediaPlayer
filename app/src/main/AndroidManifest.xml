@@ -26,6 +26,9 @@
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
+        <meta-data
+            android:name="com.google.android.gms.car.notification.SmallIcon"
+            android:resource="@mipmap/lever" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -41,13 +44,24 @@
         <service
             android:name="com.equalizer.common.MyMediaService"
             android:exported="true"
+            android:label="@string/app_name"
+            android:icon="@mipmap/lever"
             tools:node="merge">
             <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
                 <action android:name="android.media.browse.MediaBrowserService" />
                 <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
         </service>
+
+        <provider
+            android:name="com.equalizer.common.MediaThumbnailProvider"
+            android:authorities="${applicationId}.thumbnail"
+            android:exported="true" />
 
     </application>
 

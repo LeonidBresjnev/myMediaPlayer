@@ -21,11 +21,22 @@ namespace equalizer {
 
 
     void Equalizer::play(const std::string& fileName, int32_t deviceId) {
+        bool isSameFile = (fileName == _currentFileName);
 
-        const auto loadresult = _oscillator->load(fileName);
-        if (!loadresult) {
-            LOGD("Could not load file.");
-            return;
+        // 1. Explicitly stop and close the current Oboe stream before doing anything else.
+        // This terminates the audio callback thread and ensures no one is reading from the Oscillator.
+        _audioPlayer->stop();
+        _isPlaying = false;
+
+        // 2. Only load if it's a different file. If it's the same, we resume from currentposition.
+        if (!isSameFile) {
+            const auto loadresult = _oscillator->load(fileName);
+            if (!loadresult) {
+                LOGD("Could not load file.");
+                _currentFileName = "";
+                return;
+            }
+            _currentFileName = fileName;
         }
 
         const int32_t samplingRate = _oscillator->getSampleRate();
@@ -45,6 +56,32 @@ namespace equalizer {
     bool Equalizer::isPlaying() const {
         LOGD("isPlaying() called");
         return this->_isPlaying;
+    }
+
+    double Equalizer::getDuration() const {
+        if (_oscillator) {
+            const int32_t samplingRate = _oscillator->getSampleRate();
+            if (samplingRate > 0) {
+                return (double)_oscillator->getLengthInSamples() / samplingRate;
+            }
+        }
+        return 0.0;
+    }
+
+    double Equalizer::getCurrentPosition() const {
+        if (_oscillator) {
+            const int32_t samplingRate = _oscillator->getSampleRate();
+            if (samplingRate > 0) {
+                return (double)_oscillator->getCurrentPositionInSamples() / samplingRate;
+            }
+        }
+        return 0.0;
+    }
+
+    void Equalizer::seekTo(double positionSeconds) {
+        if (_oscillator) {
+            _oscillator->seekTo(positionSeconds);
+        }
     }
 
     void Equalizer::setVolumenLow(float volumeInDb, int freqInterval) {

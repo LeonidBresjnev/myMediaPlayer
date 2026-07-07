@@ -9,6 +9,7 @@
 
 #include <fstream>
 #include <juce_audio_formats/juce_audio_formats.h>
+#include <mutex>
 
 namespace equalizer {
 
@@ -22,8 +23,11 @@ namespace equalizer {
 
         int32_t getSampleRate() const;
         uint16_t getChannelCount() const;
+        int64_t getLengthInSamples() const;
+        int64_t getCurrentPositionInSamples() const;
 
         bool load(const std::string& );
+        void seekTo(double positionSeconds);
        // std::shared_ptr<std::ifstream> pmyfile;
 
     private:
@@ -35,6 +39,7 @@ namespace equalizer {
 
         juce::AudioFormatManager formatManager;
         std::unique_ptr<juce::AudioFormatReader> reader;
+        mutable std::mutex _readerMutex;
         int numSamplesToRead;
         juce::AudioBuffer<float> floatBuffer;
         juce::AudioBuffer<int> intBuffer;

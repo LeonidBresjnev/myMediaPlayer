@@ -1,5 +1,6 @@
 package com.equalizer.common
 
+import android.content.Context
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.database.Cursor
@@ -7,6 +8,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import android.util.LruCache
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -23,9 +25,42 @@ class MediaThumbnailProvider : ContentProvider() {
 
     companion object {
         private const val TAG = "MediaThumbnailProvider"
-        const val AUTHORITY = "com.equalizer.mymediaplayer.thumbnail"
-        val CONTENT_URI: Uri = "content://$AUTHORITY".toUri()
         
+        @JvmStatic
+        fun getAuthority(context: Context): String {
+            return try {
+                val packageInfo = context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_PROVIDERS)
+                packageInfo.providers?.find { it.name == MediaThumbnailProvider::class.java.name }?.authority 
+                    ?: "${context.packageName}.thumbnail"
+            } catch (e: Exception) {
+                e.message?.let {Log.d("Thumbnail",it)}
+                "${context.packageName}.thumbnail"
+            }
+        }
+
+        @JvmStatic
+        fun getArtworkUri(context: Context, path: String): Uri {
+            return Uri.Builder()
+                .scheme("content")
+                .authority(getAuthority(context))
+                .appendPath("thumb.jpg") // Fake extension for better compatibility with some hosts
+                .appendQueryParameter("path", path)
+                .build()
+        }
+
+        @JvmField
+        var AUTHORITY = "com.equalizer.mymediaplayer.thumbnail"
+        
+        @JvmField
+        var CONTENT_URI: Uri = "content://$AUTHORITY".toUri()
+        
+        @JvmStatic
+        fun init(context: Context) {
+            AUTHORITY = getAuthority(context)
+            CONTENT_URI = "content://$AUTHORITY".toUri()
+            Log.d(TAG, "Initialized with authority: $AUTHORITY")
+        }
+
         private val client = OkHttpClient.Builder()
             .followRedirects(true)
             .followSslRedirects(true)
@@ -33,12 +68,17 @@ class MediaThumbnailProvider : ContentProvider() {
             .readTimeout(20, TimeUnit.SECONDS)
             .build()
 
-        private val executor = Executors.newSingleThreadExecutor()
+        private val executor = Executors.newFixedThreadPool(4)
         private val rateLimitLock = ReentrantLock()
         private var lastRequestTime = 0L
+
+        private val fileCache = LruCache<String, File>(50)
     }
 
-    override fun onCreate(): Boolean = true
+    override fun onCreate(): Boolean {
+        context?.let { init(it) }
+        return true
+    }
 
     override fun query(
         uri: Uri,
@@ -48,7 +88,9 @@ class MediaThumbnailProvider : ContentProvider() {
         sortOrder: String?
     ): Cursor? = null
 
-    override fun getType(uri: Uri): String? = "image/png"
+    override fun getType(uri: Uri): String {
+        return if (uri.path?.endsWith(".png", true) == true) "image/png" else "image/jpeg"
+    }
 
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
 
@@ -62,15 +104,20 @@ class MediaThumbnailProvider : ContentProvider() {
     ): Int = 0
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? {
-        val pathParam = uri.getQueryParameter("path") ?: return openFallbackIcon()
+        val pathParam = uri.getQueryParameter("path") ?: return null
         
         val path = try {
             URLDecoder.decode(pathParam, "UTF-8")
         } catch (e: Exception) {
+            e.message?.let { Log.e(TAG, "URL decoding failed: $it") }
             pathParam
         }
 
-        Log.d(TAG, "openFile: requested path: $path")
+        fileCache.get(path)?.let {
+            if (it.exists() && it.length() > 0) {
+                return ParcelFileDescriptor.open(it, ParcelFileDescriptor.MODE_READ_ONLY)
+            }
+        }
         
         val file = if (path.startsWith("http")) {
             val cleanUrl = path.trim()
@@ -90,33 +137,30 @@ class MediaThumbnailProvider : ContentProvider() {
                 }
             }
         } else {
-            extractEmbeddedArt(path)
+            val fileName = "local_thumb_${path.hashCode()}.jpg"
+            val cacheDir = context?.cacheDir
+            if (cacheDir == null) {
+                Log.e(TAG, "openFile: cacheDir is null")
+                return null
+            }
+            val cacheFile = File(cacheDir, fileName)
+            if (cacheFile.exists() && cacheFile.length() > 0) {
+                cacheFile
+            } else {
+                extractEmbeddedArt(path, cacheFile)
+            }
         }
 
         if (file == null || !file.exists()) {
-            return openFallbackIcon()
+            return null
         }
+
+        fileCache.put(path, file)
 
         return try {
             ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
         } catch (e: Exception) {
             Log.e(TAG, "openFile: Error opening PFD: ${e.message}")
-            openFallbackIcon()
-        }
-    }
-
-    private fun openFallbackIcon(): ParcelFileDescriptor? {
-        return try {
-            val fallbackFile = File(context?.cacheDir, "fallback_icon_v3.png")
-            if (!fallbackFile.exists() || fallbackFile.length() == 0L) {
-                val transparentPng = byteArrayOf(
-                    -119, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21, -60, -119, 0, 0, 0, 11, 73, 68, 65, 84, 8, -41, 99, 96, 0, 2, 0, 0, 5, 0, 1, -21, 38, -80, 50, 0, 0, 0, 0, 73, 69, 78, 68, -82, 66, 96, -126
-                )
-                FileOutputStream(fallbackFile).use { it.write(transparentPng) }
-            }
-            ParcelFileDescriptor.open(fallbackFile, ParcelFileDescriptor.MODE_READ_ONLY)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error providing fallback icon", e)
             null
         }
     }
@@ -144,7 +188,7 @@ class MediaThumbnailProvider : ContentProvider() {
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return null
-                val body = response.body ?: return null
+                val body = response.body
                 val tempFile = File.createTempFile("download_", ".jpg", context?.cacheDir)
                 body.byteStream().use { input ->
                     FileOutputStream(tempFile).use { input.copyTo(it) }
@@ -158,17 +202,15 @@ class MediaThumbnailProvider : ContentProvider() {
         }
     }
 
-    private fun extractEmbeddedArt(filePath: String): File? {
+    private fun extractEmbeddedArt(filePath: String, cacheFile: File): File? {
         val file = File(filePath)
         if (!file.exists()) return null
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(file.absolutePath)
             val artwork = retriever.embeddedPicture ?: return null
-            val tempFile = File.createTempFile("thumb_", ".jpg", context?.cacheDir)
-            // DON'T delete on exit, as the car host might need it later
-            FileOutputStream(tempFile).use { it.write(artwork) }
-            return tempFile
+            FileOutputStream(cacheFile).use { it.write(artwork) }
+            return cacheFile
         } catch (e: Exception) {
             Log.e(TAG, "extractEmbeddedArt error: ${e.message}")
             return null

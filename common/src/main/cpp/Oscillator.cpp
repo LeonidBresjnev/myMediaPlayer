@@ -17,8 +17,8 @@ namespace equalizer {
 
     void Oscillator::onPlaybackStopped() {
         LOGD("onPlaybackStopped");
-
-        reader.reset();
+        // We no longer reset the reader here to allow resuming from the same position.
+        // The reader will be replaced in load() when a new file is selected.
     }
 
     int32_t Oscillator::getSampleRate() const {
@@ -29,7 +29,32 @@ namespace equalizer {
         return this->numChannels;
     }
 
+    int64_t Oscillator::getLengthInSamples() const {
+        std::lock_guard<std::mutex> lock(_readerMutex);
+        if (reader != nullptr) {
+            return reader->lengthInSamples;
+        }
+        return 0;
+    }
+
+    int64_t Oscillator::getCurrentPositionInSamples() const {
+        std::lock_guard<std::mutex> lock(_readerMutex);
+        return currentposition;
+    }
+
     float Oscillator::getSample() {
+        std::lock_guard<std::mutex> lock(_readerMutex);
+
+        // Defensive check: if reader is being swapped or is null, return silence
+        if (reader == nullptr) {
+            return 0.0f;
+        }
+
+        // End of file detection
+        if (currentposition >= reader->lengthInSamples) {
+            return 0.0f;
+        }
+
         if (bufferpointer >= 1024) {
             //refill buffer;
             reader->read(&floatBuffer,
@@ -59,24 +84,48 @@ namespace equalizer {
             return false;
         }
 
-        reader = std::unique_ptr<juce::AudioFormatReader>(formatManager.createReaderFor(mp3File));
-        if (reader == nullptr) {
+        auto newReader = std::unique_ptr<juce::AudioFormatReader>(formatManager.createReaderFor(mp3File));
+        if (newReader == nullptr) {
             LOGD("Failed to create reader for: %s", fileName.c_str());
             return false;
         }
 
-        LOGD("JUCE samplerate %f",reader->sampleRate);
-        LOGD("JUCE channels %d",reader->numChannels);
-        LOGD("JUCE usesFloatingPointData %d",(int)reader->usesFloatingPointData);
-        numChannels=reader->numChannels;
-        sampleRate = static_cast<int32_t>(reader->sampleRate);
+        LOGD("JUCE samplerate %f",newReader->sampleRate);
+        LOGD("JUCE channels %d",newReader->numChannels);
+        LOGD("JUCE usesFloatingPointData %d",(int)newReader->usesFloatingPointData);
 
-        // Create a buffer for audio samples
-        floatBuffer=juce::AudioBuffer<float>(numChannels,  1024);
-        bufferpointer=1024;
-        currentposition=0;
-        currentchannel=0;
+        {
+            std::lock_guard<std::mutex> lock(_readerMutex);
+            reader = std::move(newReader);
+            numChannels=reader->numChannels;
+            sampleRate = static_cast<int32_t>(reader->sampleRate);
+
+            // Create a buffer for audio samples
+            floatBuffer=juce::AudioBuffer<float>(numChannels,  1024);
+            bufferpointer=1024;
+            currentposition=0;
+            currentchannel=0;
+        }
         return true;
+    }
+
+    void Oscillator::seekTo(double positionSeconds) {
+        std::lock_guard<std::mutex> lock(_readerMutex);
+        if (reader == nullptr) return;
+
+        // Convert seconds to sample position
+        auto targetSample = static_cast<int64_t>(positionSeconds * sampleRate);
+
+        // Clamp to valid range
+        if (targetSample < 0) targetSample = 0;
+        if (targetSample > reader->lengthInSamples) targetSample = reader->lengthInSamples;
+
+        // Atomic-ish update of position
+        currentposition = targetSample;
+
+        // Reset buffer pointers to force an immediate refill from the new position
+        bufferpointer = 1024;
+        currentchannel = 0;
     }
 
 }

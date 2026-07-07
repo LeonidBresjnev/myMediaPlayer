@@ -9,19 +9,22 @@ junitVersion = "1.3.0"
 espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
-composeBom = "2026.06.00"
+composeBom = "2026.06.01"
 materialIconsExtendedVersion = "1.7.8"
 media3SessionVersion = "1.10.1"
 appcompat = "1.7.1"
 mp3agic = "0.9.1"
-runtimeLivedata = "1.11.3"
+runtimeLivedata = "1.11.4"
 oboe = "1.10.0"
 app = "1.7.0"
 lifecycleViewmodelAndroid = "2.11.0"
 media3Exoplayer = "1.10.1"
 coil = "2.7.0"
 kotlinxSerializationJson = "1.11.0"
-ktor = "3.5.0"
+ktor = "3.5.1"
+slf4jAndroid = "1.7.36"
+mockk = "1.14.11"
+
 
 [libraries]
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanistPermissions" }
@@ -51,6 +54,7 @@ androidx-material3 = { group = "androidx.compose.material3", name = "material3" 
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 mp3agic = { module = "com.mpatric:mp3agic", version.ref = "mp3agic" }
 oboe = { module = "com.google.oboe:oboe", version.ref = "oboe" }
+slf4j-android = { module = "org.slf4j:slf4j-android", version.ref = "slf4jAndroid" }
 
 androidx-app = { module = "androidx.car.app:app", version.ref = "app" }
 
@@ -61,6 +65,7 @@ ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
 ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 
 
 

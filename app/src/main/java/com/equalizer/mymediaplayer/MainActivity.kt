@@ -1,6 +1,5 @@
 package com.equalizer.mymediaplayer
 
-import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -12,17 +11,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
-import androidx.compose.material.icons.automirrored.outlined.List
+import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.filled.DirectionsCarFilled
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -47,11 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.ui.PlayerControlView
 import com.equalizer.mymediaplayer.ui.theme.MyMediaPlayerTheme
 
 data class TabRowItem(
@@ -78,27 +74,31 @@ class MainActivity : ComponentActivity() {
 
             val tabRowItems = listOf(
                 TabRowItem(
-                    title = "Media browser",
+                    title = "Library",
                     screen = {
-                        MediaBrowserScreen(modifier = Modifier,
+                        MediaBrowserScreen(
+                            modifier = Modifier,
                             audioModel = audioModel,
-                            onSelect = { file ->
-                                file?.let {
-                                    val item = MediaItem.Builder()
-                                        .setMediaId(it.absolutePath)
-                                        .setUri(Uri.fromFile(it))
-                                        .setMediaMetadata(
-                                            MediaMetadata.Builder()
-                                                .setTitle(it.name)
-                                                .build()
-                                        ).build()
-                                    // LOAD AND PREPARE ONLY - DO NOT AUTO-PLAY
-                                    audioModel.loadMedia(item)
-                                }
+                            onSelect = { playlist, index ->
+                                audioModel.loadMedia(playlist, index)
                             })
                     },
-                    selectedIcon = Icons.AutoMirrored.Filled.List,
-                    unselectedIcon = Icons.AutoMirrored.Outlined.List
+                    selectedIcon = Icons.AutoMirrored.Filled.QueueMusic,
+                    unselectedIcon = Icons.AutoMirrored.Outlined.QueueMusic
+                ),
+                TabRowItem(
+                    title = "Playlists",
+                    screen = {
+                        PlaylistsScreen(
+                            audioModel = audioModel,
+                            onPlaylistClick = { playlistId ->
+                                audioModel.browse(playlistId)
+                                selectedTabIndex = 0
+                            }
+                        )
+                    },
+                    selectedIcon = Icons.AutoMirrored.Filled.PlaylistPlay,
+                    unselectedIcon = Icons.AutoMirrored.Outlined.PlaylistPlay
                 ),
                 TabRowItem(
                     title = "Equalizer",
@@ -108,8 +108,8 @@ class MainActivity : ComponentActivity() {
                             equalizerViewModel = audioModel
                         )
                     },
-                    selectedIcon = Icons.AutoMirrored.Filled.QueueMusic,
-                    unselectedIcon = Icons.AutoMirrored.Outlined.QueueMusic
+                    selectedIcon = Icons.Default.Tune,
+                    unselectedIcon = Icons.Outlined.Tune
                 )
             )
             
@@ -152,61 +152,72 @@ class MainActivity : ComponentActivity() {
                                     navigationIconContentColor = Color.White
                                 )
                             )
-                        },
+                        }/*,
                         bottomBar = {
                             PlayControl(
                                 modifier = Modifier.fillMaxWidth(),
                                 audioModel = audioModel
                             )
-                        }
+                        }*/
                     ) { innerPadding ->
                         Column(modifier = Modifier
                             .fillMaxSize()
                             .padding(innerPadding)
                             .background(MaterialTheme.colorScheme.surface)
                         ) {
-                            SecondaryTabRow(
-                                selectedTabIndex = selectedTabIndex,
-                                containerColor = TabRowDefaults.primaryContainerColor,
-                                contentColor = TabRowDefaults.primaryContentColor,
-                                indicator = {
-                                    TabRowDefaults.SecondaryIndicator(
-                                        Modifier.tabIndicatorOffset(selectedTabIndex)
-                                    )
-                                },
-                                divider = {} 
-                            ) {
-                                tabRowItems.forEachIndexed { index, item ->
-                                    Tab(
-                                        selected = selectedTabIndex == index,
-                                        selectedContentColor = MaterialTheme.colorScheme.primary,
-                                        unselectedContentColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                        onClick = { selectedTabIndex = index },
-                                        icon = {
-                                            Icon(
-                                                imageVector = if (index == selectedTabIndex) item.selectedIcon else item.unselectedIcon,
-                                                contentDescription = item.title
-                                            )
-                                        },
-                                        text = {
-                                            Text(
-                                                text = item.title,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                        }
-                                    )
-                                }
-                            }
+                            // ARTWORK PLAYER VIEW (Top 1/3)
+                            PlayerDisplay(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                audioModel = audioModel
+                            )
 
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                HorizontalPager(
-                                    state = pagerState,
-                                    modifier = Modifier.fillMaxSize(),
-                                    verticalAlignment = Alignment.Top,
-                                    userScrollEnabled = true
+                            // TABS & CONTENT (Bottom 2/3)
+                            Column(modifier = Modifier.weight(2f)) {
+                                SecondaryTabRow(
+                                    selectedTabIndex = selectedTabIndex,
+                                    containerColor = TabRowDefaults.primaryContainerColor,
+                                    contentColor = TabRowDefaults.primaryContentColor,
+                                    indicator = {
+                                        TabRowDefaults.SecondaryIndicator(
+                                            Modifier.tabIndicatorOffset(selectedTabIndex)
+                                        )
+                                    },
+                                    divider = {} 
                                 ) {
-                                    tabRowItems[it].screen()
+                                    tabRowItems.forEachIndexed { index, item ->
+                                        Tab(
+                                            selected = selectedTabIndex == index,
+                                            selectedContentColor = MaterialTheme.colorScheme.primary,
+                                            unselectedContentColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                            onClick = { selectedTabIndex = index },
+                                            icon = {
+                                                ImageVectorIcon(
+                                                    imageVector = if (index == selectedTabIndex) item.selectedIcon else item.unselectedIcon,
+                                                    contentDescription = item.title
+                                                )
+                                            },
+                                            text = {
+                                                Text(
+                                                    text = item.title,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    HorizontalPager(
+                                        state = pagerState,
+                                        modifier = Modifier.fillMaxSize(),
+                                        verticalAlignment = Alignment.Top,
+                                        userScrollEnabled = true
+                                    ) {
+                                        tabRowItems[it].screen()
+                                    }
                                 }
                             }
                         }
@@ -217,42 +228,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@UnstableApi
 @Composable
-private fun PlayControl(
-    modifier: Modifier,
-    audioModel: AudioModel
-) {
-    val controller by audioModel.mediaController.observeAsState()
-
-    androidx.compose.material3.Surface(
-        modifier = modifier
-            .height(100.dp),
-        tonalElevation = 4.dp,
-        color = MaterialTheme.colorScheme.surface
-    ) {
-        if (controller != null) {
-            AndroidView(
-                factory = { context ->
-                    PlayerControlView(context).apply {
-                        this.player = controller
-                        this.showTimeoutMs = 0 
-                        this.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                    }
-                },
-                update = { view ->
-                    view.player = controller
-                },
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = "Connecting to Player...",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
+fun ImageVectorIcon(imageVector: ImageVector, contentDescription: String?) {
+    Icon(imageVector = imageVector, contentDescription = contentDescription)
 }
