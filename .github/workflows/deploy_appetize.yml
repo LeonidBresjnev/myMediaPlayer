@@ -69,6 +69,13 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Clean SDK Cache
+        run: |
+          # The "ZipFile unknown archive" error is often caused by a corrupted emulator download.
+          # Deleting the current emulator folder forces a clean, valid download.
+          rm -rf $ANDROID_SDK_ROOT/emulator
+          rm -rf $ANDROID_SDK_ROOT/system-images/android-33/google_atd
+
       - name: Run Integration Tests
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
