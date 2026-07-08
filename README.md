@@ -1,4 +1,4 @@
-# My Media Player 
+# My Media Player
 
 [![Build, Test and Deploy](https://github.com/LeonidBresjnev/myMediaPlayer/actions/workflows/deploy_appetize.yml/badge.svg)](https://github.com/LeonidBresjnev/myMediaPlayer/actions/workflows/deploy_appetize.yml)
 
