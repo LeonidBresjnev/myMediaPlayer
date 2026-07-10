@@ -37,12 +37,30 @@ class MainTabScreen(
 
 
     init {
-        loadMediaItems("playlists_root")
+        checkPermissionsAndLoad()
         
         // Listen for real-time frequency changes from phone/engine
         playControl.setVolPerFreqSetter0 {
             Log.d("MainTabScreen", "Frequency update received: $it")
             invalidate()
+        }
+    }
+
+    private fun checkPermissionsAndLoad() {
+        val permissions = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            listOf(android.Manifest.permission.READ_MEDIA_AUDIO)
+        } else {
+            listOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+
+        carContext.requestPermissions(permissions) { granted, rejected ->
+            if (granted.containsAll(permissions)) {
+                loadMediaItems("playlists_root")
+            } else {
+                Log.e("MainTabScreen", "Permissions rejected: $rejected")
+                // Fallback: try loading anyway or show error
+                loadMediaItems("playlists_root")
+            }
         }
     }
 

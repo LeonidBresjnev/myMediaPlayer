@@ -4,10 +4,10 @@
     <selectionStates>
       <SelectionState runConfigName="app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2025-06-09T19:04:10.459148100Z">
+        <DropdownSelection timestamp="2026-07-08T20:06:02.331017100Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="PhysicalDevice" identifier="serial=PT19655JA1211500350" />
+              <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\simon\.android\avd\Honda_IVI-SYSTEM-12inch-LHD.avd" />
             </handle>
           </Target>
         </DropdownSelection>
@@ -52,6 +52,17 @@
           <Target type="DEFAULT_BOOT">
             <handle>
               <DeviceId pluginId="PhysicalDevice" identifier="serial=PT19655JA1211500350" />
+            </handle>
+          </Target>
+        </DropdownSelection>
+        <DialogSelection />
+      </SelectionState>
+      <SelectionState runConfigName="automotive">
+        <option name="selectionMode" value="DROPDOWN" />
+        <DropdownSelection timestamp="2026-07-08T20:06:13.172588900Z">
+          <Target type="DEFAULT_BOOT">
+            <handle>
+              <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\simon\.android\avd\Honda_IVI-SYSTEM-12inch-LHD.avd" />
             </handle>
           </Target>
         </DropdownSelection>

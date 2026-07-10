@@ -62,6 +62,21 @@ class SimpleMainScreen(
     private val playControl: PlayControl
 ) : Screen(carContext) {
 
+    init {
+        checkPermissions()
+    }
+
+    private fun checkPermissions() {
+        val permissions = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            listOf(android.Manifest.permission.READ_MEDIA_AUDIO)
+        } else {
+            listOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+        carContext.requestPermissions(permissions) { _, _ ->
+            invalidate()
+        }
+    }
+
     override fun onGetTemplate(): Template {
         val listBuilder = ItemList.Builder()
 

@@ -49,6 +49,52 @@ class MyMediaService : MediaLibraryService() {
 
     private val volPerFreq = MutableList(8) { 1.0f }
 
+    private fun getMusicLibraryRoot(): File {
+        val standardRoot = Environment.getExternalStorageDirectory()
+        val musicPaths = listOf(
+            File(standardRoot, "Music"),
+            File("/sdcard/Music"),
+            File("/storage/emulated/0/Music"),  // Explicit User 0
+            File("/storage/emulated/10/Music"), // Explicit User 10
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            File("/sdcard/Download"),
+            standardRoot // Last resort: root of SD card
+        )
+
+        Log.d("MyMediaService", "--- STARTING OMNI-SEARCH ---")
+        musicPaths.forEach { dir ->
+            try {
+                val exists = dir.exists()
+                val canRead = dir.canRead()
+                val list = if (exists && canRead) dir.listFiles() else null
+                val totalCount = list?.size ?: 0
+                val playableCount = list?.count { 
+                    it.isFile && (it.name.endsWith(".mp3", true) || 
+                                 it.name.endsWith(".wav", true) || 
+                                 it.name.endsWith(".m4a", true)) 
+                } ?: 0
+                
+                Log.d("MyMediaService", "SCAN: path=${dir.absolutePath} exists=$exists canRead=$canRead total=$totalCount playable=$playableCount")
+                if (playableCount > 0) {
+                    val sample = list?.firstOrNull { it.isFile }?.name
+                    Log.d("MyMediaService", "SCAN: FOUND MUSIC in ${dir.absolutePath}! (Sample: $sample)")
+                }
+            } catch (e: Exception) {
+                Log.w("MyMediaService", "SCAN: Error checking ${dir.absolutePath}: ${e.message}")
+            }
+        }
+
+        // Return the first path that actually has music files
+        val bestPath = musicPaths.firstOrNull { 
+            it.exists() && it.canRead() && (it.listFiles()?.any { f -> 
+                f.isFile && (f.name.endsWith(".mp3", true) || f.name.endsWith(".wav", true) || f.name.endsWith(".m4a", true)) 
+            } == true) 
+        } ?: File(standardRoot, "Music")
+
+        Log.d("MyMediaService", "SELECTED ROOT: ${bestPath.absolutePath}")
+        return bestPath
+    }
+
     private suspend fun createMediaItemFromFile(file: File): MediaItem? {
         if (!file.exists()) return null
 
@@ -332,24 +378,32 @@ class MyMediaService : MediaLibraryService() {
                             }
                         }
                         else -> {
-                            val musicDir = File(Environment.getExternalStorageDirectory(), "Music")
                             val parentDir = if (parentId == "music_library_root") {
-                                musicDir
+                                getMusicLibraryRoot()
                             } else {
                                 File(parentId)
                             }
+                            
+                            Log.d("MyMediaService", "onGetChildren: parentId=$parentId, parentDir=${parentDir.absolutePath}")
+                            Log.d("MyMediaService", "onGetChildren: exists=${parentDir.exists()}, isDir=${parentDir.isDirectory}, canRead=${parentDir.canRead()}")
 
                             if (!parentDir.exists() || !parentDir.isDirectory) {
+                                Log.e("MyMediaService", "onGetChildren: Parent directory does not exist or is not a directory: ${parentDir.absolutePath}")
                                 settable.set(LibraryResult.ofItemList(ImmutableList.of(), params))
                                 return@launch
                             }
 
-                            val filesList = parentDir.listFiles()?.sortedBy { it.name } ?: emptyList()
+                            val filesList = parentDir.listFiles()?.filter { !it.name.startsWith(".") }?.sortedBy { it.name } ?: emptyList()
+                            Log.d("MyMediaService", "onGetChildren: Found ${filesList.size} files in ${parentDir.absolutePath}")
 
                             val mediaItems = withContext(Dispatchers.IO) {
                                 filesList.map { file ->
                                     async {
-                                        createMediaItemFromFile(file)
+                                        val item = createMediaItemFromFile(file)
+                                        if (item == null) {
+                                            Log.w("MyMediaService", "onGetChildren: createMediaItemFromFile failed for ${file.absolutePath} (isFile=${file.isFile}, ext=${file.extension})")
+                                        }
+                                        item
                                     }
                                 }.awaitAll().filterNotNull()
                             }
