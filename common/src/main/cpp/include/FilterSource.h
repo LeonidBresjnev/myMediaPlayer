@@ -42,7 +42,7 @@ namespace equalizer {
         std::array<std::atomic<float>,8> amplitude= {1.f,1.f,1.f,1.f,1.f,1.f,1.f,1.f};
         static const int order=8;
         FilterElement lowpass[2][order/2];
-        FilterElement bandpass[6][2][order];
+        FilterElement bandpass[2][6][order];
         FilterElement highpass[2][order/2];
         int numChannels=0;
         int currentChannel=0;
