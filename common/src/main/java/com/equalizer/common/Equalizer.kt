@@ -70,7 +70,7 @@ class Equalizer(
     private external fun nativeGetCurrentPosition(synthesizerHandle: Long): Double
     private external fun nativeSeekTo(synthesizerHandle: Long, positionSeconds: Double)
 
-    private val volPerFreq = MutableList(8) { 1f }
+    private val volPerFreq = MutableList(16) { 1f }
 
     fun setVolOnFreq(volumeInDb: Float, freqInterval: Int) {
         synchronized(equalizerMutex) {
@@ -84,12 +84,12 @@ class Equalizer(
     fun setAllVolOnFreq(volumes: FloatArray) {
         synchronized(equalizerMutex) {
             createNativeHandleIfNotExists()
-            for (i in 0 until volumes.size.coerceAtMost(8)) {
+            for (i in 0 until volumes.size.coerceAtMost(16)) {
                 volPerFreq[i] = volumes[i]
                 nativeSetVolumenLow(equalizerHandle, volumes[i], i)
             }
         }
-        for (i in 0 until volumes.size.coerceAtMost(8)) {
+        for (i in 0 until volumes.size.coerceAtMost(16)) {
             listeners.sendEvent(EVENT_VIDEO_SIZE_CHANGED) { it.onVideoSizeChanged(VideoSize(i, 0, volumes[i])) }
         }
     }

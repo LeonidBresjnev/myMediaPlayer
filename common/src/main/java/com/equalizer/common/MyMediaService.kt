@@ -43,11 +43,13 @@ class MyMediaService : MediaLibraryService() {
 
     private val setVolOnFreq = SessionCommand("setVolOnFreq", Bundle())
     private val setAllVolOnFreq = SessionCommand("setAllVolOnFreq", Bundle())
+    private val setEqModeCmd = SessionCommand("setEqMode", Bundle())
     private val createPlaylistCmd = SessionCommand("createPlaylist", Bundle())
     private val addToPlaylistCmd = SessionCommand("addToPlaylist", Bundle())
     private val deletePlaylistCmd = SessionCommand("deletePlaylist", Bundle())
 
-    private val volPerFreq = MutableList(8) { 1.0f }
+    private val volPerFreq = MutableList(16) { 1.0f }
+    private var isAdvancedMode = false
 
     private fun getMusicLibraryRoot(): File {
         val standardRoot = Environment.getExternalStorageDirectory()
@@ -275,6 +277,7 @@ class MyMediaService : MediaLibraryService() {
                 val availableSessionCommands = connectionResult.availableSessionCommands.buildUpon()
                 availableSessionCommands.add(setVolOnFreq)
                 availableSessionCommands.add(setAllVolOnFreq)
+                availableSessionCommands.add(setEqModeCmd)
                 availableSessionCommands.add(createPlaylistCmd)
                 availableSessionCommands.add(addToPlaylistCmd)
                 availableSessionCommands.add(deletePlaylistCmd)
@@ -480,8 +483,8 @@ class MyMediaService : MediaLibraryService() {
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 } else if (customCommand.customAction == "setAllVolOnFreq") {
                     val volumes = args.getFloatArray("KEY_VOLUMES")
-                    if (volumes != null && volumes.size == 8) {
-                        for (i in 0 until 8) volPerFreq[i] = volumes[i]
+                    if (volumes != null && (volumes.size == 8 || volumes.size == 16)) {
+                        for (i in 0 until volumes.size) volPerFreq[i] = volumes[i]
                         val player = session.player
                         if (player is Equalizer) {
                             player.setAllVolOnFreq(volumes)
@@ -489,6 +492,10 @@ class MyMediaService : MediaLibraryService() {
                         pushEqualizerState(session)
                         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                     }
+                } else if (customCommand.customAction == "setEqMode") {
+                    isAdvancedMode = args.getBoolean("IS_ADVANCED")
+                    pushEqualizerState(session)
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 } else if (customCommand.customAction == "createPlaylist") {
                     val name = args.getString("NAME") ?: "New Playlist"
                     PlaylistManager.createPlaylist(applicationContext, name)
@@ -519,6 +526,7 @@ class MyMediaService : MediaLibraryService() {
     private fun pushEqualizerState(session: MediaSession) {
         val extras = Bundle().apply {
             putFloatArray("EQ_STATE", volPerFreq.toFloatArray())
+            putBoolean("IS_ADVANCED", isAdvancedMode)
         }
         session.sessionExtras = extras
     }

@@ -1,5 +1,6 @@
 package com.equalizer.carservice
 
+import android.os.Bundle
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.car.app.CarContext
@@ -20,6 +21,7 @@ import androidx.car.app.annotations.RequiresCarApi
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.SessionCommand
 import com.equalizer.common.MediaThumbnailProvider
 import com.google.common.util.concurrent.MoreExecutors
 import java.util.Locale
@@ -214,12 +216,36 @@ class MainTabScreen(
     private fun createEqualizerTemplate(): Template {
         val listBuilder = ItemList.Builder()
 
-        // Build frequency rows. Tapping opens detail screen with +/- buttons.
-        for (i in 0 until 8) {
+        // Mode Selector Row
+        listBuilder.addItem(
+            Row.Builder()
+                .setTitle("Equalizer Mode: ${if (playControl.isAdvancedMode) "Advanced" else "Basic"}")
+                .addText("Tap to switch to ${if (playControl.isAdvancedMode) "Basic" else "Advanced"} mode")
+                .setOnClickListener {
+                    val newMode = !playControl.isAdvancedMode
+                    playControl.isAdvancedMode = newMode
+                    
+                    val extras = Bundle().apply { putBoolean("IS_ADVANCED", newMode) }
+                    if (playControl.mediaControllerFuture.isDone) {
+                        playControl.controller.sendCustomCommand(SessionCommand("setEqMode", Bundle()), extras)
+                    }
+                    invalidate()
+                }
+                .build()
+        )
+
+        // Build frequency rows.
+        val maxBands = if (playControl.isAdvancedMode) 16 else 8
+        for (i in 0 until maxBands) {
             val vol = playControl.volPerFreq[i]
+            val channelLabel = if (i < 8) "Left" else "Right"
+            val bandName = playControl.frequencyLabels[i % 8]
+            
+            val title = if (playControl.isAdvancedMode) "$channelLabel: $bandName" else bandName
+
             listBuilder.addItem(
                 Row.Builder()
-                    .setTitle(playControl.frequencyLabels[i])
+                    .setTitle(title)
                     .addText("Volume: ${String.format(Locale.GERMAN, "%.1f", vol)}")
                     .setOnClickListener {
                         screenManager.push(BandDetailScreen(carContext, playControl, i))

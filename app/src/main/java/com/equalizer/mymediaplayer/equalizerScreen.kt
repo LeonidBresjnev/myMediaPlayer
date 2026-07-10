@@ -10,12 +10,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
@@ -32,8 +33,10 @@ import androidx.compose.ui.unit.sp
 fun ControlPanel(modifier: Modifier = Modifier,
                  equalizerViewModel: AudioModel) {
 
-    val volumenLow by equalizerViewModel.volumenLow.observeAsState(List(8) { 1.0f })
+    val volumenLow by equalizerViewModel.volumenLow.observeAsState(List(16) { 1.0f })
     val selectedPreset by equalizerViewModel.selectedPreset.observeAsState("Flat")
+    val isAdvancedMode by equalizerViewModel.isAdvancedMode.observeAsState(false)
+    var selectedChannelTab by remember { mutableIntStateOf(0) } // 0 for Left, 1 for Right
 
     val frequencyLabels = listOf(
         "Sub Bass", "Bass", "Low", "Low Mids", "High Mids", "High", "Upper", "Air"
@@ -56,18 +59,53 @@ fun ControlPanel(modifier: Modifier = Modifier,
                 fontWeight = FontWeight.Bold
             )
             
-            Button(
-                onClick = { equalizerViewModel.resetEqualizer() },
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Advanced",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+                Switch(
+                    checked = isAdvancedMode,
+                    onCheckedChange = { equalizerViewModel.setAdvancedMode(it) },
+                    modifier = Modifier.scale(0.8f)
+                )
                 Spacer(Modifier.width(8.dp))
-                Text("Reset")
+                Button(
+                    onClick = { equalizerViewModel.resetEqualizer() },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Reset")
+                }
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
+
+        // CHANNEL SELECTOR (Only in Advanced Mode)
+        if (isAdvancedMode) {
+            SecondaryTabRow(
+                selectedTabIndex = selectedChannelTab,
+                modifier = Modifier.fillMaxWidth(),
+                containerColor = Color.Transparent,
+                divider = {}
+            ) {
+                Tab(
+                    selected = selectedChannelTab == 0,
+                    onClick = { selectedChannelTab = 0 },
+                    text = { Text("Left Channel") }
+                )
+                Tab(
+                    selected = selectedChannelTab == 1,
+                    onClick = { selectedChannelTab = 1 },
+                    text = { Text("Right Channel") }
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+        }
 
         // PRESETS SECTION
         Column(
@@ -98,7 +136,7 @@ fun ControlPanel(modifier: Modifier = Modifier,
             }
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
 
         // SLIDERS SECTION
         Card(
@@ -117,9 +155,12 @@ fun ControlPanel(modifier: Modifier = Modifier,
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                volumenLow.forEachIndexed { index, volume ->
+                val startIndex = if (selectedChannelTab == 1 && isAdvancedMode) 8 else 0
+                for (i in 0 until 8) {
+                    val index = startIndex + i
+                    val volume = volumenLow.getOrElse(index) { 1.0f }
                     EqualizerBand(
-                        label = frequencyLabels[index],
+                        label = frequencyLabels[i],
                         volume = volume,
                         range = equalizerViewModel.volumeRange,
                         onValueChange = { v -> 
@@ -133,7 +174,7 @@ fun ControlPanel(modifier: Modifier = Modifier,
         Spacer(Modifier.height(16.dp))
         
         Text(
-            text = if (selectedPreset == "Custom") "Manual mode active" else "Profile: $selectedPreset",
+            text = if (isAdvancedMode) "Advanced Mode: Independent L/R" else if (selectedPreset == "Custom") "Manual mode active" else "Profile: $selectedPreset",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold,

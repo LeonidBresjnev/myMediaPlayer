@@ -32,12 +32,36 @@ class AudioModel: ViewModel() {
         Log.i("AudioModel", message)
     }
 
-    private val _volumenLow = MutableLiveData(List(8){1f})
+    private val _volumenLow = MutableLiveData(List(16){1f})
 
     val volumenLow: LiveData<List<Float>>
         get() {
             return _volumenLow
         }
+
+    private val _isAdvancedMode = MutableLiveData(false)
+    val isAdvancedMode: LiveData<Boolean> = _isAdvancedMode
+
+    fun setAdvancedMode(enabled: Boolean) {
+        if (_isAdvancedMode.value == enabled) return
+        
+        _isAdvancedMode.value = enabled
+        // If disabling advanced mode, sync Left to Right
+        if (!enabled) {
+            val current = _volumenLow.value?.toMutableList() ?: MutableList(16) { 1f }
+            for (i in 0 until 8) {
+                current[i + 8] = current[i]
+            }
+            _volumenLow.value = current
+            syncWithController(current)
+        }
+
+        // Notify service
+        if (::controller.isInitialized) {
+            val extras = Bundle().apply { putBoolean("IS_ADVANCED", enabled) }
+            controller.sendCustomCommand(SessionCommand("setEqMode", Bundle()), extras)
+        }
+    }
 
     private val _selectedPreset = MutableLiveData("Flat")
     val selectedPreset: LiveData<String> = _selectedPreset
@@ -59,8 +83,15 @@ class AudioModel: ViewModel() {
         
         val values = presets[name] ?: return
         _selectedPreset.value = name
-        _volumenLow.value = values
         
+        // Apply preset to both L and R channels (0-7 and 8-15)
+        val fullValues = values + values
+        _volumenLow.value = fullValues
+        
+        syncWithController(fullValues)
+    }
+
+    private fun syncWithController(values: List<Float>) {
         if (::controller.isInitialized) {
             val extras = Bundle().apply {
                 putFloatArray("KEY_VOLUMES", values.toFloatArray())
@@ -80,9 +111,19 @@ class AudioModel: ViewModel() {
         }
 
         // Update local state immediately for better responsiveness
-        val currentList = _volumenLow.value?.toMutableList() ?: MutableList(8) { 1f }
-        if (index in 0 until 8) {
+        val currentList = _volumenLow.value?.toMutableList() ?: MutableList(16) { 1f }
+        if (index in 0 until 16) {
             currentList[index] = volumeInDb
+            
+            // If NOT in advanced mode, sync the other channel
+            if (_isAdvancedMode.value != true) {
+                if (index < 8) {
+                    currentList[index + 8] = volumeInDb
+                } else {
+                    currentList[index - 8] = volumeInDb
+                }
+            }
+            
             _volumenLow.value = currentList
         }
 
@@ -221,9 +262,18 @@ class AudioModel: ViewModel() {
         val browserListener = object : MediaBrowser.Listener {
             override fun onExtrasChanged(controller: MediaController, extras: Bundle) {
                 val eqState = extras.getFloatArray("EQ_STATE")
-                if (eqState != null && eqState.size == 8) {
+                if (eqState != null && (eqState.size == 8 || eqState.size == 16)) {
                     log("Updating phone UI from session extras")
-                    _volumenLow.postValue(eqState.toList())
+                    if (eqState.size == 8) {
+                        _volumenLow.postValue(eqState.toList() + eqState.toList())
+                    } else {
+                        _volumenLow.postValue(eqState.toList())
+                    }
+                }
+                
+                val advanced = extras.getBoolean("IS_ADVANCED", false)
+                if (_isAdvancedMode.value != advanced) {
+                    _isAdvancedMode.postValue(advanced)
                 }
             }
         }
@@ -247,9 +297,16 @@ class AudioModel: ViewModel() {
                 // Sync initial state if available
                 val sessionExtras = controller.sessionExtras
                 val eqState = sessionExtras.getFloatArray("EQ_STATE")
-                if (eqState != null && eqState.size == 8) {
-                    _volumenLow.postValue(eqState.toList())
+                if (eqState != null && (eqState.size == 8 || eqState.size == 16)) {
+                    if (eqState.size == 8) {
+                        _volumenLow.postValue(eqState.toList() + eqState.toList())
+                    } else {
+                        _volumenLow.postValue(eqState.toList())
+                    }
                 }
+                
+                val advanced = sessionExtras.getBoolean("IS_ADVANCED", false)
+                _isAdvancedMode.postValue(advanced)
 
                 handlePlaybackBasedOnState()
 

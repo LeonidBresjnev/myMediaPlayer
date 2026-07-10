@@ -187,14 +187,14 @@ namespace equalizer {
     float FilterSource::getSample() {
         myDuplicator->setSample(_source->getSample());
         auto sample =
-                amplitude[0]*lowpass[currentChannel][order/2-1].getSample()
-                +  amplitude[1]*bandpass[0][currentChannel][order-1].getSample()
-                   +  amplitude[2]*bandpass[1][currentChannel][order-1].getSample()
-                      +  amplitude[3]*bandpass[2][currentChannel][order-1].getSample()
-                         +  amplitude[4]*bandpass[3][currentChannel][order-1].getSample()
-                            +  amplitude[5]*bandpass[4][currentChannel][order-1].getSample()
-                               +  amplitude[6]*bandpass[5][currentChannel][order-1].getSample()
-                   +  amplitude[7]*highpass[currentChannel][order/2-1].getSample();
+                amplitude[currentChannel][0]*lowpass[currentChannel][order/2-1].getSample()
+                +  amplitude[currentChannel][1]*bandpass[0][currentChannel][order-1].getSample()
+                   +  amplitude[currentChannel][2]*bandpass[1][currentChannel][order-1].getSample()
+                      +  amplitude[currentChannel][3]*bandpass[2][currentChannel][order-1].getSample()
+                         +  amplitude[currentChannel][4]*bandpass[3][currentChannel][order-1].getSample()
+                            +  amplitude[currentChannel][5]*bandpass[4][currentChannel][order-1].getSample()
+                               +  amplitude[currentChannel][6]*bandpass[5][currentChannel][order-1].getSample()
+                   +  amplitude[currentChannel][7]*highpass[currentChannel][order/2-1].getSample();
         currentChannel = (currentChannel +1)%numChannels;
         //LOGD("filtered sample value, return %f", sample);
         return sample;
@@ -204,7 +204,11 @@ namespace equalizer {
         _source->onPlaybackStopped();
     }
     void FilterSource::setAmplitude(float newAmplitude, int freqInterval) {
-        amplitude[freqInterval].store(newAmplitude);
+        if (freqInterval < 8) {
+            amplitude[0][freqInterval] = newAmplitude;
+        } else if (freqInterval < 16) {
+            amplitude[1][freqInterval - 8] = newAmplitude;
+        }
     }
 
     float Duplicator::getSample() {

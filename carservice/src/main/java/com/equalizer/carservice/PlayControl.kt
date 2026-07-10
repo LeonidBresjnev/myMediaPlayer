@@ -43,11 +43,12 @@ class PlayControl(carContext: CarContext) {
     private val browserListener = object : MediaBrowser.Listener {
         override fun onExtrasChanged(controller: MediaController, extras: Bundle) {
             val eqState = extras.getFloatArray("EQ_STATE")
-            if (eqState != null && eqState.size == 8) {
+            if (eqState != null && (eqState.size == 8 || eqState.size == 16)) {
                 log("Updating car UI from session extras")
-                for (i in 0 until 8) {
+                for (i in 0 until eqState.size) {
                     volPerFreq[i] = eqState[i]
                 }
+                isAdvancedMode = extras.getBoolean("IS_ADVANCED", false)
                 invalidate()
                 volPerFreqSetter(-1) // Signal a full refresh to components
             }
@@ -73,7 +74,8 @@ class PlayControl(carContext: CarContext) {
         getString(carContext,R.string.air_8_khz_and_above)
     )
 
-    val volPerFreq= MutableList(8) { 1.0f}
+    val volPerFreq= MutableList(16) { 1.0f}
+    var isAdvancedMode = false
 
     internal var isPlaying = Status.PAUSED
 
@@ -124,8 +126,9 @@ class PlayControl(carContext: CarContext) {
                 // Sync initial state if available
                 val initialExtras = controller.sessionExtras
                 val eqState = initialExtras.getFloatArray("EQ_STATE")
-                if (eqState != null && eqState.size == 8) {
-                    for (i in 0 until 8) volPerFreq[i] = eqState[i]
+                if (eqState != null && (eqState.size == 8 || eqState.size == 16)) {
+                    for (i in 0 until eqState.size) volPerFreq[i] = eqState[i]
+                    isAdvancedMode = initialExtras.getBoolean("IS_ADVANCED", false)
                     invalidate()
                     volPerFreqSetter(-1)
                 }
