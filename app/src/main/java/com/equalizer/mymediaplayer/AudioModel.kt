@@ -42,6 +42,17 @@ class AudioModel: ViewModel() {
     private val _isAdvancedMode = MutableLiveData(false)
     val isAdvancedMode: LiveData<Boolean> = _isAdvancedMode
 
+    private val _favourites = MutableLiveData<Set<String>>(emptySet())
+    val favourites: LiveData<Set<String>> = _favourites
+
+    fun toggleFavourite(songId: String) {
+        if (!::controller.isInitialized) return
+        val extras = Bundle().apply {
+            putString("SONG_ID", songId)
+        }
+        controller.sendCustomCommand(SessionCommand("toggleFavourite", Bundle()), extras)
+    }
+
     fun setAdvancedMode(enabled: Boolean) {
         if (_isAdvancedMode.value == enabled) return
         
@@ -275,6 +286,11 @@ class AudioModel: ViewModel() {
                 if (_isAdvancedMode.value != advanced) {
                     _isAdvancedMode.postValue(advanced)
                 }
+
+                val favs = extras.getStringArray("FAVOURITES")
+                if (favs != null) {
+                    _favourites.postValue(favs.toSet())
+                }
             }
         }
 
@@ -307,6 +323,11 @@ class AudioModel: ViewModel() {
                 
                 val advanced = sessionExtras.getBoolean("IS_ADVANCED", false)
                 _isAdvancedMode.postValue(advanced)
+
+                val favs = sessionExtras.getStringArray("FAVOURITES")
+                if (favs != null) {
+                    _favourites.postValue(favs.toSet())
+                }
 
                 handlePlaybackBasedOnState()
 

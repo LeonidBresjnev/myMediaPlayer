@@ -24,10 +24,17 @@ class BandDetailScreen(
     private val bandIndex: Int
 ) : Screen(carContext) {
 
+    private val invalidateListener = { invalidate() }
+
     init {
-        playControl.setVolPerFreqSetter0 {
-            invalidate()
-        }
+        lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
+            override fun onStart(owner: androidx.lifecycle.LifecycleOwner) {
+                playControl.addInvalidateListener(invalidateListener)
+            }
+            override fun onStop(owner: androidx.lifecycle.LifecycleOwner) {
+                playControl.removeInvalidateListener(invalidateListener)
+            }
+        })
     }
 
     override fun onGetTemplate(): Template {

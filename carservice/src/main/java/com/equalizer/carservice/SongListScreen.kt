@@ -1,10 +1,12 @@
 package com.equalizer.carservice
 
+import android.os.Bundle
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
+import androidx.car.app.model.CarColor
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.Header
 import androidx.car.app.model.ItemList
@@ -15,6 +17,7 @@ import androidx.core.graphics.drawable.IconCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.SessionCommand
 import com.google.common.util.concurrent.MoreExecutors
 
 @OptIn(UnstableApi::class)
@@ -28,8 +31,18 @@ class SongListScreen(
     private var mediaItems: List<MediaItem> = emptyList()
     private var isLoading = true
 
+    private val invalidateListener = { invalidate() }
+
     init {
         loadSongs()
+        lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
+            override fun onStart(owner: androidx.lifecycle.LifecycleOwner) {
+                playControl.addInvalidateListener(invalidateListener)
+            }
+            override fun onStop(owner: androidx.lifecycle.LifecycleOwner) {
+                playControl.removeInvalidateListener(invalidateListener)
+            }
+        })
     }
 
     private fun loadSongs() {
@@ -75,11 +88,6 @@ class SongListScreen(
     }
 
     override fun onGetTemplate(): Template {
-        // Ensure this screen is invalidated when playback state changes
-        playControl.setInvalidate0 {
-            invalidate()
-        }
-
         val isCurrentlyPlaying = playControl.isPlaying == PlayControl.Status.PLAYING
         
         val playAllAction = Action.Builder()
@@ -131,11 +139,61 @@ class SongListScreen(
         val listBuilder = ItemList.Builder().setNoItemsMessage("No songs found")
 
         mediaItems.forEach { item ->
+            val isFavourite = playControl.favourites.contains(item.mediaId)
+            Log.d("SongListScreen", "Row item: ${item.mediaMetadata.title} id=${item.mediaId} isFav=$isFavourite")
+
+            val favAction = Action.Builder()
+                .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext,
+                    if (isFavourite) com.equalizer.common.R.drawable.ic_favourite else com.equalizer.common.R.drawable.ic_favourite_border
+                ))
+                    .setTint(if (isFavourite) CarColor.RED else CarColor.DEFAULT)
+                    .build())
+                .setOnClickListener {
+                    val extras = Bundle().apply {
+                        putString("SONG_ID", item.mediaId)
+                    }
+                    val customCommand = SessionCommand("toggleFavourite", Bundle())
+                    if (playControl.mediaControllerFuture.isDone) {
+                        playControl.controller.sendCustomCommand(customCommand, extras)
+                    }
+                }
+                .build()
+
+            val isThisPlaying = if (playControl.mediaControllerFuture.isDone) {
+                playControl.controller.currentMediaItem?.mediaId == item.mediaId && 
+                playControl.isPlaying == PlayControl.Status.PLAYING
+            } else false
+
+            val playAction = Action.Builder()
+                .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext,
+                    if (isThisPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+                )).build())
+                .setOnClickListener {
+                    if (playControl.mediaControllerFuture.isDone) {
+                        val controller = playControl.controller
+                        if (isThisPlaying) {
+                            controller.pause()
+                        } else {
+                            if (controller.currentMediaItem?.mediaId == item.mediaId) {
+                                controller.play()
+                            } else {
+                                controller.setMediaItem(item)
+                                controller.prepare()
+                                controller.play()
+                            }
+                        }
+                        invalidate()
+                    }
+                }
+                .build()
+
             listBuilder.addItem(
                 Row.Builder()
                     .setTitle(item.mediaMetadata.title ?: "Unknown")
                     .addText(item.mediaMetadata.artist ?: "")
                     .setImage(createCarIcon(item.mediaMetadata), Row.IMAGE_TYPE_SMALL)
+                    .addAction(favAction)
+                    .addAction(playAction)
                     .setOnClickListener {
                         screenManager.push(SongDetailScreen(carContext, playControl, item))
                     }

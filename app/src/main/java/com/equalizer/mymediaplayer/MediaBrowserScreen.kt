@@ -24,6 +24,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -63,6 +65,7 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
     val currentPath by audioModel.currentPath.observeAsState("root")
     val currentPlaybackContext by audioModel.currentPlaybackContext.observeAsState()
     val nowPlayingId by audioModel.nowPlayingId.observeAsState()
+    val favourites by audioModel.favourites.observeAsState(emptySet())
 
     var infoItem by remember {
         mutableStateOf<MediaItem?>(null)
@@ -143,6 +146,7 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
                     FileRow(
                         mediaItem = mediaItem,
                         isSelected = mediaItem.mediaId == nowPlayingId,
+                        isFavourite = favourites.contains(mediaItem.mediaId),
                         onClick = {
                             onSelect(files, idx)
                         },
@@ -151,6 +155,9 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
                         },
                         onAddClick = {
                             showPlaylistDialog = mediaItem
+                        },
+                        onFavouriteClick = {
+                            audioModel.toggleFavourite(mediaItem.mediaId)
                         }
                     )
                 }
@@ -200,10 +207,12 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
 
 @Composable
 fun FileRow(mediaItem: MediaItem, 
-            isSelected: Boolean, 
+            isSelected: Boolean,
+            isFavourite: Boolean,
             onClick: () -> Unit,
             onInfoClick: () -> Unit,
-            onAddClick: () -> Unit) {
+            onAddClick: () -> Unit,
+            onFavouriteClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -256,6 +265,13 @@ fun FileRow(mediaItem: MediaItem,
                 color = Color.Gray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
+            )
+        }
+        IconButton(onClick = onFavouriteClick) {
+            Icon(
+                imageVector = if (isFavourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                contentDescription = "Favourite",
+                tint = if (isFavourite) Color.Red else Color.Gray
             )
         }
         IconButton(onClick = onAddClick) {

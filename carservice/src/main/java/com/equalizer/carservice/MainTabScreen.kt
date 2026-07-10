@@ -37,6 +37,8 @@ class MainTabScreen(
     private var mediaItems: List<MediaItem> = emptyList()
     private var isLoading = true
 
+    private val invalidateListener = { invalidate() }
+
 
     init {
         checkPermissionsAndLoad()
@@ -46,6 +48,15 @@ class MainTabScreen(
             Log.d("MainTabScreen", "Frequency update received: $it")
             invalidate()
         }
+        
+        lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
+            override fun onStart(owner: androidx.lifecycle.LifecycleOwner) {
+                playControl.addInvalidateListener(invalidateListener)
+            }
+            override fun onStop(owner: androidx.lifecycle.LifecycleOwner) {
+                playControl.removeInvalidateListener(invalidateListener)
+            }
+        })
     }
 
     private fun checkPermissionsAndLoad() {
@@ -137,10 +148,6 @@ class MainTabScreen(
     }
 
     override fun onGetTemplate(): Template {
-        playControl.setInvalidate0 {
-            invalidate()
-        }
-
         val playlistsTab = Tab.Builder()
             .setTitle("Playlists")
             .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_agenda)).build())

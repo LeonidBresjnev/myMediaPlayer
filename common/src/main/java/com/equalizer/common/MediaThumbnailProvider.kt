@@ -13,7 +13,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
-import java.net.URLDecoder
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -104,30 +103,29 @@ class MediaThumbnailProvider : ContentProvider() {
     ): Int = 0
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? {
-        val pathParam = uri.getQueryParameter("path") ?: return null
+        val path = uri.getQueryParameter("path") ?: return null
         
-        val path = try {
-            URLDecoder.decode(pathParam, "UTF-8")
-        } catch (e: Exception) {
-            e.message?.let { Log.e(TAG, "URL decoding failed: $it") }
-            pathParam
-        }
+        Log.d(TAG, "openFile for path: $path")
 
         fileCache.get(path)?.let {
             if (it.exists() && it.length() > 0) {
+                Log.d(TAG, "Serving $path from memory cache")
                 return ParcelFileDescriptor.open(it, ParcelFileDescriptor.MODE_READ_ONLY)
             }
         }
         
+        val context = this.context ?: return null
         val file = if (path.startsWith("http")) {
             val cleanUrl = path.trim()
             val fileName = "remote_thumb_${cleanUrl.hashCode()}.jpg"
-            val cacheFile = File(context?.cacheDir, fileName)
+            val cacheFile = File(context.cacheDir, fileName)
             
             if (cacheFile.exists() && cacheFile.length() > 0) {
+                Log.d(TAG, "Serving $path from disk cache")
                 cacheFile
             } else {
                 try {
+                    Log.d(TAG, "Downloading remote image: $path")
                     executor.submit(Callable {
                         downloadRemoteImage(path)
                     }).get(30, TimeUnit.SECONDS)
@@ -138,11 +136,7 @@ class MediaThumbnailProvider : ContentProvider() {
             }
         } else {
             val fileName = "local_thumb_${path.hashCode()}.jpg"
-            val cacheDir = context?.cacheDir
-            if (cacheDir == null) {
-                Log.e(TAG, "openFile: cacheDir is null")
-                return null
-            }
+            val cacheDir = context.cacheDir
             val cacheFile = File(cacheDir, fileName)
             if (cacheFile.exists() && cacheFile.length() > 0) {
                 cacheFile
@@ -151,7 +145,8 @@ class MediaThumbnailProvider : ContentProvider() {
             }
         }
 
-        if (file == null || !file.exists()) {
+        if (file == null || !file.exists() || file.length() == 0L) {
+            Log.e(TAG, "openFile: Failed to provide file for $path")
             return null
         }
 
@@ -168,7 +163,8 @@ class MediaThumbnailProvider : ContentProvider() {
     private fun downloadRemoteImage(url: String): File? {
         val cleanUrl = url.trim()
         val fileName = "remote_thumb_${cleanUrl.hashCode()}.jpg"
-        val cacheFile = File(context?.cacheDir, fileName)
+        val context = this.context ?: return null
+        val cacheFile = File(context.cacheDir, fileName)
         
         if (cacheFile.exists() && cacheFile.length() > 0) return cacheFile
 
@@ -187,17 +183,31 @@ class MediaThumbnailProvider : ContentProvider() {
                 .build()
 
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return null
-                val body = response.body
-                val tempFile = File.createTempFile("download_", ".jpg", context?.cacheDir)
+                Log.d(TAG, "Download response for $cleanUrl: ${response.code} ${response.message}")
+                if (!response.isSuccessful) {
+                    Log.e(TAG, "Download failed with code ${response.code} for $cleanUrl")
+                    return null
+                }
+                val body = response.body ?: return null
+                Log.d(TAG, "Response body length: ${body.contentLength()} type: ${body.contentType()}")
+                
+                val tempFile = File.createTempFile("download_", ".jpg", context.cacheDir)
                 body.byteStream().use { input ->
                     FileOutputStream(tempFile).use { input.copyTo(it) }
                 }
-                if (tempFile.length() > 0 && tempFile.renameTo(cacheFile)) return cacheFile
-                return if (tempFile.length() > 0) tempFile else null
+                
+                if (tempFile.exists() && tempFile.length() > 0) {
+                    if (tempFile.renameTo(cacheFile)) {
+                        Log.d(TAG, "Successfully cached remote image: ${cacheFile.absolutePath}")
+                        return cacheFile
+                    }
+                    Log.w(TAG, "Failed to rename temp file to cache file")
+                    return tempFile
+                }
+                return null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "downloadRemoteImage error: ${e.message}")
+            Log.e(TAG, "downloadRemoteImage error: ${e.message}", e)
             return null
         }
     }

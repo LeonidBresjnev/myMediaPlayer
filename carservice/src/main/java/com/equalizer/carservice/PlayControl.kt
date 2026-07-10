@@ -18,7 +18,7 @@ import com.google.common.util.concurrent.MoreExecutors
 
 
 @UnstableApi
-class PlayControl(carContext: CarContext) {
+class PlayControl(private val carContext: CarContext) {
 
     init {
         com.equalizer.common.MediaThumbnailProvider.init(carContext)
@@ -49,7 +49,13 @@ class PlayControl(carContext: CarContext) {
                     volPerFreq[i] = eqState[i]
                 }
                 isAdvancedMode = extras.getBoolean("IS_ADVANCED", false)
-                invalidate()
+                val favs = extras.getStringArray("FAVOURITES")
+                if (favs != null) {
+                    log("Received ${favs.size} favourites from session")
+                    favourites.clear()
+                    favourites.addAll(favs)
+                }
+                notifyInvalidate()
                 volPerFreqSetter(-1) // Signal a full refresh to components
             }
         }
@@ -76,13 +82,25 @@ class PlayControl(carContext: CarContext) {
 
     val volPerFreq= MutableList(16) { 1.0f}
     var isAdvancedMode = false
+    val favourites = mutableSetOf<String>()
 
     internal var isPlaying = Status.PAUSED
 
-    var invalidate = { }
+    private val invalidateListeners = mutableSetOf<() -> Unit>()
 
-    fun setInvalidate0 (func: () -> Unit) {
-        invalidate = func
+    fun addInvalidateListener(listener: () -> Unit) {
+        invalidateListeners.add(listener)
+    }
+
+    fun removeInvalidateListener(listener: () -> Unit) {
+        invalidateListeners.remove(listener)
+    }
+
+    private fun notifyInvalidate() {
+        carContext.mainExecutor.execute {
+            log("Notifying ${invalidateListeners.size} invalidation listeners")
+            invalidateListeners.forEach { it() }
+        }
     }
 
     var volPerFreqSetter:  (x:Int) -> Unit  = { x ->
@@ -110,7 +128,7 @@ class PlayControl(carContext: CarContext) {
                             if (controller.playWhenReady) Status.PAUSED
                             else Status.STOPPED
                         }
-                        invalidate()
+                        notifyInvalidate()
                         super.onIsPlayingChanged(isitplaying)
                     }
 
@@ -129,7 +147,12 @@ class PlayControl(carContext: CarContext) {
                 if (eqState != null && (eqState.size == 8 || eqState.size == 16)) {
                     for (i in 0 until eqState.size) volPerFreq[i] = eqState[i]
                     isAdvancedMode = initialExtras.getBoolean("IS_ADVANCED", false)
-                    invalidate()
+                    val favs = initialExtras.getStringArray("FAVOURITES")
+                    if (favs != null) {
+                        favourites.clear()
+                        favourites.addAll(favs)
+                    }
+                    notifyInvalidate()
                     volPerFreqSetter(-1)
                 }
 

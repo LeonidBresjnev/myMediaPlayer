@@ -1,9 +1,11 @@
 package com.equalizer.carservice
 
+import android.os.Bundle
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
 import androidx.car.app.model.CarIcon
+import androidx.car.app.model.CarColor
 import androidx.car.app.model.Header
 import androidx.car.app.model.Pane
 import androidx.car.app.model.PaneTemplate
@@ -13,6 +15,7 @@ import androidx.core.graphics.drawable.IconCompat
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.SessionCommand
 
 @UnstableApi
 class SongDetailScreen(
@@ -21,11 +24,18 @@ class SongDetailScreen(
     private val mediaItem: MediaItem
 ) : Screen(carContext) {
 
+    private val invalidateListener = { invalidate() }
+
     init {
         // Listen for playback changes to refresh the Play/Pause button state
-        playControl.setInvalidate0 {
-            invalidate()
-        }
+        lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
+            override fun onStart(owner: androidx.lifecycle.LifecycleOwner) {
+                playControl.addInvalidateListener(invalidateListener)
+            }
+            override fun onStop(owner: androidx.lifecycle.LifecycleOwner) {
+                playControl.removeInvalidateListener(invalidateListener)
+            }
+        })
     }
 
 
@@ -45,6 +55,9 @@ class SongDetailScreen(
         val metadata = mediaItem.mediaMetadata
         val isPlaying = playControl.isPlaying == PlayControl.Status.PLAYING
         
+        val isFavourite = playControl.favourites.contains(mediaItem.mediaId)
+        android.util.Log.d("SongDetailScreen", "onGetTemplate: title=${metadata.title} id=${mediaItem.mediaId} isFav=$isFavourite")
+
         val paneBuilder = Pane.Builder()
         
         // Detailed Information
@@ -67,6 +80,23 @@ class SongDetailScreen(
         }
 
         // Integrated Toggle Action
+        val favAction = Action.Builder()
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext,
+                if (isFavourite) com.equalizer.common.R.drawable.ic_favourite else com.equalizer.common.R.drawable.ic_favourite_border
+            ))
+                .setTint(if (isFavourite) CarColor.RED else CarColor.DEFAULT)
+                .build())
+            .setOnClickListener {
+                val extras = Bundle().apply {
+                    putString("SONG_ID", mediaItem.mediaId)
+                }
+                val customCommand = SessionCommand("toggleFavourite", Bundle())
+                if (playControl.mediaControllerFuture.isDone) {
+                    playControl.controller.sendCustomCommand(customCommand, extras)
+                }
+            }
+            .build()
+
         val playPauseAction = if (isPlaying) {
             Action.Builder()
                 .setIcon(CarIcon
@@ -89,6 +119,7 @@ class SongDetailScreen(
                 .build()
         }
 
+        paneBuilder.addAction(favAction)
         paneBuilder.addAction(playPauseAction)
 
         val builder = PaneTemplate.Builder(paneBuilder.build())

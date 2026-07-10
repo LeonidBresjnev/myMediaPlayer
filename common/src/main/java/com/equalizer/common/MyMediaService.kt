@@ -44,6 +44,7 @@ class MyMediaService : MediaLibraryService() {
     private val setVolOnFreq = SessionCommand("setVolOnFreq", Bundle())
     private val setAllVolOnFreq = SessionCommand("setAllVolOnFreq", Bundle())
     private val setEqModeCmd = SessionCommand("setEqMode", Bundle())
+    private val toggleFavouriteCmd = SessionCommand("toggleFavourite", Bundle())
     private val createPlaylistCmd = SessionCommand("createPlaylist", Bundle())
     private val addToPlaylistCmd = SessionCommand("addToPlaylist", Bundle())
     private val deletePlaylistCmd = SessionCommand("deletePlaylist", Bundle())
@@ -278,18 +279,12 @@ class MyMediaService : MediaLibraryService() {
                 availableSessionCommands.add(setVolOnFreq)
                 availableSessionCommands.add(setAllVolOnFreq)
                 availableSessionCommands.add(setEqModeCmd)
+                availableSessionCommands.add(toggleFavouriteCmd)
                 availableSessionCommands.add(createPlaylistCmd)
                 availableSessionCommands.add(addToPlaylistCmd)
                 availableSessionCommands.add(deletePlaylistCmd)
-                /*
-                val availablePlayerCommands = connectionResult.availablePlayerCommands.buildUpon()
-                    .add(COMMAND_PLAY_PAUSE)
-                    .add(COMMAND_STOP)
-                    .add(COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
-                    .add(COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
-                    .add(COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
-                    .addAllCommands()
-                    .build()*/
+
+                pushEqualizerState(session)
 
                 return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                     .setAvailableSessionCommands(availableSessionCommands.build())
@@ -496,6 +491,14 @@ class MyMediaService : MediaLibraryService() {
                     isAdvancedMode = args.getBoolean("IS_ADVANCED")
                     pushEqualizerState(session)
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                } else if (customCommand.customAction == "toggleFavourite") {
+                    val songId = args.getString("SONG_ID")
+                    if (songId != null) {
+                        PlaylistManager.toggleFavourite(applicationContext, songId)
+                        mediaSession?.notifyChildrenChanged(PlaylistManager.FAVOURITES_ID, 0, null)
+                        pushEqualizerState(session)
+                        return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                    }
                 } else if (customCommand.customAction == "createPlaylist") {
                     val name = args.getString("NAME") ?: "New Playlist"
                     PlaylistManager.createPlaylist(applicationContext, name)
@@ -524,9 +527,13 @@ class MyMediaService : MediaLibraryService() {
     }
 
     private fun pushEqualizerState(session: MediaSession) {
+        val favourites = PlaylistManager.getPlaylists(applicationContext)
+            .find { it.id == PlaylistManager.FAVOURITES_ID }?.songIds ?: emptyList()
+
         val extras = Bundle().apply {
             putFloatArray("EQ_STATE", volPerFreq.toFloatArray())
             putBoolean("IS_ADVANCED", isAdvancedMode)
+            putStringArray("FAVOURITES", favourites.toTypedArray())
         }
         session.sessionExtras = extras
     }
