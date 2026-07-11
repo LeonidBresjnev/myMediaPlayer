@@ -31,11 +31,11 @@ class ModernCarService : CarAppService() {
                 Log.d("ModernCarService", "Car App API Level: $apiLevel")
                 
                 // Show a toast with the detected API level for debugging
-                androidx.car.app.CarToast.makeText(
+                /*androidx.car.app.CarToast.makeText(
                     carContext,
                     "Detected Car API Level: $apiLevel",
                     androidx.car.app.CarToast.LENGTH_LONG
-                ).show()
+                ).show()*/
 
                 val playControl = PlayControl(carContext)
                 

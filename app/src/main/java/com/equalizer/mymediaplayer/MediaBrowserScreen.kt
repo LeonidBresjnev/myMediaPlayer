@@ -82,7 +82,7 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
 
         Row(verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(bottom = 8.dp)) {
-            if (currentPath != "root") {
+            if (currentPath != "music_library_root" && currentPath != "root") {
                 Text(
                     text = "< Back",
                     modifier = Modifier

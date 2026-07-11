@@ -89,10 +89,10 @@ class SongListScreen(
 
     override fun onGetTemplate(): Template {
         val isCurrentlyPlaying = playControl.isPlaying == PlayControl.Status.PLAYING
-        
+
         val playAllAction = Action.Builder()
             .setIcon(CarIcon.Builder(IconCompat.createWithResource(
-                carContext, 
+                carContext,
                 if (isCurrentlyPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
             )).build())
             .setOnClickListener {

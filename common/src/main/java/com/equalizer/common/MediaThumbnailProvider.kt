@@ -13,6 +13,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
+import com.equalizer.common.metadata.MetaFactory
+import com.equalizer.common.metadata.Mp3Meta
+import com.equalizer.common.metadata.M4aMeta
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -71,7 +74,8 @@ class MediaThumbnailProvider : ContentProvider() {
         private val rateLimitLock = ReentrantLock()
         private var lastRequestTime = 0L
 
-        private val fileCache = LruCache<String, File>(50)
+        private val fileCache = LruCache<String, File>(100)
+        private val notFoundCache = LruCache<String, Boolean>(100)
     }
 
     override fun onCreate(): Boolean {
@@ -105,6 +109,11 @@ class MediaThumbnailProvider : ContentProvider() {
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? {
         val path = uri.getQueryParameter("path") ?: return null
         
+        if (notFoundCache.get(path) == true) {
+            Log.d(TAG, "Skipping $path - already in notFoundCache")
+            return null
+        }
+
         Log.d(TAG, "openFile for path: $path")
 
         fileCache.get(path)?.let {
@@ -141,12 +150,33 @@ class MediaThumbnailProvider : ContentProvider() {
             if (cacheFile.exists() && cacheFile.length() > 0) {
                 cacheFile
             } else {
-                extractEmbeddedArt(path, cacheFile)
+                val f = File(path)
+                val result = if (f.isDirectory) {
+                    extractFolderArt(f, cacheFile)
+                } else {
+                    extractEmbeddedArt(path, cacheFile)
+                }
+
+                // If local extraction failed, try online search as a last resort
+                if (result == null && !f.isDirectory) {
+                    try {
+                        Log.d(TAG, "Local art missing for $path, searching online...")
+                        executor.submit(Callable {
+                            searchAndDownloadOnline(path)
+                        }).get(45, TimeUnit.SECONDS)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Online search failed for $path", e)
+                        null
+                    }
+                } else {
+                    result
+                }
             }
         }
 
         if (file == null || !file.exists() || file.length() == 0L) {
             Log.e(TAG, "openFile: Failed to provide file for $path")
+            notFoundCache.put(path, true)
             return null
         }
 
@@ -212,7 +242,7 @@ class MediaThumbnailProvider : ContentProvider() {
         }
     }
 
-    private fun extractEmbeddedArt(filePath: String, cacheFile: File): File? {
+    private fun extractEmbeddedArt(filePath: String, cacheFile: File, silent: Boolean = false): File? {
         val file = File(filePath)
         if (!file.exists()) return null
         val retriever = MediaMetadataRetriever()
@@ -222,10 +252,61 @@ class MediaThumbnailProvider : ContentProvider() {
             FileOutputStream(cacheFile).use { it.write(artwork) }
             return cacheFile
         } catch (e: Exception) {
-            Log.e(TAG, "extractEmbeddedArt error: ${e.message}")
+            if (!silent) Log.e(TAG, "extractEmbeddedArt error: ${e.message}")
             return null
         } finally {
             retriever.release()
+        }
+    }
+
+    private fun extractFolderArt(folder: File, cacheFile: File): File? {
+        val musicFiles = folder.listFiles()?.filter {
+            it.isFile && (it.name.endsWith(".mp3", true) || it.name.endsWith(".m4a", true))
+        }?.sortedBy { it.name }?.take(20) ?: return null
+
+        for (file in musicFiles) {
+            // Use silent=true to avoid filling logcat with "no artwork" errors during discovery
+            val result = extractEmbeddedArt(file.absolutePath, cacheFile, silent = true)
+            if (result != null) {
+                Log.d(TAG, "Found folder artwork in ${file.name}")
+                return result
+            }
+        }
+        return null
+    }
+
+    private fun searchAndDownloadOnline(localPath: String): File? {
+        val context = this.context ?: return null
+        val file = File(localPath)
+        if (!file.exists()) return null
+
+        return kotlinx.coroutines.runBlocking {
+            try {
+                val meta = MetaFactory.createMeta(file, context)
+                if (meta == null) return@runBlocking null
+
+                val artist = when (meta) {
+                    is Mp3Meta -> meta.artist
+                    is M4aMeta -> meta.artist
+                    else -> null
+                }
+                val title = when (meta) {
+                    is Mp3Meta -> meta.name
+                    is M4aMeta -> meta.name
+                    else -> file.name
+                }
+
+                if (artist.isNullOrBlank() || title.isNullOrBlank()) return@runBlocking null
+
+                val info = OnlineMetadataManager.getOnlineInfo(context, artist, title)
+                if (info?.artworkUrl != null) {
+                    return@runBlocking downloadRemoteImage(info.artworkUrl)
+                }
+                null
+            } catch (e: Exception) {
+                Log.e(TAG, "searchAndDownloadOnline error: ${e.message}")
+                null
+            }
         }
     }
 }

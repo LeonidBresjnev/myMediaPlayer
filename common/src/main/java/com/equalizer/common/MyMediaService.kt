@@ -103,67 +103,14 @@ class MyMediaService : MediaLibraryService() {
 
         return withContext(Dispatchers.IO) {
             if (file.isDirectory) {
-                var firstArtist: String? = null
-                var firstTitle: String? = null
-
-                // Try to find a thumbnail and metadata for the folder from its contents
-                // Limit scan to first 10 files to avoid hanging on large folders
-                val firstWithArt = file.listFiles()
-                    ?.filter { it.isFile && (it.name.endsWith(".mp3", true) || it.name.endsWith(".m4a", true)) }
-                    ?.take(10)
-                    ?.onEach { songFile ->
-                        if (firstArtist == null) {
-                            when (val meta = MetaFactory.createMeta(songFile, applicationContext)) {
-                                is Mp3Meta -> {
-                                    firstArtist = meta.artist
-                                    firstTitle = meta.name
-                                }
-                                is M4aMeta -> {
-                                    firstArtist = meta.artist
-                                    firstTitle = meta.name
-                                }
-                            }
-                        }
-                    }
-                    ?.firstOrNull {
-                        val retriever = MediaMetadataRetriever()
-                        try {
-                            retriever.setDataSource(it.absolutePath)
-                            retriever.embeddedPicture != null
-                        } catch (_: Exception) {
-                            false
-                        } finally {
-                            retriever.release()
-                        }
-                    }
-
+                // Simplified folder creation: Avoid scanning contents upfront for performance.
+                // The MediaThumbnailProvider will handle finding the artwork asynchronously.
                 val folderMetadataBuilder = MediaMetadata.Builder()
                     .setIsBrowsable(true)
                     .setIsPlayable(false)
                     .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
                     .setTitle(file.name)
-                    .setArtist(firstArtist)
-
-                if (firstWithArt != null) {
-                    val artworkUri = MediaThumbnailProvider.getArtworkUri(applicationContext, firstWithArt.absolutePath)
-                    folderMetadataBuilder.setArtworkUri(artworkUri)
-                    
-                    // Also set artwork data as fallback if possible
-                    try {
-                        val retriever = MediaMetadataRetriever()
-                        retriever.setDataSource(firstWithArt.absolutePath)
-                        folderMetadataBuilder.setArtworkData(retriever.embeddedPicture, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
-                        retriever.release()
-                    } catch (_: Exception) {}
-                } else if (firstArtist != null && firstTitle != null) {
-                    // Try online artwork if local is not found
-                    val onlineInfo = OnlineMetadataManager.getOnlineInfo(applicationContext,
-                        firstArtist, firstTitle
-                    )
-                    onlineInfo?.artworkUrl?.let {
-                        folderMetadataBuilder.setArtworkUri(it.toUri())
-                    }
-                }
+                    .setArtworkUri(MediaThumbnailProvider.getArtworkUri(applicationContext, file.absolutePath))
 
                 MediaItem.Builder()
                     .setMediaId(file.absolutePath)
@@ -190,13 +137,6 @@ class MyMediaService : MediaLibraryService() {
                 if (hasLocalArt) {
                     val artworkUri = MediaThumbnailProvider.getArtworkUri(applicationContext, file.absolutePath)
                     metadataBuilder.setArtworkUri(artworkUri)
-
-                    // Set artwork data as reliable fallback
-                    metadataBuilder.setArtworkData(when (meta) {
-                        is Mp3Meta -> meta.imageArray
-                        is M4aMeta -> meta.imageArray
-                        else -> null
-                    }, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
                 }
 
                 if (meta != null) {
@@ -211,12 +151,8 @@ class MyMediaService : MediaLibraryService() {
                         else -> file.name
                     }
 
-                    if (!hasLocalArt && !artist.isNullOrBlank() && !title.isNullOrBlank()) {
-                        val onlineInfo = OnlineMetadataManager.getOnlineInfo(applicationContext, artist, title)
-                        onlineInfo?.artworkUrl?.let {
-                            metadataBuilder.setArtworkUri(it.toUri())
-                        }
-                    }
+                    // Always set the artwork URI so the thumbnail provider can decide whether to look locally or online
+                    metadataBuilder.setArtworkUri(MediaThumbnailProvider.getArtworkUri(applicationContext, file.absolutePath))
 
                     when (meta) {
                         is Mp3Meta -> {

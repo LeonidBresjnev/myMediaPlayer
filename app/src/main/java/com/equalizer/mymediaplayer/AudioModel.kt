@@ -178,7 +178,7 @@ class AudioModel: ViewModel() {
             return _subItemMediaList
     }
 
-    private val _currentPath = MutableLiveData("root")
+    private val _currentPath = MutableLiveData("music_library_root")
     val currentPath: LiveData<String> = _currentPath
 
     private val _currentPlaybackContext = MutableLiveData<String?>(null)
@@ -307,7 +307,7 @@ class AudioModel: ViewModel() {
                 log("MediaController connected")
                 
                 // Initial browse
-                browse("root"/*, context = context*/)
+                browse("music_library_root"/*, context = context*/)
                 fetchPlaylists()
 
                 // Sync initial state if available
