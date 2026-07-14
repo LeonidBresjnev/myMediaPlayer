@@ -1,3 +1,4 @@
+
 #include "FilterSource.h"
 #include "Log.h"
 
@@ -184,6 +185,12 @@ namespace equalizer {
         LOGD("filter constucted");
     }
 
+    void FilterSource::setDelay(int leftDelay, int rightDelay) {
+        myDelay[0].setSize(min(max(1,leftDelay),4096-1));
+        myDelay[1].setSize(min(max(1,rightDelay),4096-1));
+        LOGD("filter is set %d, %d" , leftDelay, rightDelay);
+    }
+
     float FilterSource::getSample() {
         myDuplicator->setSample(_source->getSample());
         auto sample =
@@ -196,8 +203,9 @@ namespace equalizer {
                                +  amplitude[currentChannel][6]*bandpass[5][currentChannel][order-1].getSample()
                    +  amplitude[currentChannel][7]*highpass[currentChannel][order/2-1].getSample();
         currentChannel = (currentChannel +1)%numChannels;
-        //LOGD("filtered sample value, return %f", sample);
-        return sample;
+        myDelay[currentChannel].setSample(sample);
+        auto delayedsample = myDelay[currentChannel].getSample();
+        return delayedsample;
     }
 
     void FilterSource::onPlaybackStopped() {

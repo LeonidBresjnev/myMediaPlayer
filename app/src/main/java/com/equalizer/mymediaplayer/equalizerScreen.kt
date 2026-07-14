@@ -7,6 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
@@ -36,18 +37,29 @@ fun ControlPanel(modifier: Modifier = Modifier,
     val volumenLow by equalizerViewModel.volumenLow.observeAsState(List(16) { 1.0f })
     val selectedPreset by equalizerViewModel.selectedPreset.observeAsState("Flat")
     val isAdvancedMode by equalizerViewModel.isAdvancedMode.observeAsState(false)
+    val leftDelayRaw by equalizerViewModel.leftDelayRaw.observeAsState(0.0f)
+    val rightDelayRaw by equalizerViewModel.rightDelayRaw.observeAsState(0.0f)
+    val isPlaying by equalizerViewModel.isPlaying.observeAsState(AudioModel.Status.STOPPED)
+    val delayUnit by equalizerViewModel.delayUnit.observeAsState(AudioModel.DelayUnit.MS)
+    
+    val isDelayEnabled = isPlaying != AudioModel.Status.PLAYING
+    
     var selectedChannelTab by remember { mutableIntStateOf(0) } // 0 for Left, 1 for Right
 
     val frequencyLabels = listOf(
         "Sub Bass", "Bass", "Low", "Low Mids", "High Mids", "High", "Upper", "Air"
     )
 
+    val scrollState = rememberScrollState()
+
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(scrollState)
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // --- EQUALIZER SECTION ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -142,7 +154,7 @@ fun ControlPanel(modifier: Modifier = Modifier,
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .height(300.dp),
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
@@ -171,7 +183,7 @@ fun ControlPanel(modifier: Modifier = Modifier,
             }
         }
         
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
         
         Text(
             text = if (isAdvancedMode) "Advanced Mode: Independent L/R" else if (selectedPreset == "Custom") "Manual mode active" else "Profile: $selectedPreset",
@@ -179,6 +191,140 @@ fun ControlPanel(modifier: Modifier = Modifier,
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center
+        )
+
+        Spacer(Modifier.height(32.dp))
+        HorizontalDivider(modifier = Modifier.padding(horizontal = 32.dp))
+        Spacer(Modifier.height(24.dp))
+
+        // --- TIME DELAY SECTION ---
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer { alpha = if (isDelayEnabled) 1f else 0.5f },
+            horizontalAlignment = Alignment.Start
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Time Delay",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (isDelayEnabled) "Adjust speaker delay" else "Stop playback to adjust delay",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+
+                // Unit Toggle
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(4.dp)
+                ) {
+                    UnitToggleButton("ms", delayUnit == AudioModel.DelayUnit.MS, isDelayEnabled) {
+                        equalizerViewModel.setDelayUnit(AudioModel.DelayUnit.MS)
+                    }
+                    UnitToggleButton("cm", delayUnit == AudioModel.DelayUnit.CM, isDelayEnabled) {
+                        equalizerViewModel.setDelayUnit(AudioModel.DelayUnit.CM)
+                    }
+                }
+            }
+
+            val range = if (delayUnit == AudioModel.DelayUnit.MS) 0f..100f else 0f..1000f
+            val unitLabel = if (delayUnit == AudioModel.DelayUnit.MS) "ms" else "cm"
+
+            Spacer(Modifier.height(24.dp))
+
+            // Left Delay
+            DelayControlRow(
+                label = "Left Speaker",
+                value = leftDelayRaw,
+                range = range,
+                unitLabel = unitLabel,
+                enabled = isDelayEnabled,
+                onValueChange = { equalizerViewModel.setLeftDelay(it) }
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            // Right Delay
+            DelayControlRow(
+                label = "Right Speaker",
+                value = rightDelayRaw,
+                range = range,
+                unitLabel = unitLabel,
+                enabled = isDelayEnabled,
+                onValueChange = { equalizerViewModel.setRightDelay(it) }
+            )
+        }
+
+        Spacer(Modifier.height(48.dp))
+    }
+}
+
+@Composable
+fun DelayControlRow(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    unitLabel: String,
+    enabled: Boolean,
+    onValueChange: (Float) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = String.format(java.util.Locale.US, "%.1f %s", value, unitLabel),
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (enabled) MaterialTheme.colorScheme.primary else Color.Gray,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = range,
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+fun UnitToggleButton(
+    label: String,
+    isSelected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(4.dp),
+        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
         )
     }
 }

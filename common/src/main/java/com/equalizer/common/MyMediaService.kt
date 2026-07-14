@@ -43,6 +43,7 @@ class MyMediaService : MediaLibraryService() {
 
     private val setVolOnFreq = SessionCommand("setVolOnFreq", Bundle())
     private val setAllVolOnFreq = SessionCommand("setAllVolOnFreq", Bundle())
+    private val setDelayCmd = SessionCommand("setDelay", Bundle())
     private val setEqModeCmd = SessionCommand("setEqMode", Bundle())
     private val toggleFavouriteCmd = SessionCommand("toggleFavourite", Bundle())
     private val createPlaylistCmd = SessionCommand("createPlaylist", Bundle())
@@ -214,6 +215,7 @@ class MyMediaService : MediaLibraryService() {
                 val availableSessionCommands = connectionResult.availableSessionCommands.buildUpon()
                 availableSessionCommands.add(setVolOnFreq)
                 availableSessionCommands.add(setAllVolOnFreq)
+                availableSessionCommands.add(setDelayCmd)
                 availableSessionCommands.add(setEqModeCmd)
                 availableSessionCommands.add(toggleFavouriteCmd)
                 availableSessionCommands.add(createPlaylistCmd)
@@ -423,6 +425,14 @@ class MyMediaService : MediaLibraryService() {
                         pushEqualizerState(session)
                         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                     }
+                } else if (customCommand.customAction == "setDelay") {
+                    val left = args.getFloat("KEY_LEFT_DELAY")
+                    val right = args.getFloat("KEY_RIGHT_DELAY")
+                    val player = session.player
+                    if (player is Equalizer) {
+                        player.setDelay(left, right)
+                    }
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 } else if (customCommand.customAction == "setEqMode") {
                     isAdvancedMode = args.getBoolean("IS_ADVANCED")
                     pushEqualizerState(session)

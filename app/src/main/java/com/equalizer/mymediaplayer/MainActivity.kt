@@ -101,7 +101,7 @@ class MainActivity : ComponentActivity() {
                     unselectedIcon = Icons.AutoMirrored.Outlined.PlaylistPlay
                 ),
                 TabRowItem(
-                    title = "Equalizer",
+                    title = "Sound Setting",
                     screen = {
                         ControlPanel(
                             modifier = Modifier,

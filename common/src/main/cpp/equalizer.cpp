@@ -8,6 +8,7 @@ namespace equalizer {
             _oscillator{std::make_shared<Oscillator>() },
             _filterSource{std::make_shared<FilterSource>(_oscillator)},
             _audioPlayer{std::make_unique<OboeAudioPlayer>(_filterSource)}  {
+
     }
 
     Equalizer::~Equalizer() = default;
@@ -44,6 +45,9 @@ namespace equalizer {
         LOGD("sampleRate=%d", samplingRate);
 
         _filterSource->setFilter(samplingRate,numChannels);
+        _filterSource->setDelay(
+                (int)(this->delay[0]*((float)samplingRate)/1000.0f),
+                (int)(this->delay[1]*((float)samplingRate)/1000.0f));
 
         const auto result = _audioPlayer -> play(samplingRate, numChannels, deviceId);
         if (result == 0) {
@@ -87,5 +91,11 @@ namespace equalizer {
     void Equalizer::setVolumenLow(float volumeInDb, int freqInterval) {
         _filterSource->setAmplitude(volumeInDb, freqInterval);
         //LOGD("VolumenLow set to %f", volumeInDb);
+    }
+
+    void Equalizer::setDelay(float leftDelay, float rightDelay) {
+        LOGD("Equalizer::setDelay: L=%.2f ms, R=%.2f ms", leftDelay, rightDelay);
+        this -> delay = { leftDelay, rightDelay };
+        // Implementation will follow in next iteration
     }
 }

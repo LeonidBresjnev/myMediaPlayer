@@ -69,6 +69,7 @@ class Equalizer(
     private external fun nativeGetDuration(synthesizerHandle: Long): Double
     private external fun nativeGetCurrentPosition(synthesizerHandle: Long): Double
     private external fun nativeSeekTo(synthesizerHandle: Long, positionSeconds: Double)
+    private external fun nativeSetDelay(synthesizerHandle: Long, leftDelay: Float, rightDelay: Float)
 
     private val volPerFreq = MutableList(16) { 1f }
 
@@ -91,6 +92,13 @@ class Equalizer(
         }
         for (i in 0 until volumes.size.coerceAtMost(16)) {
             listeners.sendEvent(EVENT_VIDEO_SIZE_CHANGED) { it.onVideoSizeChanged(VideoSize(i, 0, volumes[i])) }
+        }
+    }
+
+    fun setDelay(left: Float, right: Float) {
+        synchronized(equalizerMutex) {
+            createNativeHandleIfNotExists()
+            nativeSetDelay(equalizerHandle, left, right)
         }
     }
 

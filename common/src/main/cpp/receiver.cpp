@@ -157,4 +157,15 @@ Java_com_equalizer_common_Equalizer_nativeSeekTo(JNIEnv *env, jobject thiz,
         equalizer->seekTo(position_seconds);
     }
 }
+
+JNIEXPORT void JNICALL
+Java_com_equalizer_common_Equalizer_nativeSetDelay(JNIEnv *env, jobject thiz,
+                                                  jlong equalizer_handle,
+                                                  jfloat left_delay,
+                                                  jfloat right_delay) {
+    auto *equalizer = reinterpret_cast<equalizer::Equalizer *>(equalizer_handle);
+    if (equalizer) {
+        equalizer->setDelay(static_cast<float>(left_delay), static_cast<float>(right_delay));
+    }
+}
 }

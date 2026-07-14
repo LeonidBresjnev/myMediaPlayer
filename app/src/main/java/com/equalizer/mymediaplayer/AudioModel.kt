@@ -45,6 +45,81 @@ class AudioModel: ViewModel() {
     private val _favourites = MutableLiveData<Set<String>>(emptySet())
     val favourites: LiveData<Set<String>> = _favourites
 
+    enum class DelayUnit { MS, CM }
+
+    private val _delayUnit = MutableLiveData(DelayUnit.MS)
+    val delayUnit: LiveData<DelayUnit> = _delayUnit
+
+    private val _leftDelayRaw = MutableLiveData(0.0f)
+    val leftDelayRaw: LiveData<Float> = _leftDelayRaw
+
+    private val _rightDelayRaw = MutableLiveData(0.0f)
+    val rightDelayRaw: LiveData<Float> = _rightDelayRaw
+
+    private val _leftDelayMs = MutableLiveData(0.0f)
+    val leftDelayMs: LiveData<Float> = _leftDelayMs
+
+    private val _rightDelayMs = MutableLiveData(0.0f)
+    val rightDelayMs: LiveData<Float> = _rightDelayMs
+
+    fun setDelayUnit(unit: DelayUnit) {
+        _delayUnit.value = unit
+        recalculateAndSyncDelay()
+    }
+
+    fun setLeftDelay(delay: Float) {
+        _leftDelayRaw.value = delay
+        recalculateAndSyncDelay()
+    }
+
+    fun setRightDelay(delay: Float) {
+        _rightDelayRaw.value = delay
+        recalculateAndSyncDelay()
+    }
+
+    private fun recalculateAndSyncDelay() {
+        val unit = _delayUnit.value ?: DelayUnit.MS
+        val rawL = _leftDelayRaw.value ?: 0.0f
+        val rawR = _rightDelayRaw.value ?: 0.0f
+        
+        val finalLeft: Float
+        val finalRight: Float
+
+        if (unit == DelayUnit.MS) {
+            finalLeft = rawL
+            finalRight = rawR
+        } else {
+            // Speed of sound is approx 343 m/s = 34.3 cm/ms
+            val leftMs = rawL / 34.3f
+            val rightMs = rawR / 34.3f
+
+            if (leftMs < rightMs) {
+                finalLeft = rightMs - leftMs
+                finalRight = 0.0f
+            } else if (rightMs < leftMs) {
+                finalLeft = 0.0f
+                finalRight = leftMs - rightMs
+            } else {
+                finalLeft = 0.0f
+                finalRight = 0.0f
+            }
+        }
+
+        _leftDelayMs.value = finalLeft
+        _rightDelayMs.value = finalRight
+        syncDelayWithController()
+    }
+
+    private fun syncDelayWithController() {
+        if (::controller.isInitialized) {
+            val extras = Bundle().apply {
+                putFloat("KEY_LEFT_DELAY", _leftDelayMs.value ?: 0.0f)
+                putFloat("KEY_RIGHT_DELAY", _rightDelayMs.value ?: 0.0f)
+            }
+            controller.sendCustomCommand(SessionCommand("setDelay", Bundle()), extras)
+        }
+    }
+
     fun toggleFavourite(songId: String) {
         if (!::controller.isInitialized) return
         val extras = Bundle().apply {
@@ -158,6 +233,7 @@ class AudioModel: ViewModel() {
 
 
     private val _isPlaying = MutableLiveData(Status.STOPPED)
+    val isPlaying: LiveData<Status> = _isPlaying
     
     private val _nowPlayingId = MutableLiveData<String?>(null)
     val nowPlayingId: LiveData<String?> = _nowPlayingId

@@ -23,6 +23,7 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         receiver.cpp
         Oscillator.cpp
         equalizer.cpp
+        Delayfilter.cpp
         FilterElement.cpp
         FilterSource.cpp
         OboeAudioPlayer.cpp
