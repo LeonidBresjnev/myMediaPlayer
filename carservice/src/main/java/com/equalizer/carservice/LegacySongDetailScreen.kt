@@ -1,5 +1,5 @@
 package com.equalizer.carservice
-
+/*
 import android.os.Bundle
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
@@ -141,3 +141,4 @@ class LegacySongDetailScreen(
         return builder.build()
     }
 }
+*/

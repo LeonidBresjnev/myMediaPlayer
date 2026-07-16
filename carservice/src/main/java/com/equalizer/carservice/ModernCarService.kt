@@ -132,7 +132,9 @@ class SimpleMainScreen(
         // or just accept the deprecation for now as it's the most stable way for legacy.
         try {
             builder.setTitle("My Media Player")
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            e.message?.let { Log.d("Modern Car Service", it) }
+        }
 
         return builder.build()
     }
