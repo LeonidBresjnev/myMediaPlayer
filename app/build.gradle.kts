@@ -13,8 +13,8 @@ android {
         applicationId = "com.equalizer.mymediaplayer"
         minSdk = 33
         targetSdk = 37
-        versionCode = 8
-        versionName = "4.3"
+        versionCode = 9
+        versionName = "4.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

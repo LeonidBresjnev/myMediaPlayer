@@ -40,6 +40,7 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.media)
     //implementation(libs.material)
     implementation(libs.androidx.app)
     implementation(libs.androidx.lifecycle.viewmodel.android)

@@ -2,8 +2,11 @@ package com.equalizer.carservice
 
 import android.content.ComponentName
 import android.os.Bundle
+import android.support.v4.media.session.MediaSessionCompat
 import android.util.Log
 import androidx.car.app.CarContext
+import androidx.car.app.annotations.ExperimentalCarApi
+import androidx.car.app.media.MediaPlaybackManager
 import androidx.core.content.ContextCompat.getString
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -178,5 +181,26 @@ class PlayControl(private val carContext: CarContext) {
                 controller.play()
             }, MoreExecutors.directExecutor())
         }
+    }
+
+    @androidx.car.app.annotations.ExperimentalCarApi
+    @OptIn(UnstableApi::class)
+    fun registerToken() {
+        MyMediaService.getSession()?.let { session ->
+            try {
+                val playbackManager = carContext.getCarService(CarContext.MEDIA_PLAYBACK_SERVICE) as MediaPlaybackManager
+                val getSessionCompatToken = session.javaClass.methods.find { it.name == "getSessionCompatToken" }
+                val token = getSessionCompatToken?.invoke(session) as? MediaSessionCompat.Token
+
+                if (token != null) {
+                    playbackManager.registerMediaPlaybackToken(token)
+                    log("MediaPlaybackToken registered successfully")
+                } else {
+                    log("Could not retrieve MediaSessionCompat.Token from session")
+                }
+            } catch (e: Exception) {
+                log("Failed to register MediaPlaybackToken: ${e.message}")
+            }
+        } ?: log("MyMediaService session not available for registration yet")
     }
 }

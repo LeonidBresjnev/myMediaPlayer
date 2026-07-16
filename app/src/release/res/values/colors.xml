@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Car Branding Colors (Release: Light Blue) -->
+    <color name="car_primary">#03A9F4</color>
+    <color name="car_primary_dark">#0288D1</color>
+</resources>

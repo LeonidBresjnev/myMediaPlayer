@@ -2,12 +2,10 @@ package com.equalizer.common
 
 import android.app.PendingIntent
 import android.content.Intent
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.util.Log
-import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
@@ -36,6 +34,14 @@ import java.io.File
 
 @UnstableApi
 class MyMediaService : MediaLibraryService() {
+    companion object {
+        private var instance: MyMediaService? = null
+        
+        fun getSession(): MediaLibrarySession? {
+            return instance?.mediaSession
+        }
+    }
+
     var mediaSession: MediaLibrarySession? = null
 
     private val serviceJob = SupervisorJob()
@@ -55,13 +61,14 @@ class MyMediaService : MediaLibraryService() {
 
     private fun getMusicLibraryRoot(): File {
         val standardRoot = Environment.getExternalStorageDirectory()
+        Environment.getExternalStorageDirectory().path
         val musicPaths = listOf(
             File(standardRoot, "Music"),
-            File("/sdcard/Music"),
+            File(Environment.getExternalStorageDirectory().path + "/Music"),
             File("/storage/emulated/0/Music"),  // Explicit User 0
             File("/storage/emulated/10/Music"), // Explicit User 10
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            File("/sdcard/Download"),
+            File(Environment.getExternalStorageDirectory().path + "/Download"),
             standardRoot // Last resort: root of SD card
         )
 
@@ -194,6 +201,7 @@ class MyMediaService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         Log.d("MyMediaService", "onCreate starting")
         MediaThumbnailProvider.init(this)
         val player = Equalizer(context = this)
@@ -417,7 +425,7 @@ class MyMediaService : MediaLibraryService() {
                 } else if (customCommand.customAction == "setAllVolOnFreq") {
                     val volumes = args.getFloatArray("KEY_VOLUMES")
                     if (volumes != null && (volumes.size == 8 || volumes.size == 16)) {
-                        for (i in 0 until volumes.size) volPerFreq[i] = volumes[i]
+                        for (i in volumes.indices) volPerFreq[i] = volumes[i]
                         val player = session.player
                         if (player is Equalizer) {
                             player.setAllVolOnFreq(volumes)
@@ -490,6 +498,7 @@ class MyMediaService : MediaLibraryService() {
             release()
             mediaSession = null
         }
+        instance = null
         serviceJob.cancel()
         super.onDestroy()
     }

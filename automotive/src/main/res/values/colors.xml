@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Default Branding Color (Red) -->
+    <color name="car_primary">#F44336</color>
+    <color name="car_primary_dark">#B71C1C</color>
+</resources>

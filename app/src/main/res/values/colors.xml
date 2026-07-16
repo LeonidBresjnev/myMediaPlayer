@@ -7,4 +7,8 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Car Branding Colors (Default: Red) -->
+    <color name="car_primary">#F44336</color>
+    <color name="car_primary_dark">#B71C1C</color>
 </resources>

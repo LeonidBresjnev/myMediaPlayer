@@ -5,14 +5,18 @@ import android.util.Log
 import androidx.annotation.OptIn
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
+import androidx.car.app.annotations.ExperimentalCarApi
 import androidx.car.app.model.Action
 import androidx.car.app.model.CarColor
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.Header
-import androidx.car.app.model.ItemList
-import androidx.car.app.model.ListTemplate
 import androidx.car.app.model.Row
+import androidx.car.app.model.RowSection
+import androidx.car.app.model.SectionedItemTemplate
 import androidx.car.app.model.Template
+import androidx.car.app.model.CarIconSpan
+import android.text.SpannableString
+import android.text.Spanned
 import androidx.core.graphics.drawable.IconCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -20,7 +24,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.SessionCommand
 import com.google.common.util.concurrent.MoreExecutors
 
-@OptIn(UnstableApi::class)
+@OptIn(UnstableApi::class, ExperimentalCarApi::class)
 class SongListScreen(
     carContext: CarContext,
     private val playControl: PlayControl,
@@ -89,6 +93,7 @@ class SongListScreen(
 
     override fun onGetTemplate(): Template {
         val isCurrentlyPlaying = playControl.isPlaying == PlayControl.Status.PLAYING
+        val isStopped = playControl.isPlaying == PlayControl.Status.STOPPED
 
         val playAllAction = Action.Builder()
             .setIcon(CarIcon.Builder(IconCompat.createWithResource(
@@ -102,8 +107,6 @@ class SongListScreen(
                         controller.pause()
                     } else {
                         if (mediaItems.isNotEmpty()) {
-                            // Only replace media items if we are not already playing this context
-                            // (We'll simplify for now and reload to ensure the list matches)
                             controller.setMediaItems(mediaItems, 0, 0L)
                             controller.prepare()
                             controller.play()
@@ -116,31 +119,70 @@ class SongListScreen(
             }
             .build()
 
-        val builder = ListTemplate.Builder()
+        val nowPlayingAction = Action.Builder()
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(
+                carContext,
+                androidx.media3.session.R.drawable.media3_notification_small_icon
+            )).build())
+            .setOnClickListener {
+                if (playControl.mediaControllerFuture.isDone) {
+                    val currentItem = playControl.controller.currentMediaItem
+                    if (currentItem != null) {
+                        screenManager.push(SongDetailScreen(carContext, playControl, currentItem))
+                    }
+                }
+            }
+            .setEnabled(!isStopped)
+            .build()
+
+        val builder = SectionedItemTemplate.Builder()
         
-        if (carContext.carAppApiLevel >= 5) {
-            builder.setHeader(
-                Header.Builder()
-                    .setTitle(albumTitle)
-                    .setStartHeaderAction(Action.BACK)
-                    .addEndHeaderAction(playAllAction)
-                    .build()
-            )
-        } else {
-            // Legacy way for API < 5
-            try {
-                builder.setTitle(albumTitle)
-                builder.setHeaderAction(Action.BACK)
-            } catch (_: Exception) {}
-        }
+        builder.setHeader(
+            Header.Builder()
+                .setTitle(albumTitle)
+                .setStartHeaderAction(Action.BACK)
+                .addEndHeaderAction(playAllAction)
+                .addEndHeaderAction(nowPlayingAction)
+                .build()
+        )
 
         if (isLoading) return builder.setLoading(true).build()
 
-        val listBuilder = ItemList.Builder().setNoItemsMessage("No songs found")
+        val rowSectionBuilder = RowSection.Builder().setTitle("Songs")
+        var hasItems = false
 
         mediaItems.forEach { item ->
+            hasItems = true
             val isFavourite = playControl.favourites.contains(item.mediaId)
-            Log.d("SongListScreen", "Row item: ${item.mediaMetadata.title} id=${item.mediaId} isFav=$isFavourite")
+            val isThisItemActive = if (playControl.mediaControllerFuture.isDone) {
+                playControl.controller.currentMediaItem?.mediaId == item.mediaId && 
+                playControl.isPlaying != PlayControl.Status.STOPPED
+            } else false
+
+            val isThisPlaying = isThisItemActive && playControl.isPlaying == PlayControl.Status.PLAYING
+
+            val title = item.mediaMetadata.title ?: "Unknown"
+            val displayTitle: CharSequence = if (isThisItemActive) {
+                SpannableString("  $title").apply {
+                    val iconRes = if (isThisPlaying) 
+                        androidx.media3.session.R.drawable.media3_icon_circular_play 
+                    else 
+                        androidx.media3.session.R.drawable.media3_icon_pause
+                    
+                    val playIcon = CarIcon.Builder(IconCompat.createWithResource(carContext, iconRes)).build()
+                    setSpan(CarIconSpan.create(playIcon, CarIconSpan.ALIGN_CENTER), 0, 1, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                }
+            } else {
+                title
+            }
+
+            val artist = item.mediaMetadata.artist ?: ""
+            val displayArtist: CharSequence = if (isThisItemActive) {
+                val status = if (isThisPlaying) "Now Playing" else "Paused"
+                "$artist • $status"
+            } else {
+                artist
+            }
 
             val favAction = Action.Builder()
                 .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext,
@@ -158,11 +200,6 @@ class SongListScreen(
                     }
                 }
                 .build()
-
-            val isThisPlaying = if (playControl.mediaControllerFuture.isDone) {
-                playControl.controller.currentMediaItem?.mediaId == item.mediaId && 
-                playControl.isPlaying == PlayControl.Status.PLAYING
-            } else false
 
             val playAction = Action.Builder()
                 .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext,
@@ -187,22 +224,29 @@ class SongListScreen(
                 }
                 .build()
 
-            listBuilder.addItem(
-                Row.Builder()
-                    .setTitle(item.mediaMetadata.title ?: "Unknown")
-                    .addText(item.mediaMetadata.artist ?: "")
+            val rowBuilder = Row.Builder()
+                .setTitle(displayTitle)
+                .addText(displayArtist)
+
+            rowSectionBuilder.addItem(
+                rowBuilder
                     .setImage(createCarIcon(item.mediaMetadata), Row.IMAGE_TYPE_SMALL)
                     .addAction(favAction)
                     .addAction(playAction)
                     .setOnClickListener {
+                        playControl.playMedia(item)
                         screenManager.push(SongDetailScreen(carContext, playControl, item))
                     }
                     .build()
             )
         }
 
-        return builder
-            .setSingleList(listBuilder.build())
-            .build()
+        if (!hasItems) {
+            rowSectionBuilder.addItem(Row.Builder().setTitle("No songs found").setEnabled(false).build())
+        }
+
+        builder.addSection(rowSectionBuilder.build())
+
+        return builder.build()
     }
 }

@@ -8,16 +8,19 @@ import androidx.car.app.Screen
 import androidx.car.app.model.Action
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.GridItem
-import androidx.car.app.model.GridTemplate
+import androidx.car.app.model.GridSection
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
 import androidx.car.app.model.Row
+import androidx.car.app.model.RowSection
+import androidx.car.app.model.SectionedItemTemplate
 import androidx.car.app.model.Tab
 import androidx.car.app.model.TabContents
 import androidx.car.app.model.TabTemplate
 import androidx.car.app.model.Template
 import androidx.core.graphics.drawable.IconCompat
 import androidx.car.app.annotations.RequiresCarApi
+import androidx.car.app.annotations.ExperimentalCarApi
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
@@ -27,7 +30,7 @@ import com.google.common.util.concurrent.MoreExecutors
 import java.util.Locale
 
 @RequiresCarApi(6)
-@OptIn(UnstableApi::class)
+@OptIn(UnstableApi::class, ExperimentalCarApi::class)
 class MainTabScreen(
     carContext: CarContext,
     private val playControl: PlayControl
@@ -60,11 +63,7 @@ class MainTabScreen(
     }
 
     private fun checkPermissionsAndLoad() {
-        val permissions = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            listOf(android.Manifest.permission.READ_MEDIA_AUDIO)
-        } else {
-            listOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
+        val permissions = listOf(android.Manifest.permission.READ_MEDIA_AUDIO)
 
         carContext.requestPermissions(permissions) { granted, rejected ->
             if (granted.containsAll(permissions)) {
@@ -167,10 +166,12 @@ class MainTabScreen(
             .build()
 
         val currentContent: Template = when (activeTabId) {
-            "playlists" -> createAlbumGridTemplate("No playlists found")
-            "library" -> createAlbumGridTemplate("No albums found")
+            "playlists" -> createSectionedContent("No playlists found")
+            "library" -> createSectionedContent("No albums or songs found")
             else -> createEqualizerTemplate()
         }
+
+        Log.d("MainTabScreen", "onGetTemplate: activeTab=$activeTabId, hostApi=${carContext.carAppApiLevel}")
 
         return TabTemplate.Builder(object : TabTemplate.TabCallback {
             override fun onTabSelected(tabTag: String) {
@@ -193,31 +194,58 @@ class MainTabScreen(
         .build()
     }
 
-    private fun createAlbumGridTemplate(noItemsMessage: String): Template {
-        val builder = GridTemplate.Builder()
+    private fun createSectionedContent(noItemsMessage: String): Template {
+        val builder = SectionedItemTemplate.Builder()
         if (isLoading) return builder.setLoading(true).build()
 
-        val gridBuilder = ItemList.Builder().setNoItemsMessage(noItemsMessage)
+        val browsableItems = mediaItems.filter { it.mediaMetadata.isBrowsable == true }
+        val playableItems = mediaItems.filter { it.mediaMetadata.isBrowsable != true }
 
-        mediaItems.forEach { item ->
-            gridBuilder.addItem(
-                GridItem.Builder()
-                    .setTitle(item.mediaMetadata.title ?: "Unknown")
-                    .setText(item.mediaMetadata.artist ?: "")
-                    .setImage(createCarIcon(item.mediaMetadata), GridItem.IMAGE_TYPE_LARGE)
-                    .setOnClickListener {
-                        if (item.mediaMetadata.isBrowsable == true) {
-                            screenManager
-                                .push(SongListScreen(carContext, playControl, item.mediaId, item.mediaMetadata.title?.toString() ?: "Album"))
-                        } else {
-                            screenManager.push(SongDetailScreen(carContext, playControl, item))
-                        }
-                    }
-                    .build()
-            )
+        if (mediaItems.isEmpty()) {
+            val sectionBuilder = RowSection.Builder()
+            sectionBuilder.addItem(Row.Builder().setTitle(noItemsMessage).setEnabled(false).build())
+            builder.addSection(sectionBuilder.build())
+            return builder.build()
         }
 
-        return builder.setSingleList(gridBuilder.build()).build()
+        // 1. Grid Section for Albums/Playlists
+        if (browsableItems.isNotEmpty()) {
+            val gridSectionBuilder = GridSection.Builder().setTitle("Folders")
+            browsableItems.forEach { item ->
+                gridSectionBuilder.addItem(
+                    GridItem.Builder()
+                        .setTitle(item.mediaMetadata.title ?: "Unknown")
+                        .setText(item.mediaMetadata.artist ?: "")
+                        .setImage(createCarIcon(item.mediaMetadata), GridItem.IMAGE_TYPE_LARGE)
+                        .setOnClickListener {
+                            screenManager.push(SongListScreen(carContext, playControl, item.mediaId, item.mediaMetadata.title?.toString() ?: "Album"))
+                        }
+                        .build()
+                )
+            }
+            builder.addSection(gridSectionBuilder.build())
+        }
+
+        // 2. Row Section for Songs
+        if (playableItems.isNotEmpty()) {
+            val rowSectionBuilder = RowSection.Builder().setTitle("Songs")
+            playableItems.forEach { item ->
+                rowSectionBuilder.addItem(
+                    Row.Builder()
+                        .setTitle(item.mediaMetadata.title ?: "Unknown")
+                        .addText(item.mediaMetadata.artist ?: "")
+                        .setImage(createCarIcon(item.mediaMetadata), Row.IMAGE_TYPE_SMALL)
+                        .setOnClickListener {
+                            playControl.playMedia(item)
+                            screenManager.push(SongDetailScreen(carContext, playControl, item))
+                        }
+                        .build()
+                )
+            }
+            builder.addSection(rowSectionBuilder.build())
+        }
+
+        return builder.build()
     }
 
     private fun createEqualizerTemplate(): Template {
@@ -231,7 +259,7 @@ class MainTabScreen(
                 .setOnClickListener {
                     val newMode = !playControl.isAdvancedMode
                     playControl.isAdvancedMode = newMode
-                    
+
                     val extras = Bundle().apply { putBoolean("IS_ADVANCED", newMode) }
                     if (playControl.mediaControllerFuture.isDone) {
                         playControl.controller.sendCustomCommand(SessionCommand("setEqMode", Bundle()), extras)
@@ -247,7 +275,7 @@ class MainTabScreen(
             val vol = playControl.volPerFreq[i]
             val channelLabel = if (i < 8) "Left" else "Right"
             val bandName = playControl.frequencyLabels[i % 8]
-            
+
             val title = if (playControl.isAdvancedMode) "$channelLabel: $bandName" else bandName
 
             listBuilder.addItem(

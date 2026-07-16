@@ -7,6 +7,7 @@ import androidx.car.app.CarAppService
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.Session
+import androidx.car.app.annotations.ExperimentalCarApi
 import androidx.car.app.model.Action
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.ItemList
@@ -15,9 +16,12 @@ import androidx.car.app.model.Row
 import androidx.car.app.model.Template
 import androidx.car.app.validation.HostValidator
 import androidx.core.graphics.drawable.IconCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.util.UnstableApi
 import java.util.Locale
 
+@OptIn(UnstableApi::class)
 class ModernCarService : CarAppService() {
     override fun createHostValidator(): HostValidator {
         return HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
@@ -25,19 +29,30 @@ class ModernCarService : CarAppService() {
 
     override fun onCreateSession(): Session {
         return object : Session() {
-            @OptIn(UnstableApi::class)
+            private lateinit var playControl: PlayControl
+
+            init {
+                lifecycle.addObserver(LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_CREATE) {
+                        doTokenRegistration()
+                    }
+                })
+            }
+
+            @OptIn(ExperimentalCarApi::class, UnstableApi::class)
+            private fun doTokenRegistration() {
+                if (::playControl.isInitialized) {
+                    playControl.registerToken()
+                }
+            }
+
+            @OptIn(UnstableApi::class, ExperimentalCarApi::class)
             override fun onCreateScreen(intent: Intent): Screen {
                 val apiLevel = carContext.carAppApiLevel
                 Log.d("ModernCarService", "Car App API Level: $apiLevel")
                 
-                // Show a toast with the detected API level for debugging
-                /*androidx.car.app.CarToast.makeText(
-                    carContext,
-                    "Detected Car API Level: $apiLevel",
-                    androidx.car.app.CarToast.LENGTH_LONG
-                ).show()*/
-
-                val playControl = PlayControl(carContext)
+                playControl = PlayControl(carContext)
+                playControl.registerToken()
                 
                 // TabTemplate requires API Level 6+
                 return if (apiLevel <= 5) {
@@ -67,11 +82,8 @@ class SimpleMainScreen(
     }
 
     private fun checkPermissions() {
-        val permissions = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+        val permissions =
             listOf(android.Manifest.permission.READ_MEDIA_AUDIO)
-        } else {
-            listOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
         carContext.requestPermissions(permissions) { _, _ ->
             invalidate()
         }
