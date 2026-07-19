@@ -15,6 +15,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
+import androidx.media3.session.DefaultMediaNotificationProvider
 import com.equalizer.common.metadata.M4aMeta
 import com.equalizer.common.metadata.MetaFactory
 import com.equalizer.common.metadata.Mp3Meta
@@ -205,6 +206,10 @@ class MyMediaService : MediaLibraryService() {
         Log.d("MyMediaService", "onCreate starting")
         MediaThumbnailProvider.init(this)
         val player = Equalizer(context = this)
+
+        val notificationProvider = DefaultMediaNotificationProvider(this)
+        notificationProvider.setSmallIcon(R.drawable.ic_lever)
+        setMediaNotificationProvider(notificationProvider)
 
         val intent = packageManager.getLaunchIntentForPackage(packageName)
         val pendingIntent = PendingIntent.getActivity(this, 0, intent!!, PendingIntent.FLAG_IMMUTABLE)
@@ -414,21 +419,37 @@ class MyMediaService : MediaLibraryService() {
                 if (customCommand.customAction == "setVolOnFreq") {
                     val index = args.getInt("KEY_INDEX")
                     val volume = args.getFloat("KEY_VOLUME")
-                    volPerFreq[index] = volume
                     
                     val player = session.player
                     if (player is Equalizer) {
+                        volPerFreq[index] = volume
                         player.setVolOnFreq(volume, index)
+                        
+                        // Sync channels if in Basic mode
+                        if (!isAdvancedMode) {
+                            val otherIndex = if (index < 8) index + 8 else index - 8
+                            volPerFreq[otherIndex] = volume
+                            player.setVolOnFreq(volume, otherIndex)
+                        }
                     }
                     pushEqualizerState(session)
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 } else if (customCommand.customAction == "setAllVolOnFreq") {
                     val volumes = args.getFloatArray("KEY_VOLUMES")
-                    if (volumes != null && (volumes.size == 8 || volumes.size == 16)) {
-                        for (i in volumes.indices) volPerFreq[i] = volumes[i]
+                    if (volumes != null) {
                         val player = session.player
                         if (player is Equalizer) {
-                            player.setAllVolOnFreq(volumes)
+                            if (volumes.size == 8) {
+                                // Apply same 8 bands to both L and R
+                                for (i in 0 until 8) {
+                                    volPerFreq[i] = volumes[i]
+                                    volPerFreq[i + 8] = volumes[i]
+                                }
+                                player.setAllVolOnFreq(volPerFreq.toFloatArray())
+                            } else if (volumes.size == 16) {
+                                for (i in 0 until 16) volPerFreq[i] = volumes[i]
+                                player.setAllVolOnFreq(volumes)
+                            }
                         }
                         pushEqualizerState(session)
                         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
@@ -443,6 +464,18 @@ class MyMediaService : MediaLibraryService() {
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 } else if (customCommand.customAction == "setEqMode") {
                     isAdvancedMode = args.getBoolean("IS_ADVANCED")
+                    
+                    // If switching to Basic mode, sync Right to Left immediately
+                    if (!isAdvancedMode) {
+                        for (i in 0 until 8) {
+                            volPerFreq[i + 8] = volPerFreq[i]
+                        }
+                        val player = session.player
+                        if (player is Equalizer) {
+                            player.setAllVolOnFreq(volPerFreq.toFloatArray())
+                        }
+                    }
+                    
                     pushEqualizerState(session)
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 } else if (customCommand.customAction == "toggleFavourite") {

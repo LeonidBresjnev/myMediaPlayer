@@ -38,14 +38,20 @@ class BandDetailScreen(
     }
 
     override fun onGetTemplate(): Template {
-        val channelLabel = if (bandIndex < 8) "Left" else "Right"
         val bandName = playControl.frequencyLabels[bandIndex % 8]
         val currentVol = playControl.volPerFreq[bandIndex]
+
+        val title = if (playControl.isAdvancedMode) {
+            val channelLabel = if (bandIndex < 8) "Left" else "Right"
+            "$channelLabel: $bandName"
+        } else {
+            bandName
+        }
 
         val paneBuilder = Pane.Builder()
         
         val statusRow = Row.Builder()
-            .setTitle("$channelLabel: $bandName")
+            .setTitle(title)
             .addText("Current Volume: ${String.format(Locale.GERMAN, "%.1f", currentVol)}x")
             .build()
         

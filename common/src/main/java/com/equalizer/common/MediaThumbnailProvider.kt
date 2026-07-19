@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import androidx.core.net.toUri
+import androidx.core.graphics.createBitmap
 
 class MediaThumbnailProvider : ContentProvider() {
 
@@ -111,6 +112,8 @@ class MediaThumbnailProvider : ContentProvider() {
         
         if (notFoundCache.get(path) == true) {
             Log.d(TAG, "Skipping $path - already in notFoundCache")
+            val fallback = getFallbackArt()
+            if (fallback != null) return ParcelFileDescriptor.open(fallback, ParcelFileDescriptor.MODE_READ_ONLY)
             return null
         }
 
@@ -175,7 +178,10 @@ class MediaThumbnailProvider : ContentProvider() {
         }
 
         if (file == null || !file.exists() || file.length() == 0L) {
-            Log.e(TAG, "openFile: Failed to provide file for $path")
+            Log.w(TAG, "openFile: Failed to provide file for $path, using fallback")
+            val fallback = getFallbackArt()
+            if (fallback != null) return ParcelFileDescriptor.open(fallback, ParcelFileDescriptor.MODE_READ_ONLY)
+            
             notFoundCache.put(path, true)
             return null
         }
@@ -218,7 +224,7 @@ class MediaThumbnailProvider : ContentProvider() {
                     Log.e(TAG, "Download failed with code ${response.code} for $cleanUrl")
                     return null
                 }
-                val body = response.body ?: return null
+                val body = response.body
                 Log.d(TAG, "Response body length: ${body.contentLength()} type: ${body.contentType()}")
                 
                 val tempFile = File.createTempFile("download_", ".jpg", context.cacheDir)
@@ -282,8 +288,7 @@ class MediaThumbnailProvider : ContentProvider() {
 
         return kotlinx.coroutines.runBlocking {
             try {
-                val meta = MetaFactory.createMeta(file, context)
-                if (meta == null) return@runBlocking null
+                val meta = MetaFactory.createMeta(file, context) ?: return@runBlocking null
 
                 val artist = when (meta) {
                     is Mp3Meta -> meta.artist
@@ -307,6 +312,34 @@ class MediaThumbnailProvider : ContentProvider() {
                 Log.e(TAG, "searchAndDownloadOnline error: ${e.message}")
                 null
             }
+        }
+    }
+
+    private fun getFallbackArt(): File? {
+        val context = context ?: return null
+        val fallbackFile = File(context.cacheDir, "fallback_lever.png")
+        if (fallbackFile.exists() && fallbackFile.length() > 0) return fallbackFile
+
+        try {
+            val drawable = androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_lever) ?: return null
+            val bitmap = createBitmap(512, 512)
+            val canvas = android.graphics.Canvas(bitmap)
+            // Draw background
+            val paint = android.graphics.Paint()
+            paint.color = androidx.core.content.ContextCompat.getColor(context, R.color.lever_background)
+            canvas.drawRect(0f, 0f, 512f, 512f, paint)
+
+            // Draw lever icon in center
+            drawable.setBounds(64, 64, 448, 448)
+            drawable.draw(canvas)
+
+            FileOutputStream(fallbackFile).use { out ->
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+            }
+            return fallbackFile
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create fallback art: ${e.message}")
+            return null
         }
     }
 }
