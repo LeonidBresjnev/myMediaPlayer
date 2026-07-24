@@ -5,13 +5,17 @@
 namespace equalizer {
     FilterSource::FilterSource(std::shared_ptr<AudioSource> source) :
     myDuplicator{std::make_shared<Duplicator>()},
-    _source(std::move(source)){}
+    _source(std::move(source)){
+        setFilter(44100, 2);
+    }
 
 
     void FilterSource::setFilter(int sampleRate, int numChannels_) {
         this->numChannels = numChannels_;
         const double PI = acos(-1);
 
+        filterDesign.clear();
+        filterDesign.resize(8);
 
         //Define digital prototype of Chebyshev type;
         const double mu = PI / 8;
@@ -20,9 +24,14 @@ namespace equalizer {
 
         std::array<std::complex<double>, order> polesD;
         for (auto m = 1; m <= order; m++) {
-            std::complex<double> poleA=std::complex(
+          /*  std::complex<double> poleA=std::complex(
                     -sinh(asinh(1.0 / e) / order) * sin(PI * (2 * m - 1) / (2 * order)),
-                    cosh(asinh(1.0 / e) / order) * cos(PI * (2 * m - 1) / (2 * order)))*wa;
+                    cosh(asinh(1.0 / e) / order) * cos(PI * (2 * m - 1) / (2 * order)))*wa;*/
+
+            std::complex<double> poleA=std::complex(
+                    cos(PI / 2 + (2 * m-1) * PI / (2 * order)),
+            sin(PI / 2 + (2 * m-1) * PI / (2 * order))
+            )*wa;
             polesD[m-1] = -(poleA+2.0 * sampleRate)/(poleA-2.0 * sampleRate);
 
             // LOGD("m=%d, pole proto: %f, %f, pole analog: %f, %f",m, polesD[m-1].real(), polesD[m-1].imag(), poleA.real(), poleA.imag());
@@ -30,7 +39,7 @@ namespace equalizer {
 
 
 
-        //make lowpass;
+        //make lowpass; (Band 0)
         double cutoff = PI * 2.0 * static_cast<double>(freqBorders[0]) / static_cast<double>(sampleRate);
         //double tanwc = tan(cutoff / 2.0);
 
@@ -41,6 +50,10 @@ namespace equalizer {
             std::complex<double> pole = (polesD[i]+alpha)/(polesD[i]*alpha+1.0);
             double scale = std::pow( abs((pole+1.0)*tan(mu/2)*(alpha-1.0)/((alpha+1.0)*4.0)*(std::pow(2.0/e,1.0/order ))),2.0);
 
+            filterDesign[0].poles.push_back(pole);
+            filterDesign[0].poles.push_back(std::conj(pole));
+            filterDesign[0].zeros.push_back(Complex(-1.0, 0.0));
+            filterDesign[0].zeros.push_back(Complex(-1.0, 0.0));
 
            // LOGD("i= %d, pole: %f, %f, scale: %f",i, pole.real(), pole.imag(), scale);
             for (auto &channel: lowpass) {
@@ -145,8 +158,12 @@ namespace equalizer {
                 d=std::pow(a*a-b,0.5);
                 std::complex<double> pole = ((i<order/2) ? -d+a : d+a)/(polesD[i]*(k-1)+k+1.0);
 
-                double scale = abs( ((polesD[i]+1.0)*tan(mu/2)/((polesD[i]*(k-1)+k+1.0)*2.0)) *  (std::pow(2.0/e,1.0/order)));
+                double scale = abs( 2.0*((polesD[i]+1.0)*tan(mu/2)/((polesD[i]*(k-1)+k+1.0)*2.0)) *  (std::pow(2.0/e,1.0/order)));
 
+                filterDesign[band + 1].poles.push_back(pole);
+                filterDesign[band + 1].poles.push_back(std::conj(pole));
+                filterDesign[band + 1].zeros.push_back(Complex(1.0, 0.0));
+                filterDesign[band + 1].zeros.push_back(Complex(-1.0, 0.0));
 
                 for (auto c=0; c<numChannels; c++) {
 
@@ -167,6 +184,11 @@ namespace equalizer {
         for (auto i = 0; i < (order / 2); i++) {
             std::complex pole = -(polesD[i]+alpha)/(polesD[i]*alpha+1.0);
             double scale = std::pow( abs((-pole+1.0)*tan(mu/2)*(alpha-1.0)/((alpha+1.0)*4.0)*(std::pow(2.0/e,1.0/order ))),2.0);
+
+            filterDesign[7].poles.push_back(pole);
+            filterDesign[7].poles.push_back(std::conj(pole));
+            filterDesign[7].zeros.push_back(Complex(1.0, 0.0));
+            filterDesign[7].zeros.push_back(Complex(1.0, 0.0));
 
 //            LOGD("i= %d, pole: %f, %f, scale: %f",i, pole.real(), pole.imag(), scale);
             for (auto &channel: highpass) {

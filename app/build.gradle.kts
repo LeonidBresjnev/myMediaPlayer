@@ -84,6 +84,8 @@ dependencies {
     implementation(libs.androidx.app.projected)
     implementation(libs.mp3agic)
     implementation(libs.coil.compose)
+    implementation(libs.lets.plot.compose)
+    implementation(libs.lets.plot.main)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

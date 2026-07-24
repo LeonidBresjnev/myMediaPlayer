@@ -29,7 +29,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.common.util.UnstableApi
+import org.jetbrains.letsPlot.letsPlot
+import org.jetbrains.letsPlot.geom.geomPoint
+import org.jetbrains.letsPlot.geom.geomPath
+import org.jetbrains.letsPlot.scale.scaleColorManual
+import org.jetbrains.letsPlot.label.ggtitle
+import org.jetbrains.letsPlot.compose.PlotPanel
+import com.equalizer.common.Equalizer
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.PI
 
+@UnstableApi
+@OptIn(UnstableApi::class)
 @Composable
 fun ControlPanel(modifier: Modifier = Modifier,
                  equalizerViewModel: AudioModel) {
@@ -267,7 +280,99 @@ fun ControlPanel(modifier: Modifier = Modifier,
         }
 
         Spacer(Modifier.height(48.dp))
+
+        // --- FILTER DESIGN PLOT SECTION ---
+        val filterDesign by equalizerViewModel.filterDesign.observeAsState()
+        
+        LaunchedEffect(isPlaying) {
+            equalizerViewModel.updateFilterDesign()
+        }
+
+        Text(
+            text = "Filter Pole-Zero Map",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Start
+        )
+        
+        Spacer(Modifier.height(16.dp))
+        
+        filterDesign?.let { design ->
+            FilterDesignPlot(design)
+        } ?: Box(
+            modifier = Modifier.fillMaxWidth().height(300.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Loading filter design...", color = Color.Gray)
+        }
+
+        Spacer(Modifier.height(48.dp))
     }
+}
+
+@UnstableApi
+@OptIn(UnstableApi::class)
+@Composable
+fun FilterDesignPlot(design: Equalizer.FilterDesignData) {
+    val bandColors = listOf(
+        "#E41A1C", "#377EB8", "#4DAF4A", "#984EA3",
+        "#FF7F00", "#FFFF33", "#A65628", "#F781BF"
+    )
+
+    val xList = mutableListOf<Float>()
+    val yList = mutableListOf<Float>()
+    val bandList = mutableListOf<String>()
+    val typeList = mutableListOf<String>()
+
+    design.bands.forEachIndexed { bandIdx, bandDesign ->
+        val bandName = "Band ${bandIdx + 1}"
+        bandDesign.poles.forEach { p ->
+            xList.add(p.re)
+            yList.add(p.im)
+            bandList.add(bandName)
+            typeList.add("Pole")
+        }
+        bandDesign.zeros.forEach { z ->
+            xList.add(z.re)
+            yList.add(z.im)
+            bandList.add(bandName)
+            typeList.add("Zero")
+        }
+    }
+
+    val data = mapOf(
+        "x" to xList,
+        "y" to yList,
+        "band" to bandList,
+        "type" to typeList
+    )
+
+    // Unit circle data
+    val circleX = (0..100).map { cos(2 * PI * it / 100).toFloat() }
+    val circleY = (0..100).map { sin(2 * PI * it / 100).toFloat() }
+    val circleData = mapOf("cx" to circleX, "cy" to circleY)
+
+    val plot = letsPlot(data) +
+            geomPath(data = circleData) { this.x = "cx"; this.y = "cy" } + // Unit circle
+            geomPoint(size = 4.0) {
+                this.x = "x"
+                this.y = "y"
+                this.color = "band"
+                this.shape = "type"
+            } +
+            scaleColorManual(values = bandColors) +
+            ggtitle("8-Band Parametric EQ Design")
+
+    PlotPanel(
+        figure = plot,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(400.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White),
+        computationMessagesHandler = { }
+    )
 }
 
 @Composable

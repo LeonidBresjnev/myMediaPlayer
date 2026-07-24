@@ -14,15 +14,17 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
-//import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaBrowser
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
 import androidx.media3.session.SessionToken
 import com.equalizer.common.MyMediaService
+import com.equalizer.common.Equalizer
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 
+@UnstableApi
 class AudioModel: ViewModel() {
     /*companion object {
         private const val MEDIA_ITEM_ID_KEY = "MEDIA_ITEM_ID_KEY"
@@ -175,6 +177,7 @@ class AudioModel: ViewModel() {
         _volumenLow.value = fullValues
         
         syncWithController(fullValues)
+        updateFilterDesign()
     }
 
     private fun syncWithController(values: List<Float>) {
@@ -224,6 +227,7 @@ class AudioModel: ViewModel() {
         if (::controller.isInitialized) {
             controller.sendCustomCommand(customCommand, extras)
         }
+        updateFilterDesign()
     }
 
     fun resetEqualizer() {
@@ -240,6 +244,27 @@ class AudioModel: ViewModel() {
 
     private val _nextMediaItem = MutableLiveData<MediaItem?>(null)
     val nextMediaItem: LiveData<MediaItem?> = _nextMediaItem
+
+    @OptIn(UnstableApi::class)
+    private val _filterDesign = MutableLiveData<Equalizer.FilterDesignData?>(null)
+    @OptIn(UnstableApi::class)
+    val filterDesign: LiveData<Equalizer.FilterDesignData?> = _filterDesign
+
+    @OptIn(UnstableApi::class)
+    fun updateFilterDesign() {
+        if (::controller.isInitialized) {
+            val future = controller.sendCustomCommand(SessionCommand("getFilterDesign", Bundle()), Bundle())
+            future.addListener({
+                val result = future.get()
+                if (result.resultCode == SessionResult.RESULT_SUCCESS) {
+                    val raw = result.extras.getFloatArray("DESIGN_DATA")
+                    if (raw != null) {
+                        _filterDesign.postValue(Equalizer.parseFilterDesign(raw))
+                    }
+                }
+            }, MoreExecutors.directExecutor())
+        }
+    }
 
     enum class Status {
         PLAYING ,
@@ -311,6 +336,7 @@ class AudioModel: ViewModel() {
                 log("Track changed: ${mediaItem?.mediaId}")
                 _nowPlayingId.postValue(mediaItem?.mediaId)
                 updateNextMediaItem()
+                updateFilterDesign()
             }
 
             override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
@@ -367,6 +393,11 @@ class AudioModel: ViewModel() {
                 if (favs != null) {
                     _favourites.postValue(favs.toSet())
                 }
+
+                val designRaw = extras.getFloatArray("FILTER_DESIGN")
+                if (designRaw != null) {
+                    _filterDesign.postValue(Equalizer.parseFilterDesign(designRaw))
+                }
             }
         }
 
@@ -405,6 +436,12 @@ class AudioModel: ViewModel() {
                     _favourites.postValue(favs.toSet())
                 }
 
+                val designRaw = sessionExtras.getFloatArray("FILTER_DESIGN")
+                if (designRaw != null) {
+                    _filterDesign.postValue(Equalizer.parseFilterDesign(designRaw))
+                }
+
+                updateFilterDesign()
                 handlePlaybackBasedOnState()
 
             }, MoreExecutors.directExecutor())

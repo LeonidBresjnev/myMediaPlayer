@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.os.Bundle
 import android.os.Looper
 import android.view.Surface
 import android.view.SurfaceHolder
@@ -37,6 +38,11 @@ import androidx.media3.common.util.Size
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util.getCurrentOrMainLooper
 import com.google.common.base.Preconditions
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import java.io.File
 import android.media.AudioAttributes as AndroidAudioAttributes
 
@@ -47,12 +53,15 @@ class Equalizer(
 ) : BasePlayer(), Player, DefaultLifecycleObserver {
 
     private val equalizerMutex = Object()
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private fun createNativeHandleIfNotExists() {
-        if (equalizerHandle != 0L) {
-            return
+        synchronized(equalizerMutex) {
+            if (equalizerHandle != 0L) {
+                return
+            }
+            equalizerHandle = nativeCreate()
         }
-        equalizerHandle = nativeCreate()
     }
 
     private val commands = Player.Commands.Builder()
@@ -62,6 +71,7 @@ class Equalizer(
         .build()
 
     private external fun nativeCreate(): Long
+    private external fun nativeInit(context: Context)
     private external fun nativeDelete(synthesizerHandle: Long)
     private external fun nativeStop(synthesizerHandle: Long)
     private external fun nativePlayWithVol(synthesizerHandle: Long, name: String, vol: FloatArray, deviceId: Int)
@@ -70,6 +80,29 @@ class Equalizer(
     private external fun nativeGetCurrentPosition(synthesizerHandle: Long): Double
     private external fun nativeSeekTo(synthesizerHandle: Long, positionSeconds: Double)
     private external fun nativeSetDelay(synthesizerHandle: Long, leftDelay: Float, rightDelay: Float)
+    private external fun nativeGetFilterDesign(synthesizerHandle: Long): FloatArray?
+
+    @UnstableApi
+    data class Complex(val re: Float, val im: Float)
+    @UnstableApi
+    data class BandDesign(val poles: List<Complex>, val zeros: List<Complex>)
+    @UnstableApi
+    data class FilterDesignData(val bands: List<BandDesign>)
+
+    @UnstableApi
+    fun getRawFilterDesign(): FloatArray? {
+        createNativeHandleIfNotExists()
+        return synchronized(equalizerMutex) {
+            if (equalizerHandle == 0L) return@synchronized null
+            nativeGetFilterDesign(equalizerHandle)
+        }
+    }
+
+    @UnstableApi
+    fun getFilterDesign(): FilterDesignData? {
+        val raw = getRawFilterDesign() ?: return null
+        return parseFilterDesign(raw)
+    }
 
     private val volPerFreq = MutableList(16) { 1f }
 
@@ -104,7 +137,7 @@ class Equalizer(
 
     private var applicationLooper: Looper = getCurrentOrMainLooper()
     private val clock = Clock.DEFAULT
-    private val handler = android.os.Handler(applicationLooper)
+    //private val handler = android.os.Handler(applicationLooper)
 
     private var listeners: ListenerSet<Player.Listener> =
         ListenerSet(applicationLooper, clock) { listener: Player.Listener, flags: FlagSet ->
@@ -120,6 +153,33 @@ class Equalizer(
     companion object {
         init {
             System.loadLibrary("myMediaPlayer")
+        }
+
+        @UnstableApi
+        fun parseFilterDesign(raw: FloatArray): FilterDesignData {
+            var idx = 0
+            val numBands = raw[idx++].toInt()
+            val bandInfo = mutableListOf<Pair<Int, Int>>()
+            for (i in 0 until numBands) {
+                val numPoles = raw[idx++].toInt()
+                val numZeros = raw[idx++].toInt()
+                bandInfo.add(numPoles to numZeros)
+            }
+
+            val bands = mutableListOf<BandDesign>()
+            for (info in bandInfo) {
+                val poles = mutableListOf<Complex>()
+                for (p in 0 until info.first) {
+                    poles.add(Complex(raw[idx++], raw[idx++]))
+                }
+                val zeros = mutableListOf<Complex>()
+                for (z in 0 until info.second) {
+                    zeros.add(Complex(raw[idx++], raw[idx++]))
+                }
+                bands.add(BandDesign(poles, zeros))
+            }
+
+            return FilterDesignData(bands)
         }
     }
 
@@ -173,23 +233,33 @@ class Equalizer(
 
     private fun triggerNativeLoad() {
         val mediaItem = mediaItems.getOrNull(currentMediaItemIndex)
-        val path = mediaItem?.localConfiguration?.uri?.path ?: mediaItem?.mediaId
+        val uri = mediaItem?.localConfiguration?.uri
+        val path = if (uri != null) {
+            if (uri.scheme == "http" || uri.scheme == "https") uri.toString() else uri.path
+        } else {
+            mediaItem?.mediaId
+        }
+        
         log("triggerNativeLoad: $path at index $currentMediaItemIndex")
 
         if (path != null) {
-            val file = File(path)
-            if (file.exists()) {
-                synchronized(equalizerMutex) {
+            val isNetworkStream = path.startsWith("http://") || path.startsWith("https://")
+            val file = if (isNetworkStream) null else File(path)
+            
+            if (isNetworkStream || (file != null && file.exists())) {
+                scope.launch(Dispatchers.IO) {
                     createNativeHandleIfNotExists()
-                    val deviceId = getBestDeviceId()
-                    nativePlayWithVol(equalizerHandle, file.absolutePath, volPerFreq.toFloatArray(), deviceId)
+                    nativePlayWithVol(equalizerHandle, path, volPerFreq.toFloatArray(), deviceId = getBestDeviceId())
                 }
+            } else {
+                log("triggerNativeLoad: Path does not exist or is invalid: $path")
             }
         }
     }
 
     init {
         log("inited")
+        nativeInit(context)
         listeners.add(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 log("onIsPlayingChanged: $isPlaying")
@@ -388,6 +458,7 @@ class Equalizer(
     override fun stop() { setPlayWhenReady(false) }
 
     override fun release() {
+        scope.cancel()
         synchronized(equalizerMutex) {
             if (equalizerHandle != 0L) {
                 nativeDelete(equalizerHandle)
@@ -436,7 +507,7 @@ class Equalizer(
             val duration = getDuration()
             if (duration > 0 && posMs >= (duration - 500) && playWhenReady && !isAutoAdvancing) {
                 isAutoAdvancing = true
-                handler.post { handleEndOfSong() }
+                scope.launch(Dispatchers.Main) { handleEndOfSong() }
             }
             return posMs
         }
@@ -531,9 +602,10 @@ class Equalizer(
                 listeners.sendEvent(EVENT_MEDIA_METADATA_CHANGED) { it.onMediaMetadataChanged(mediaMetadata) }
                 
                 listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, TIMELINE_CHANGE_REASON_SOURCE_UPDATE) }
-                handler.postDelayed({
+                scope.launch(Dispatchers.Main) {
+                    kotlinx.coroutines.delay(200)
                     listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, TIMELINE_CHANGE_REASON_SOURCE_UPDATE) }
-                }, 200)
+                }
             }
 
             val oldItem = mediaItems.getOrNull(oldIndex)

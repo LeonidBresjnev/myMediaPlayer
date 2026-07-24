@@ -6,6 +6,10 @@
 #include "include/Log.h"
 #include "include/Equalizer.h"
 
+#define JUCE_CORE_INCLUDE_JNI_HELPERS 1
+#include <juce_core/juce_core.h>
+#include <juce_core/native/juce_JNIHelpers_android.h>
+
 #include <fstream>
 
 std::string jstringToString(JNIEnv* env, jstring jStr) {
@@ -21,6 +25,14 @@ std::string jstringToString(JNIEnv* env, jstring jStr) {
 }
 
 extern "C" {
+
+JNIEXPORT void JNICALL
+Java_com_equalizer_common_Equalizer_nativeInit(JNIEnv *env, jobject thiz, jobject context) {
+    LOGD("nativeInit called");
+    juce::JNIClassBase::initialiseAllClasses(env, context);
+    juce::Thread::initialiseJUCE(env, context);
+}
+
 JNIEXPORT jlong JNICALL
 Java_com_equalizer_common_Equalizer_nativeCreate(JNIEnv *env, jobject thiz) {
 
@@ -169,5 +181,46 @@ Java_com_equalizer_common_Equalizer_nativeSetDelay(JNIEnv *env, jobject thiz,
     if (equalizer) {
         equalizer->setDelay(static_cast<float>(left_delay), static_cast<float>(right_delay));
     }
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_com_equalizer_common_Equalizer_nativeGetFilterDesign(JNIEnv *env, jobject thiz, jlong equalizer_handle) {
+    auto *equalizer = reinterpret_cast<equalizer::Equalizer *>(equalizer_handle);
+    if (!equalizer) return nullptr;
+
+    auto design = equalizer->getFilterDesign();
+    if (design.empty()) return nullptr;
+
+    int numBands = 8;
+    int totalElements = 1 + (numBands * 2);
+    for (const auto& band : design) {
+        totalElements += (int)band.poles.size() * 2;
+        totalElements += (int)band.zeros.size() * 2;
+    }
+
+    jfloatArray result = env->NewFloatArray(totalElements);
+    jfloat* fill = new jfloat[totalElements];
+
+    int idx = 0;
+    fill[idx++] = (float)numBands;
+    for (const auto& band : design) {
+        fill[idx++] = (float)band.poles.size();
+        fill[idx++] = (float)band.zeros.size();
+    }
+
+    for (const auto& band : design) {
+        for (const auto& p : band.poles) {
+            fill[idx++] = (float)p.real();
+            fill[idx++] = (float)p.imag();
+        }
+        for (const auto& z : band.zeros) {
+            fill[idx++] = (float)z.real();
+            fill[idx++] = (float)z.imag();
+        }
+    }
+
+    env->SetFloatArrayRegion(result, 0, totalElements, fill);
+    delete[] fill;
+    return result;
 }
 }

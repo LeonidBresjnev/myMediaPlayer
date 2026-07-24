@@ -56,6 +56,7 @@ class MyMediaService : MediaLibraryService() {
     private val createPlaylistCmd = SessionCommand("createPlaylist", Bundle())
     private val addToPlaylistCmd = SessionCommand("addToPlaylist", Bundle())
     private val deletePlaylistCmd = SessionCommand("deletePlaylist", Bundle())
+    private val getFilterDesignCmd = SessionCommand("getFilterDesign", Bundle())
 
     private val volPerFreq = MutableList(16) { 1.0f }
     private var isAdvancedMode = false
@@ -234,6 +235,7 @@ class MyMediaService : MediaLibraryService() {
                 availableSessionCommands.add(createPlaylistCmd)
                 availableSessionCommands.add(addToPlaylistCmd)
                 availableSessionCommands.add(deletePlaylistCmd)
+                availableSessionCommands.add(getFilterDesignCmd)
 
                 pushEqualizerState(session)
 
@@ -506,6 +508,17 @@ class MyMediaService : MediaLibraryService() {
                         mediaSession?.notifyChildrenChanged("playlists_root", 0, null)
                         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                     }
+                } else if (customCommand.customAction == "getFilterDesign") {
+                    val player = session.player
+                    if (player is Equalizer) {
+                        val raw = player.getRawFilterDesign() // I'll add this helper
+                        if (raw != null) {
+                            val extras = Bundle().apply {
+                                putFloatArray("DESIGN_DATA", raw)
+                            }
+                            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS, extras))
+                        }
+                    }
                 }
                 return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
             }
@@ -517,10 +530,18 @@ class MyMediaService : MediaLibraryService() {
         val favourites = PlaylistManager.getPlaylists(applicationContext)
             .find { it.id == PlaylistManager.FAVOURITES_ID }?.songIds ?: emptyList()
 
+        val player = session.player
         val extras = Bundle().apply {
             putFloatArray("EQ_STATE", volPerFreq.toFloatArray())
             putBoolean("IS_ADVANCED", isAdvancedMode)
             putStringArray("FAVOURITES", favourites.toTypedArray())
+            
+            if (player is Equalizer) {
+                val designRaw = player.getRawFilterDesign()
+                if (designRaw != null) {
+                    putFloatArray("FILTER_DESIGN", designRaw)
+                }
+            }
         }
         session.sessionExtras = extras
     }

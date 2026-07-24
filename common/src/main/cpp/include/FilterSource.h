@@ -40,6 +40,11 @@ namespace equalizer {
 
 
 
+    struct BandDesign {
+        std::vector<Complex> poles;
+        std::vector<Complex> zeros;
+    };
+
     class FilterSource : public AudioSource {
     public:
 
@@ -50,6 +55,8 @@ namespace equalizer {
         void setDelay(int,int);
         virtual void setAmplitude(float newAmplitude, int freqInterval);
         std::shared_ptr<AudioSource> _source;
+
+        std::vector<BandDesign> getFilterDesign() const { return filterDesign; }
 
         constexpr static const std::complex ComplexOne = Complex(1.0, 0.0);
         constexpr static const std::complex MinusComplexOne = Complex(-1.0, 0.0);
@@ -68,6 +75,8 @@ namespace equalizer {
         FilterElement highpass[2][order/2];
         int numChannels=0;
         int currentChannel=0;
+
+        std::vector<BandDesign> filterDesign;
 
 
         static int max(int a, int b) {

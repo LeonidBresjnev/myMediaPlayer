@@ -25,6 +25,10 @@ namespace equalizer {
         void setVolumenLow(float , int);
         void setDelay(float leftDelay, float rightDelay);
 
+        std::vector<BandDesign> getFilterDesign() const {
+            return _filterSource->getFilterDesign();
+        }
+
 
 
     private:
