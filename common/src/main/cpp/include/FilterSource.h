@@ -3,11 +3,16 @@
 #include <cmath>
 #include "AudioSource.h"
 #include <atomic>
-
-#include "FilterElement.h"
+#include <vector>
+#include <array>
+#include <memory>
 #include <complex>
 
+#include "FilterElement.h"
+#include "ChebyshevFilter.h"
+
 using Complex = std::complex<double>;
+
 namespace equalizer {
 
     class Duplicator: public AudioSource {
@@ -37,9 +42,6 @@ namespace equalizer {
 
     };
 
-
-
-
     struct BandDesign {
         std::vector<Complex> poles;
         std::vector<Complex> zeros;
@@ -56,41 +58,32 @@ namespace equalizer {
         virtual void setAmplitude(float newAmplitude, int freqInterval);
         std::shared_ptr<AudioSource> _source;
 
-        std::vector<BandDesign> getFilterDesign() const { return filterDesign; }
+        std::vector<BandDesign> getFilterDesign() const;
         std::vector<double> getMagnitudeResponse(double f_start, double f_end, double f_step) const;
 
         constexpr static const std::complex ComplexOne = Complex(1.0, 0.0);
         constexpr static const std::complex MinusComplexOne = Complex(-1.0, 0.0);
+
+        double lossfunction(int pairIndex, std::complex<double> pole) const;
     private:
 
         std::shared_ptr<Duplicator> myDuplicator;
         Delayfilter myDelay[2];
-        const int freqBorders[7]={125,250,500,1000,2000,4000,8000};
+        const std::vector<int> freqBorders = {125, 250, 500, 1000, 2000, 4000, 8000};
         float amplitude[2][8] = {
             {1.f,1.f,1.f,1.f,1.f,1.f,1.f,1.f}, // Left
             {1.f,1.f,1.f,1.f,1.f,1.f,1.f,1.f}  // Right
         };
         static const int order=8;
-        FilterElement lowpass[2][order/2];
-        FilterElement bandpass[6][2][order];
-        FilterElement highpass[2][order/2];
-        std::array<std::complex<double>, order / 2> lowpasspoles;
-        std::array<std::complex<double>, 6 * order> bandpasspoles;
-        std::array<std::complex<double>, order / 2> highpasspoles;
-        std::array<double, order / 2> lowscalefactor;
-        std::array<double, 6 * order> bandscalefactor;
-        std::array<double, order / 2> highscalefactor;
 
+        ChebyshevPrototype prototype;
+        std::vector<ChebyshevFilter> bands;
 
-        std::complex<double> h(double) const;
+        std::complex<double> h(double f) const;
 
-        double c=0.0;
-
-        int numChannels=0;
-        int currentChannel=0;
-
-        std::vector<BandDesign> filterDesign;
-
+        double c_const = 0.0;
+        int numChannels = 0;
+        int currentChannel = 0;
 
         static int max(int a, int b) {
             return a>b?a:b;
@@ -100,6 +93,5 @@ namespace equalizer {
         }
     };
 
+
 }
-
-

@@ -27,6 +27,7 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         FilterElement.cpp
         FilterSource.cpp
         OboeAudioPlayer.cpp
+        ChebyshevFilter.cpp
 )
 
 include_directories(include)
