@@ -307,8 +307,59 @@ fun ControlPanel(modifier: Modifier = Modifier,
             Text("Loading filter design...", color = Color.Gray)
         }
 
+        Spacer(Modifier.height(32.dp))
+
+        val magnitudeResponse by equalizerViewModel.magnitudeResponse.observeAsState()
+
+        Text(
+            text = "Magnitude Response",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Start
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        magnitudeResponse?.let { response ->
+            MagnitudeResponsePlot(response)
+        } ?: Box(
+            modifier = Modifier.fillMaxWidth().height(300.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Loading magnitude response...", color = Color.Gray)
+        }
+
         Spacer(Modifier.height(48.dp))
     }
+}
+
+@Composable
+fun MagnitudeResponsePlot(response: FloatArray) {
+    val xList = (0..1000 step 10).map { it.toFloat() }
+    val yList = response.toList()
+
+    val data = mapOf(
+        "Frequency (Hz)" to xList,
+        "Magnitude" to yList
+    )
+
+    val plot = letsPlot(data) +
+            geomPath {
+                this.x = "Frequency (Hz)"
+                this.y = "Magnitude"
+            } +
+            ggtitle("Filter Magnitude Response (0-1000 Hz)")
+
+    PlotPanel(
+        figure = plot,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(300.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White),
+        computationMessagesHandler = { }
+    )
 }
 
 @UnstableApi

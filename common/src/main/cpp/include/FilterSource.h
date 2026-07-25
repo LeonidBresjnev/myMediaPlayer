@@ -57,6 +57,7 @@ namespace equalizer {
         std::shared_ptr<AudioSource> _source;
 
         std::vector<BandDesign> getFilterDesign() const { return filterDesign; }
+        std::vector<double> getMagnitudeResponse(double f_start, double f_end, double f_step) const;
 
         constexpr static const std::complex ComplexOne = Complex(1.0, 0.0);
         constexpr static const std::complex MinusComplexOne = Complex(-1.0, 0.0);
@@ -73,6 +74,18 @@ namespace equalizer {
         FilterElement lowpass[2][order/2];
         FilterElement bandpass[6][2][order];
         FilterElement highpass[2][order/2];
+        std::array<std::complex<double>, order / 2> lowpasspoles;
+        std::array<std::complex<double>, 6 * order> bandpasspoles;
+        std::array<std::complex<double>, order / 2> highpasspoles;
+        std::array<double, order / 2> lowscalefactor;
+        std::array<double, 6 * order> bandscalefactor;
+        std::array<double, order / 2> highscalefactor;
+
+
+        std::complex<double> h(double) const;
+
+        double c=0.0;
+
         int numChannels=0;
         int currentChannel=0;
 

@@ -57,6 +57,7 @@ class MyMediaService : MediaLibraryService() {
     private val addToPlaylistCmd = SessionCommand("addToPlaylist", Bundle())
     private val deletePlaylistCmd = SessionCommand("deletePlaylist", Bundle())
     private val getFilterDesignCmd = SessionCommand("getFilterDesign", Bundle())
+    private val getMagnitudeResponseCmd = SessionCommand("getMagnitudeResponse", Bundle())
 
     private val volPerFreq = MutableList(16) { 1.0f }
     private var isAdvancedMode = false
@@ -236,6 +237,7 @@ class MyMediaService : MediaLibraryService() {
                 availableSessionCommands.add(addToPlaylistCmd)
                 availableSessionCommands.add(deletePlaylistCmd)
                 availableSessionCommands.add(getFilterDesignCmd)
+                availableSessionCommands.add(getMagnitudeResponseCmd)
 
                 pushEqualizerState(session)
 
@@ -515,6 +517,17 @@ class MyMediaService : MediaLibraryService() {
                         if (raw != null) {
                             val extras = Bundle().apply {
                                 putFloatArray("DESIGN_DATA", raw)
+                            }
+                            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS, extras))
+                        }
+                    }
+                } else if (customCommand.customAction == "getMagnitudeResponse") {
+                    val player = session.player
+                    if (player is Equalizer) {
+                        val raw = player.getMagnitudeResponse(0.0, 1000.0, 10.0)
+                        if (raw != null) {
+                            val extras = Bundle().apply {
+                                putFloatArray("MAGNITUDE_DATA", raw)
                             }
                             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS, extras))
                         }

@@ -81,6 +81,7 @@ class Equalizer(
     private external fun nativeSeekTo(synthesizerHandle: Long, positionSeconds: Double)
     private external fun nativeSetDelay(synthesizerHandle: Long, leftDelay: Float, rightDelay: Float)
     private external fun nativeGetFilterDesign(synthesizerHandle: Long): FloatArray?
+    private external fun nativeGetMagnitudeResponse(synthesizerHandle: Long, start: Double, end: Double, step: Double): FloatArray?
 
     @UnstableApi
     data class Complex(val re: Float, val im: Float)
@@ -102,6 +103,14 @@ class Equalizer(
     fun getFilterDesign(): FilterDesignData? {
         val raw = getRawFilterDesign() ?: return null
         return parseFilterDesign(raw)
+    }
+
+    @UnstableApi
+    fun getMagnitudeResponse(start: Double, end: Double, step: Double): FloatArray? {
+        return synchronized(equalizerMutex) {
+            if (equalizerHandle == 0L) return@synchronized null
+            nativeGetMagnitudeResponse(equalizerHandle, start, end, step)
+        }
     }
 
     private val volPerFreq = MutableList(16) { 1f }

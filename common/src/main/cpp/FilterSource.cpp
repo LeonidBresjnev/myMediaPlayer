@@ -6,6 +6,12 @@ namespace equalizer {
     FilterSource::FilterSource(std::shared_ptr<AudioSource> source) :
     myDuplicator{std::make_shared<Duplicator>()},
     _source(std::move(source)){
+        lowpasspoles.fill(Complex(0.0, 0.0));
+        bandpasspoles.fill(Complex(0.0, 0.0));
+        highpasspoles.fill(Complex(0.0, 0.0));
+        lowscalefactor.fill(0.0);
+        bandscalefactor.fill(0.0);
+        highscalefactor.fill(0.0);
         setFilter(44100, 2);
     }
 
@@ -14,27 +20,29 @@ namespace equalizer {
         this->numChannels = numChannels_;
         const double PI = acos(-1);
 
+        c = PI*2.0/sampleRate;
         filterDesign.clear();
         filterDesign.resize(8);
 
         //Define digital prototype of Chebyshev type;
         const double mu = PI / 8;
         const double wa = tan(mu/2)*2*sampleRate;
-        const double e = 0.4;
+        const double e = 0.5;
+
 
         std::array<std::complex<double>, order> polesD;
         for (auto m = 1; m <= order; m++) {
-          /*  std::complex<double> poleA=std::complex(
+           std::complex<double> poleA=std::complex(
                     -sinh(asinh(1.0 / e) / order) * sin(PI * (2 * m - 1) / (2 * order)),
-                    cosh(asinh(1.0 / e) / order) * cos(PI * (2 * m - 1) / (2 * order)))*wa;*/
+                    cosh(asinh(1.0 / e) / order) * cos(PI * (2 * m - 1) / (2 * order)))*wa;
 
-            std::complex<double> poleA=std::complex(
+         /*   std::complex<double> poleA=std::complex(
                     cos(PI / 2 + (2 * m-1) * PI / (2 * order)),
             sin(PI / 2 + (2 * m-1) * PI / (2 * order))
-            )*wa;
+            )*wa;*/
             polesD[m-1] = -(poleA+2.0 * sampleRate)/(poleA-2.0 * sampleRate);
 
-            // LOGD("m=%d, pole proto: %f, %f, pole analog: %f, %f",m, polesD[m-1].real(), polesD[m-1].imag(), poleA.real(), poleA.imag());
+             LOGD("m=%d, pole proto: %f, %f, pole analog: %f, %f",m, polesD[m-1].real(), polesD[m-1].imag(), poleA.real(), poleA.imag());
         }
 
 
@@ -48,12 +56,17 @@ namespace equalizer {
 
         for (auto i = 0; i < (order / 2); i++) {
             std::complex<double> pole = (polesD[i]+alpha)/(polesD[i]*alpha+1.0);
-            double scale = std::pow( abs((pole+1.0)*tan(mu/2)*(alpha-1.0)/((alpha+1.0)*4.0)*(std::pow(2.0/e,1.0/order ))),2.0);
+            auto scale0 =  (pole+1.0)*tan(mu/2)*(alpha-1.0)/((alpha+1.0)*4.0)*(std::pow(2.0/e,1.0/order ));
+            //LOGD("scalefactor: %f, %f", scale0.imag(), scale0.real());
+            double scale = std::pow(abs(scale0),2.0);
+
+            lowpasspoles[i] = pole;
+            lowscalefactor[i] = scale;
 
             filterDesign[0].poles.push_back(pole);
             filterDesign[0].poles.push_back(std::conj(pole));
-            filterDesign[0].zeros.push_back(Complex(-1.0, 0.0));
-            filterDesign[0].zeros.push_back(Complex(-1.0, 0.0));
+            filterDesign[0].zeros.emplace_back(-1.0, 0.0);
+            filterDesign[0].zeros.emplace_back(-1.0, 0.0);
 
            // LOGD("i= %d, pole: %f, %f, scale: %f",i, pole.real(), pole.imag(), scale);
             for (auto &channel: lowpass) {
@@ -158,12 +171,15 @@ namespace equalizer {
                 d=std::pow(a*a-b,0.5);
                 std::complex<double> pole = ((i<order/2) ? -d+a : d+a)/(polesD[i]*(k-1)+k+1.0);
 
-                double scale = abs( 2.0*((polesD[i]+1.0)*tan(mu/2)/((polesD[i]*(k-1)+k+1.0)*2.0)) *  (std::pow(2.0/e,1.0/order)));
+                double scale = abs( ((polesD[i]+1.0)*tan(mu/2)/((polesD[i]*(k-1)+k+1.0)*2.0)) *  (std::pow(2.0/e,1.0/order)));
+
+                bandpasspoles[band * order + i] = pole;
+                bandscalefactor[band * order + i] = scale;
 
                 filterDesign[band + 1].poles.push_back(pole);
                 filterDesign[band + 1].poles.push_back(std::conj(pole));
-                filterDesign[band + 1].zeros.push_back(Complex(1.0, 0.0));
-                filterDesign[band + 1].zeros.push_back(Complex(-1.0, 0.0));
+                filterDesign[band + 1].zeros.emplace_back(1.0, 0.0);
+                filterDesign[band + 1].zeros.emplace_back(-1.0, 0.0);
 
                 for (auto c=0; c<numChannels; c++) {
 
@@ -185,10 +201,13 @@ namespace equalizer {
             std::complex pole = -(polesD[i]+alpha)/(polesD[i]*alpha+1.0);
             double scale = std::pow( abs((-pole+1.0)*tan(mu/2)*(alpha-1.0)/((alpha+1.0)*4.0)*(std::pow(2.0/e,1.0/order ))),2.0);
 
+            highpasspoles[i] = pole;
+            highscalefactor[i] = scale;
+
             filterDesign[7].poles.push_back(pole);
             filterDesign[7].poles.push_back(std::conj(pole));
-            filterDesign[7].zeros.push_back(Complex(1.0, 0.0));
-            filterDesign[7].zeros.push_back(Complex(1.0, 0.0));
+            filterDesign[7].zeros.emplace_back(1.0, 0.0);
+            filterDesign[7].zeros.emplace_back(1.0, 0.0);
 
 //            LOGD("i= %d, pole: %f, %f, scale: %f",i, pole.real(), pole.imag(), scale);
             for (auto &channel: highpass) {
@@ -212,6 +231,51 @@ namespace equalizer {
         myDelay[1].setSize(min(max(1,rightDelay),4096-1));
         LOGD("filter is set %d, %d" , leftDelay, rightDelay);
     }
+
+
+    std::complex<double> FilterSource::h(double f) const {
+        std::complex<double> z = std::exp(std::complex(0.0,f*c));
+
+        // Low-pass Band (Band 0)
+        std::complex<double> lp(1.0, 0.0);
+        for (int i = 0; i < order / 2; ++i) {
+            std::complex<double> num = (z + 1.0) * (z + 1.0);
+            std::complex<double> den = (z - lowpasspoles[i]) * (z - std::conj(lowpasspoles[i]));
+            lp *= (lowscalefactor[i] * num / den);
+        }
+        std::complex<double> total = static_cast<double>(amplitude[0][0]) * lp;
+
+        // Band-pass Bands (Bands 1-6)
+        for (int b = 0; b < 6; ++b) {
+            std::complex<double> bp(1.0, 0.0);
+            for (int i = 0; i < order; ++i) {
+                std::complex<double> num = (z * z - 1.0);
+                std::complex<double> den = (z - bandpasspoles[b * order + i]) * (z - std::conj(bandpasspoles[b * order + i]));
+                bp *= (bandscalefactor[b * order + i] * num / den);
+            }
+            total += static_cast<double>(amplitude[0][b + 1]) * bp;
+        }
+
+        // High-pass Band (Band 7)
+        std::complex<double> hp(1.0, 0.0);
+        for (int i = 0; i < order / 2; ++i) {
+            std::complex<double> num = (z - 1.0) * (z - 1.0);
+            std::complex<double> den = (z - highpasspoles[i]) * (z - std::conj(highpasspoles[i]));
+            hp *= (highscalefactor[i] * num / den);
+        }
+        total += static_cast<double>(amplitude[0][7]) * hp;
+
+        return total;
+    }
+
+    std::vector<double> FilterSource::getMagnitudeResponse(double f_start, double f_end, double f_step) const {
+        std::vector<double> res;
+        for (double f = f_start; f <= f_end; f += f_step) {
+            res.push_back(std::abs(h(f)));
+        }
+        return res;
+    }
+
 
     float FilterSource::getSample() {
         myDuplicator->setSample(_source->getSample());
@@ -249,5 +313,6 @@ namespace equalizer {
     }
     void Duplicator::onPlaybackStopped() {
     }
+
 
 }

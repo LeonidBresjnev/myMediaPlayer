@@ -250,6 +250,9 @@ class AudioModel: ViewModel() {
     @OptIn(UnstableApi::class)
     val filterDesign: LiveData<Equalizer.FilterDesignData?> = _filterDesign
 
+    private val _magnitudeResponse = MutableLiveData<FloatArray?>(null)
+    val magnitudeResponse: LiveData<FloatArray?> = _magnitudeResponse
+
     @OptIn(UnstableApi::class)
     fun updateFilterDesign() {
         if (::controller.isInitialized) {
@@ -260,6 +263,17 @@ class AudioModel: ViewModel() {
                     val raw = result.extras.getFloatArray("DESIGN_DATA")
                     if (raw != null) {
                         _filterDesign.postValue(Equalizer.parseFilterDesign(raw))
+                    }
+                }
+            }, MoreExecutors.directExecutor())
+
+            val magFuture = controller.sendCustomCommand(SessionCommand("getMagnitudeResponse", Bundle()), Bundle())
+            magFuture.addListener({
+                val result = magFuture.get()
+                if (result.resultCode == SessionResult.RESULT_SUCCESS) {
+                    val raw = result.extras.getFloatArray("MAGNITUDE_DATA")
+                    if (raw != null) {
+                        _magnitudeResponse.postValue(raw)
                     }
                 }
             }, MoreExecutors.directExecutor())

@@ -28,6 +28,9 @@ namespace equalizer {
         std::vector<BandDesign> getFilterDesign() const {
             return _filterSource->getFilterDesign();
         }
+        std::vector<double> getMagnitudeResponse(double start, double end, double step) const {
+            return _filterSource->getMagnitudeResponse(start, end, step);
+        }
 
 
 
