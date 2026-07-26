@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -37,6 +38,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
@@ -66,6 +68,12 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
     val currentPlaybackContext by audioModel.currentPlaybackContext.observeAsState()
     val nowPlayingId by audioModel.nowPlayingId.observeAsState()
     val favourites by audioModel.favourites.observeAsState(emptySet())
+
+    val gridState = rememberLazyGridState()
+
+    LaunchedEffect(currentPath) {
+        gridState.scrollToItem(0)
+    }
 
     var infoItem by remember {
         mutableStateOf<MediaItem?>(null)
@@ -112,6 +120,7 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
 
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
+            state = gridState,
             modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)

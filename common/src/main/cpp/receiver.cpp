@@ -225,11 +225,27 @@ Java_com_equalizer_common_Equalizer_nativeGetFilterDesign(JNIEnv *env, jobject t
 }
 
 JNIEXPORT jfloatArray JNICALL
-Java_com_equalizer_common_Equalizer_nativeGetMagnitudeResponse(JNIEnv *env, jobject thiz, jlong equalizer_handle, jdouble start, jdouble end, jdouble step) {
+Java_com_equalizer_common_Equalizer_nativeGetAnalysisResponse(JNIEnv *env, jobject thiz, jlong equalizer_handle, jdouble start, jdouble end, jdouble step) {
     auto *equalizer = reinterpret_cast<equalizer::Equalizer *>(equalizer_handle);
     if (!equalizer) return nullptr;
 
-    auto res = equalizer->getMagnitudeResponse(start, end, step);
+    auto res = equalizer->getAnalysisResponse(start, end, step);
+    jfloatArray result = env->NewFloatArray((jsize)res.size());
+    jfloat* fill = new jfloat[res.size()];
+    for (size_t i = 0; i < res.size(); ++i) {
+        fill[i] = (jfloat)res[i];
+    }
+    env->SetFloatArrayRegion(result, 0, (jsize)res.size(), fill);
+    delete[] fill;
+    return result;
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_com_equalizer_common_Equalizer_nativeGetUnoptimizedAnalysisResponse(JNIEnv *env, jobject thiz, jlong equalizer_handle, jdouble start, jdouble end, jdouble step) {
+    auto *equalizer = reinterpret_cast<equalizer::Equalizer *>(equalizer_handle);
+    if (!equalizer) return nullptr;
+
+    auto res = equalizer->getUnoptimizedAnalysisResponse(start, end, step);
     jfloatArray result = env->NewFloatArray((jsize)res.size());
     jfloat* fill = new jfloat[res.size()];
     for (size_t i = 0; i < res.size(); ++i) {

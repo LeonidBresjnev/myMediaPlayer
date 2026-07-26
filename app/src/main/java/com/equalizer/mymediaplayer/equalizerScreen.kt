@@ -35,11 +35,135 @@ import org.jetbrains.letsPlot.geom.geomPoint
 import org.jetbrains.letsPlot.geom.geomPath
 import org.jetbrains.letsPlot.scale.scaleColorManual
 import org.jetbrains.letsPlot.label.ggtitle
+import org.jetbrains.letsPlot.label.xlab
+import org.jetbrains.letsPlot.label.ylab
+import org.jetbrains.letsPlot.scale.ylim
 import org.jetbrains.letsPlot.compose.PlotPanel
+import org.jetbrains.letsPlot.themes.theme
 import com.equalizer.common.Equalizer
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.PI
+import kotlin.math.log10
+import kotlin.math.max
+
+@UnstableApi
+@Composable
+fun AnalysisPanel(modifier: Modifier = Modifier,
+                  equalizerViewModel: AudioModel) {
+    val filterDesign by equalizerViewModel.filterDesign.observeAsState()
+    val magnitudeResponse by equalizerViewModel.magnitudeResponse.observeAsState()
+    val unoptimizedMagnitude by equalizerViewModel.unoptimizedMagnitudeResponse.observeAsState()
+    val phaseResponse by equalizerViewModel.phaseResponse.observeAsState()
+    val unoptimizedPhase by equalizerViewModel.unoptimizedPhaseResponse.observeAsState()
+    val isDbScale by equalizerViewModel.isDbScale.observeAsState(false)
+    val isPlaying by equalizerViewModel.isPlaying.observeAsState(AudioModel.Status.STOPPED)
+
+    LaunchedEffect(Unit) {
+        equalizerViewModel.updateFilterDesign()
+    }
+
+    val scrollState = rememberScrollState()
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "Filter Pole-Zero Map",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Start
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        filterDesign?.let { design ->
+            FilterDesignPlot(design)
+        } ?: Box(
+            modifier = Modifier.fillMaxWidth().height(300.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Loading filter design...", color = Color.Gray)
+        }
+
+        Spacer(Modifier.height(32.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Magnitude Response",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Start
+            )
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("dB Scale", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.width(8.dp))
+                Switch(
+                    checked = isDbScale,
+                    onCheckedChange = { equalizerViewModel.setDbScale(it) }
+                )
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        magnitudeResponse?.let { response ->
+            MagnitudeResponsePlot(response, unoptimizedMagnitude, isDbScale)
+        } ?: Box(
+            modifier = Modifier.fillMaxWidth().height(300.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Loading magnitude response...", color = Color.Gray)
+        }
+
+        Spacer(Modifier.height(32.dp))
+
+        Text(
+            text = "Phase Response",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Start
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        phaseResponse?.let { response ->
+            PhaseResponsePlot(response, unoptimizedPhase)
+
+            Spacer(Modifier.height(32.dp))
+
+            Text(
+                text = "Group Delay",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Start
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            GroupDelayPlot(response, unoptimizedPhase)
+        } ?: Box(
+            modifier = Modifier.fillMaxWidth().height(300.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Loading phase response...", color = Color.Gray)
+        }
+
+        Spacer(Modifier.height(48.dp))
+    }
+}
 
 @UnstableApi
 @OptIn(UnstableApi::class)
@@ -251,7 +375,7 @@ fun ControlPanel(modifier: Modifier = Modifier,
                 }
             }
 
-            val range = if (delayUnit == AudioModel.DelayUnit.MS) 0f..100f else 0f..1000f
+            val range = if (delayUnit == AudioModel.DelayUnit.MS) 0f..5f else 0f..1000f
             val unitLabel = if (delayUnit == AudioModel.DelayUnit.MS) "ms" else "cm"
 
             Spacer(Modifier.height(24.dp))
@@ -280,76 +404,206 @@ fun ControlPanel(modifier: Modifier = Modifier,
         }
 
         Spacer(Modifier.height(48.dp))
-
-        // --- FILTER DESIGN PLOT SECTION ---
-        val filterDesign by equalizerViewModel.filterDesign.observeAsState()
-        
-        LaunchedEffect(isPlaying) {
-            equalizerViewModel.updateFilterDesign()
-        }
-
-        Text(
-            text = "Filter Pole-Zero Map",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Start
-        )
-        
-        Spacer(Modifier.height(16.dp))
-        
-        filterDesign?.let { design ->
-            FilterDesignPlot(design)
-        } ?: Box(
-            modifier = Modifier.fillMaxWidth().height(300.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("Loading filter design...", color = Color.Gray)
-        }
-
-        Spacer(Modifier.height(32.dp))
-
-        val magnitudeResponse by equalizerViewModel.magnitudeResponse.observeAsState()
-
-        Text(
-            text = "Magnitude Response",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Start
-        )
-
-        Spacer(Modifier.height(16.dp))
-
-        magnitudeResponse?.let { response ->
-            MagnitudeResponsePlot(response)
-        } ?: Box(
-            modifier = Modifier.fillMaxWidth().height(300.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("Loading magnitude response...", color = Color.Gray)
-        }
-
-        Spacer(Modifier.height(48.dp))
     }
 }
 
 @Composable
-fun MagnitudeResponsePlot(response: FloatArray) {
-    val xList = (0..1000 step 10).map { it.toFloat() }
-    val yList = response.toList()
+fun MagnitudeResponsePlot(response: FloatArray, unoptimizedResponse: FloatArray?, isDbScale: Boolean) {
+    val xList = (0..4000 step 10).map { it.toFloat() }
+
+    val combinedX = mutableListOf<Float>()
+    val combinedY = mutableListOf<Float>()
+    val typeList = mutableListOf<String>()
+
+    fun transform(v: Float): Float {
+        return if (isDbScale) {
+            (20.0 * log10(max(v.toDouble(), 1e-12))).toFloat()
+        } else {
+            v
+        }
+    }
+
+    // Unoptimized data first (so it's drawn behind)
+    unoptimizedResponse?.forEachIndexed { idx, value ->
+        if (idx < xList.size) {
+            combinedX.add(xList[idx])
+            combinedY.add(transform(value))
+            typeList.add("Unoptimized")
+        }
+    }
+
+    // Optimized data second (so it's drawn on top)
+    response.forEachIndexed { idx, value ->
+        if (idx < xList.size) {
+            combinedX.add(xList[idx])
+            combinedY.add(transform(value))
+            typeList.add("Optimized")
+        }
+    }
 
     val data = mapOf(
-        "Frequency (Hz)" to xList,
-        "Magnitude" to yList
+        "Freq" to combinedX,
+        "Mag" to combinedY,
+        "Type" to typeList
+    )
+
+    val yLabel = if (isDbScale) "Gain (dB)" else "Magnitude"
+    val plotTitle = if (isDbScale) "Magnitude Response (dB)" else "Magnitude Response (Raw)"
+
+    val yLimits = if (isDbScale) -30.0 to 10.0 else 0.0 to 2.0
+
+    val plot = letsPlot(data) +
+            geomPath {
+                this.x = "Freq"
+                this.y = "Mag"
+                this.color = "Type"
+            } +
+            scaleColorManual(values = mapOf("Optimized" to "#377EB8", "Unoptimized" to "#E41A1C")) + 
+            ggtitle(plotTitle) +
+            xlab("Frequency (Hz)") +
+            ylab(yLabel) +
+            ylim(listOf(yLimits.first, yLimits.second)) +
+            theme().legendPositionBottom()
+
+    PlotPanel(
+        figure = plot,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(300.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White),
+        computationMessagesHandler = { }
+    )
+}
+
+fun calculateGroupDelay(phaseResponse: FloatArray): List<Float> {
+    if (phaseResponse.size < 2) return emptyList()
+    
+    val deltaF = 10.0 // Hz
+    val deltaOmega = 2.0 * PI * deltaF
+    
+    val delay = mutableListOf<Float>()
+    for (i in 0 until phaseResponse.size - 1) {
+        val p1 = phaseResponse[i]
+        val p2 = phaseResponse[i + 1]
+        
+        // Phase unwrapping logic: "if the left value is negative and right value is positive, then add 2*pi to the left value"
+        val unwrappedP1 = if (p1 < 0f && p2 > 0f) p1 + (2.0 * PI).toFloat() else p1
+        
+        val dPhi = p2 - unwrappedP1
+        // tau_g = - dPhi / dOmega (flipped sign as requested)
+        val groupDelayS = -dPhi / deltaOmega
+        delay.add((groupDelayS * 1000.0).toFloat()) // Convert to ms
+    }
+    // Duplicate last point to maintain list size matching xList
+    if (delay.isNotEmpty()) delay.add(delay.last())
+    
+    return delay
+}
+
+@Composable
+fun GroupDelayPlot(response: FloatArray, unoptimizedResponse: FloatArray?) {
+    val xList = (0..4000 step 10).map { it.toFloat() }
+
+    val combinedX = mutableListOf<Float>()
+    val combinedY = mutableListOf<Float>()
+    val typeList = mutableListOf<String>()
+
+    // Unoptimized data first
+    unoptimizedResponse?.let {
+        val unoptDelay = calculateGroupDelay(it)
+        unoptDelay.forEachIndexed { idx, value ->
+            if (idx < xList.size) {
+                combinedX.add(xList[idx])
+                combinedY.add(value)
+                typeList.add("Unoptimized")
+            }
+        }
+    }
+
+    // Optimized data second
+    val optDelay = calculateGroupDelay(response)
+    optDelay.forEachIndexed { idx, value ->
+        if (idx < xList.size) {
+            combinedX.add(xList[idx])
+            combinedY.add(value)
+            typeList.add("Optimized")
+        }
+    }
+
+    val data = mapOf(
+        "Freq" to combinedX,
+        "Delay" to combinedY,
+        "Type" to typeList
     )
 
     val plot = letsPlot(data) +
             geomPath {
-                this.x = "Frequency (Hz)"
-                this.y = "Magnitude"
+                this.x = "Freq"
+                this.y = "Delay"
+                this.color = "Type"
             } +
-            ggtitle("Filter Magnitude Response (0-1000 Hz)")
+            scaleColorManual(values = mapOf("Optimized" to "#377EB8", "Unoptimized" to "#E41A1C")) +
+            ggtitle("Group Delay (ms)") +
+            xlab("Frequency (Hz)") +
+            ylab("Delay (ms)") +
+            theme().legendPositionBottom()
+
+    PlotPanel(
+        figure = plot,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(300.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White),
+        computationMessagesHandler = { }
+    )
+}
+
+@Composable
+fun PhaseResponsePlot(response: FloatArray, unoptimizedResponse: FloatArray?) {
+    val xList = (0..4000 step 10).map { it.toFloat() }
+
+    val combinedX = mutableListOf<Float>()
+    val combinedY = mutableListOf<Float>()
+    val typeList = mutableListOf<String>()
+
+    // Unoptimized data first
+    unoptimizedResponse?.forEachIndexed { idx, value ->
+        if (idx < xList.size) {
+            combinedX.add(xList[idx])
+            combinedY.add(value)
+            typeList.add("Unoptimized")
+        }
+    }
+
+    // Optimized data second
+    response.forEachIndexed { idx, value ->
+        if (idx < xList.size) {
+            combinedX.add(xList[idx])
+            combinedY.add(value)
+            typeList.add("Optimized")
+        }
+    }
+
+    val data = mapOf(
+        "Freq" to combinedX,
+        "Phase" to combinedY,
+        "Type" to typeList
+    )
+
+    val plot = letsPlot(data) +
+            geomPath {
+                this.x = "Freq"
+                this.y = "Phase"
+                this.color = "Type"
+            } +
+            scaleColorManual(values = mapOf("Optimized" to "#377EB8", "Unoptimized" to "#E41A1C")) +
+            ggtitle("Phase Response (Radians)") +
+            xlab("Frequency (Hz)") +
+            ylab("Phase (rad)") +
+            ylim(listOf(-PI, PI)) +
+            theme().legendPositionBottom()
 
     PlotPanel(
         figure = plot,

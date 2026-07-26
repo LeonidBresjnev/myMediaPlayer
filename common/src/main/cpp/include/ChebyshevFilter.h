@@ -48,20 +48,23 @@ namespace equalizer {
 
         // Process 1 sample for a specific channel
         float getSample(int channel);
+        float process(float input, int channel);
 
         // Complex gain at a specific z-point
         std::complex<double> h(const std::complex<double>& z) const;
+        std::complex<double> getGain(const std::complex<double>& z) const { return h(z); }
 
         const std::vector<std::complex<double>>& getPoles() const { return poles; }
-        const std::vector<double>& getScaleFactors() const { return scaleFactors; }
+        double getTotalScale() const { return totalScale; }
 
     private:
         Type type = Type::LowPass;
         int order = 8;
         int numChannels = 0;
 
-        std::vector<std::complex<double>> poles; // Transformed poles
-        std::vector<double> scaleFactors;
+        std::vector<std::complex<double>> poles; // All individual poles
+        double totalScale = 1.0;
+        std::vector<double> sectionScales;
 
         // [channel][section]
         std::vector<std::vector<std::unique_ptr<FilterElement>>> channelElements;

@@ -4,7 +4,6 @@ import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.os.Bundle
 import android.os.Looper
 import android.view.Surface
 import android.view.SurfaceHolder
@@ -44,6 +43,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.io.File
+import kotlin.time.Duration.Companion.milliseconds
 import android.media.AudioAttributes as AndroidAudioAttributes
 
 @UnstableApi
@@ -81,7 +81,8 @@ class Equalizer(
     private external fun nativeSeekTo(synthesizerHandle: Long, positionSeconds: Double)
     private external fun nativeSetDelay(synthesizerHandle: Long, leftDelay: Float, rightDelay: Float)
     private external fun nativeGetFilterDesign(synthesizerHandle: Long): FloatArray?
-    private external fun nativeGetMagnitudeResponse(synthesizerHandle: Long, start: Double, end: Double, step: Double): FloatArray?
+    private external fun nativeGetAnalysisResponse(synthesizerHandle: Long, start: Double, end: Double, step: Double): FloatArray?
+    private external fun nativeGetUnoptimizedAnalysisResponse(synthesizerHandle: Long, start: Double, end: Double, step: Double): FloatArray?
 
     @UnstableApi
     data class Complex(val re: Float, val im: Float)
@@ -106,10 +107,18 @@ class Equalizer(
     }
 
     @UnstableApi
-    fun getMagnitudeResponse(start: Double, end: Double, step: Double): FloatArray? {
+    fun getAnalysisResponse(start: Double, end: Double, step: Double): FloatArray? {
         return synchronized(equalizerMutex) {
             if (equalizerHandle == 0L) return@synchronized null
-            nativeGetMagnitudeResponse(equalizerHandle, start, end, step)
+            nativeGetAnalysisResponse(equalizerHandle, start, end, step)
+        }
+    }
+
+    @UnstableApi
+    fun getUnoptimizedAnalysisResponse(start: Double, end: Double, step: Double): FloatArray? {
+        return synchronized(equalizerMutex) {
+            if (equalizerHandle == 0L) return@synchronized null
+            nativeGetUnoptimizedAnalysisResponse(equalizerHandle, start, end, step)
         }
     }
 
@@ -612,7 +621,7 @@ class Equalizer(
                 
                 listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, TIMELINE_CHANGE_REASON_SOURCE_UPDATE) }
                 scope.launch(Dispatchers.Main) {
-                    kotlinx.coroutines.delay(200)
+                    kotlinx.coroutines.delay(200.milliseconds)
                     listeners.sendEvent(EVENT_TIMELINE_CHANGED) { it.onTimelineChanged(currentTimeline, TIMELINE_CHANGE_REASON_SOURCE_UPDATE) }
                 }
             }

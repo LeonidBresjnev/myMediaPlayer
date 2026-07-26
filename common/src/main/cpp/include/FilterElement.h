@@ -39,6 +39,11 @@ namespace equalizer {
 
         void setDenominator(double);
 
+        void setAllpass(std::complex<double> pole);
+
         float getSample() ;
+        float process(float input);
+    private:
+        float compute();
     };
 }

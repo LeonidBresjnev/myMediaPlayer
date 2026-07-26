@@ -57,7 +57,8 @@ class MyMediaService : MediaLibraryService() {
     private val addToPlaylistCmd = SessionCommand("addToPlaylist", Bundle())
     private val deletePlaylistCmd = SessionCommand("deletePlaylist", Bundle())
     private val getFilterDesignCmd = SessionCommand("getFilterDesign", Bundle())
-    private val getMagnitudeResponseCmd = SessionCommand("getMagnitudeResponse", Bundle())
+    private val getAnalysisCmd = SessionCommand("getAnalysis", Bundle())
+    private val getUnoptimizedAnalysisCmd = SessionCommand("getUnoptimizedAnalysis", Bundle())
 
     private val volPerFreq = MutableList(16) { 1.0f }
     private var isAdvancedMode = false
@@ -237,7 +238,8 @@ class MyMediaService : MediaLibraryService() {
                 availableSessionCommands.add(addToPlaylistCmd)
                 availableSessionCommands.add(deletePlaylistCmd)
                 availableSessionCommands.add(getFilterDesignCmd)
-                availableSessionCommands.add(getMagnitudeResponseCmd)
+                availableSessionCommands.add(getAnalysisCmd)
+                availableSessionCommands.add(getUnoptimizedAnalysisCmd)
 
                 pushEqualizerState(session)
 
@@ -512,25 +514,54 @@ class MyMediaService : MediaLibraryService() {
                     }
                 } else if (customCommand.customAction == "getFilterDesign") {
                     val player = session.player
+                    val settable = SettableFuture.create<SessionResult>()
                     if (player is Equalizer) {
-                        val raw = player.getRawFilterDesign() // I'll add this helper
-                        if (raw != null) {
-                            val extras = Bundle().apply {
-                                putFloatArray("DESIGN_DATA", raw)
+                        serviceScope.launch(Dispatchers.Default) {
+                            val raw = player.getRawFilterDesign()
+                            if (raw != null) {
+                                val extras = Bundle().apply {
+                                    putFloatArray("DESIGN_DATA", raw)
+                                }
+                                settable.set(SessionResult(SessionResult.RESULT_SUCCESS, extras))
+                            } else {
+                                settable.set(SessionResult(SessionError.ERROR_BAD_VALUE))
                             }
-                            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS, extras))
                         }
+                        return settable
                     }
-                } else if (customCommand.customAction == "getMagnitudeResponse") {
+                } else if (customCommand.customAction == "getAnalysis") {
                     val player = session.player
+                    val settable = SettableFuture.create<SessionResult>()
                     if (player is Equalizer) {
-                        val raw = player.getMagnitudeResponse(0.0, 1000.0, 10.0)
-                        if (raw != null) {
-                            val extras = Bundle().apply {
-                                putFloatArray("MAGNITUDE_DATA", raw)
+                        serviceScope.launch(Dispatchers.Default) {
+                            val raw = player.getAnalysisResponse(0.0, 4000.0, 10.0)
+                            if (raw != null) {
+                                val extras = Bundle().apply {
+                                    putFloatArray("ANALYSIS_DATA", raw)
+                                }
+                                settable.set(SessionResult(SessionResult.RESULT_SUCCESS, extras))
+                            } else {
+                                settable.set(SessionResult(SessionError.ERROR_BAD_VALUE))
                             }
-                            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS, extras))
                         }
+                        return settable
+                    }
+                } else if (customCommand.customAction == "getUnoptimizedAnalysis") {
+                    val player = session.player
+                    val settable = SettableFuture.create<SessionResult>()
+                    if (player is Equalizer) {
+                        serviceScope.launch(Dispatchers.Default) {
+                            val raw = player.getUnoptimizedAnalysisResponse(0.0, 4000.0, 10.0)
+                            if (raw != null) {
+                                val extras = Bundle().apply {
+                                    putFloatArray("ANALYSIS_DATA", raw)
+                                }
+                                settable.set(SessionResult(SessionResult.RESULT_SUCCESS, extras))
+                            } else {
+                                settable.set(SessionResult(SessionError.ERROR_BAD_VALUE))
+                            }
+                        }
+                        return settable
                     }
                 }
                 return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
@@ -543,18 +574,13 @@ class MyMediaService : MediaLibraryService() {
         val favourites = PlaylistManager.getPlaylists(applicationContext)
             .find { it.id == PlaylistManager.FAVOURITES_ID }?.songIds ?: emptyList()
 
-        val player = session.player
         val extras = Bundle().apply {
             putFloatArray("EQ_STATE", volPerFreq.toFloatArray())
             putBoolean("IS_ADVANCED", isAdvancedMode)
             putStringArray("FAVOURITES", favourites.toTypedArray())
             
-            if (player is Equalizer) {
-                val designRaw = player.getRawFilterDesign()
-                if (designRaw != null) {
-                    putFloatArray("FILTER_DESIGN", designRaw)
-                }
-            }
+            // We'll skip pushing FILTER_DESIGN here to avoid blocking the main thread.
+            // The AudioModel proactively requests it via custom command anyway.
         }
         session.sessionExtras = extras
     }

@@ -253,6 +253,22 @@ class AudioModel: ViewModel() {
     private val _magnitudeResponse = MutableLiveData<FloatArray?>(null)
     val magnitudeResponse: LiveData<FloatArray?> = _magnitudeResponse
 
+    private val _unoptimizedMagnitudeResponse = MutableLiveData<FloatArray?>(null)
+    val unoptimizedMagnitudeResponse: LiveData<FloatArray?> = _unoptimizedMagnitudeResponse
+
+    private val _phaseResponse = MutableLiveData<FloatArray?>(null)
+    val phaseResponse: LiveData<FloatArray?> = _phaseResponse
+
+    private val _unoptimizedPhaseResponse = MutableLiveData<FloatArray?>(null)
+    val unoptimizedPhaseResponse: LiveData<FloatArray?> = _unoptimizedPhaseResponse
+
+    private val _isDbScale = MutableLiveData(false)
+    val isDbScale: LiveData<Boolean> = _isDbScale
+
+    fun setDbScale(enabled: Boolean) {
+        _isDbScale.value = enabled
+    }
+
     @OptIn(UnstableApi::class)
     fun updateFilterDesign() {
         if (::controller.isInitialized) {
@@ -267,13 +283,38 @@ class AudioModel: ViewModel() {
                 }
             }, MoreExecutors.directExecutor())
 
-            val magFuture = controller.sendCustomCommand(SessionCommand("getMagnitudeResponse", Bundle()), Bundle())
-            magFuture.addListener({
-                val result = magFuture.get()
+            val analysisFuture = controller.sendCustomCommand(SessionCommand("getAnalysis", Bundle()), Bundle())
+            analysisFuture.addListener({
+                val result = analysisFuture.get()
                 if (result.resultCode == SessionResult.RESULT_SUCCESS) {
-                    val raw = result.extras.getFloatArray("MAGNITUDE_DATA")
+                    val raw = result.extras.getFloatArray("ANALYSIS_DATA")
                     if (raw != null) {
-                        _magnitudeResponse.postValue(raw)
+                        val mag = FloatArray(raw.size / 2)
+                        val phase = FloatArray(raw.size / 2)
+                        for (i in 0 until raw.size / 2) {
+                            mag[i] = raw[i * 2]
+                            phase[i] = raw[i * 2 + 1]
+                        }
+                        _magnitudeResponse.postValue(mag)
+                        _phaseResponse.postValue(phase)
+                    }
+                }
+            }, MoreExecutors.directExecutor())
+
+            val unoptFuture = controller.sendCustomCommand(SessionCommand("getUnoptimizedAnalysis", Bundle()), Bundle())
+            unoptFuture.addListener({
+                val result = unoptFuture.get()
+                if (result.resultCode == SessionResult.RESULT_SUCCESS) {
+                    val raw = result.extras.getFloatArray("ANALYSIS_DATA")
+                    if (raw != null) {
+                        val mag = FloatArray(raw.size / 2)
+                        val phase = FloatArray(raw.size / 2)
+                        for (i in 0 until raw.size / 2) {
+                            mag[i] = raw[i * 2]
+                            phase[i] = raw[i * 2 + 1]
+                        }
+                        _unoptimizedMagnitudeResponse.postValue(mag)
+                        _unoptimizedPhaseResponse.postValue(phase)
                     }
                 }
             }, MoreExecutors.directExecutor())

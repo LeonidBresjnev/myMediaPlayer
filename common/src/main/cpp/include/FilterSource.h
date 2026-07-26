@@ -10,6 +10,7 @@
 
 #include "FilterElement.h"
 #include "ChebyshevFilter.h"
+#include "AllpassFilter.h"
 
 using Complex = std::complex<double>;
 
@@ -59,12 +60,14 @@ namespace equalizer {
         std::shared_ptr<AudioSource> _source;
 
         std::vector<BandDesign> getFilterDesign() const;
-        std::vector<double> getMagnitudeResponse(double f_start, double f_end, double f_step) const;
+        std::vector<double> getAnalysisResponse(double f_start, double f_end, double f_step) const;
+        std::vector<double> getUnoptimizedAnalysisResponse(double f_start, double f_end, double f_step) const;
 
         constexpr static const std::complex ComplexOne = Complex(1.0, 0.0);
         constexpr static const std::complex MinusComplexOne = Complex(-1.0, 0.0);
 
         double lossfunction(int pairIndex, std::complex<double> pole) const;
+        void optimizeAllpassFilters();
     private:
 
         std::shared_ptr<Duplicator> myDuplicator;
@@ -78,12 +81,17 @@ namespace equalizer {
 
         ChebyshevPrototype prototype;
         std::vector<ChebyshevFilter> bands;
+        std::vector<std::shared_ptr<AllpassFilter>> allpassChains;
 
         std::complex<double> h(double f) const;
+        std::complex<double> hUnoptimized(double f) const;
 
         double c_const = 0.0;
         int numChannels = 0;
         int currentChannel = 0;
+        int lastSampleRate = 0;
+        int lastNumChannels = 0;
+        mutable int lossFunctionCalls = 0;
 
         static int max(int a, int b) {
             return a>b?a:b;
