@@ -32,7 +32,9 @@ class SongDetailScreen(
     }
 
     override fun onGetTemplate(): Template {
-        val isFavourite = playControl.favourites.contains(mediaItem.mediaId)
+        // Use current media item if it's available, otherwise fallback to the one passed in
+        val effectiveItem = playControl.currentMediaItem ?: mediaItem
+        val isFavourite = playControl.favourites.contains(effectiveItem.mediaId)
         
         val favAction = Action.Builder()
             .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext,
@@ -42,7 +44,7 @@ class SongDetailScreen(
                 .build())
             .setOnClickListener {
                 val extras = Bundle().apply {
-                    putString("SONG_ID", mediaItem.mediaId)
+                    putString("SONG_ID", effectiveItem.mediaId)
                 }
                 val customCommand = SessionCommand("toggleFavourite", Bundle())
                 if (playControl.mediaControllerFuture.isDone) {
@@ -54,7 +56,7 @@ class SongDetailScreen(
         val infoAction = Action.Builder()
             .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_info_details)).build())
             .setOnClickListener {
-                screenManager.push(TechnicalInfoScreen(carContext, mediaItem))
+                screenManager.push(TechnicalInfoScreen(carContext, effectiveItem))
             }
             .build()
 

@@ -63,6 +63,14 @@ class ModernCarService : CarAppService() {
                     MainTabScreen(carContext, playControl)
                 }
             }
+
+            override fun onNewIntent(intent: Intent) {
+                Log.d("ModernCarService", "onNewIntent: $intent")
+                val topScreen = carContext.getCarService(androidx.car.app.ScreenManager::class.java).top
+                if (topScreen is MainTabScreen) {
+                    topScreen.handleIntent(intent)
+                }
+            }
         }
     }
 }

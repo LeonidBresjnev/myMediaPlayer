@@ -36,6 +36,10 @@
 }
 
 # Protect Media3 components and custom service
+
+-keep class com.equalizer.common.Equalizer$BandDesign { *; }
+-keep class com.equalizer.common.Equalizer$Complex { *; }
+-keep class com.equalizer.common.Equalizer$FilterDesignData { *; }
 -keep class com.equalizer.common.MyMediaService { *; }
 -keep class com.equalizer.common.MyMediaService$Companion { *; }
 -keep class com.equalizer.common.Equalizer { *; }

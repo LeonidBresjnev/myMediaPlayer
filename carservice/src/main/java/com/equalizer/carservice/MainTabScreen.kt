@@ -1,5 +1,6 @@
 package com.equalizer.carservice
 
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.annotation.OptIn
@@ -11,6 +12,8 @@ import androidx.car.app.model.GridItem
 import androidx.car.app.model.GridSection
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
+import androidx.car.app.model.Pane
+import androidx.car.app.model.PaneTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.RowSection
 import androidx.car.app.model.SectionedItemTemplate
@@ -39,8 +42,42 @@ class MainTabScreen(
     private var activeTabId = "playlists"
     private var mediaItems: List<MediaItem> = emptyList()
     private var isLoading = true
+    private var isFirstLoad = true
+    private var hasPushedInitialPlayback = false
 
-    private val invalidateListener = { invalidate() }
+    private val invalidateListener = {
+        // Handle initial navigation to full-screen player if already playing
+        if (!hasPushedInitialPlayback && playControl.isPlaying == PlayControl.Status.PLAYING) {
+            playControl.currentMediaItem?.let {
+                hasPushedInitialPlayback = true
+                if (screenManager.top === this) {
+                    screenManager.push(SongDetailScreen(carContext, playControl, it))
+                }
+            }
+        }
+
+        // If music stopped while we were on the "Playing" tab, move back to playlists
+        if (activeTabId == "playing" && playControl.isPlaying != PlayControl.Status.PLAYING) {
+            activeTabId = "playlists"
+        }
+        invalidate()
+    }
+
+    /**
+     * Called when a new intent is received for the session (e.g. dashboard tap).
+     */
+    fun handleIntent(intent: Intent) {
+        Log.d("MainTabScreen", "handleIntent: $intent")
+        if (playControl.isPlaying == PlayControl.Status.PLAYING) {
+            playControl.currentMediaItem?.let {
+                if (screenManager.top !is SongDetailScreen) {
+                    screenManager.push(SongDetailScreen(carContext, playControl, it))
+                }
+            }
+            activeTabId = "playing"
+        }
+        invalidate()
+    }
 
 
     init {
@@ -147,6 +184,11 @@ class MainTabScreen(
     }
 
     override fun onGetTemplate(): Template {
+        if (isFirstLoad && playControl.isPlaying == PlayControl.Status.PLAYING) {
+            activeTabId = "playing"
+            isFirstLoad = false
+        }
+
         val playlistsTab = Tab.Builder()
             .setTitle("Playlists")
             .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_agenda)).build())
@@ -165,7 +207,16 @@ class MainTabScreen(
             .setContentId("equalizer")
             .build()
 
+        val playingTab = if (playControl.isPlaying == PlayControl.Status.PLAYING) {
+            Tab.Builder()
+                .setTitle("Playing")
+                .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_media_play)).build())
+                .setContentId("playing")
+                .build()
+        } else null
+
         val currentContent: Template = when (activeTabId) {
+            "playing" -> createNowPlayingContent()
             "playlists" -> createSectionedContent("No playlists found")
             "library" -> createSectionedContent("No albums or songs found")
             else -> createEqualizerTemplate()
@@ -173,7 +224,7 @@ class MainTabScreen(
 
         Log.d("MainTabScreen", "onGetTemplate: activeTab=$activeTabId, hostApi=${carContext.carAppApiLevel}")
 
-        return TabTemplate.Builder(object : TabTemplate.TabCallback {
+        val tabTemplateBuilder = TabTemplate.Builder(object : TabTemplate.TabCallback {
             override fun onTabSelected(tabTag: String) {
                 if (activeTabId != tabTag) {
                     activeTabId = tabTag
@@ -185,13 +236,79 @@ class MainTabScreen(
                 }
             }
         })
-        .addTab(playlistsTab)
-        .addTab(libraryTab)
-        .addTab(eqTab)
-        .setActiveTabContentId(activeTabId)
-        .setTabContents(TabContents.Builder(currentContent).build())
-        .setHeaderAction(Action.APP_ICON)
-        .build()
+        
+        tabTemplateBuilder
+            .addTab(playlistsTab)
+            .addTab(libraryTab)
+            .addTab(eqTab)
+
+        playingTab?.let { tabTemplateBuilder.addTab(it) }
+        
+        return tabTemplateBuilder
+            .setActiveTabContentId(activeTabId)
+            .setTabContents(TabContents.Builder(currentContent).build())
+            .setHeaderAction(Action.APP_ICON)
+            .build()
+    }
+
+    private fun createNowPlayingContent(): Template {
+        val mediaItem = playControl.currentMediaItem
+        val paneBuilder = Pane.Builder()
+
+        if (mediaItem != null) {
+            paneBuilder.addRow(
+                Row.Builder()
+                    .setTitle(mediaItem.mediaMetadata.title ?: "Unknown")
+                    .addText(mediaItem.mediaMetadata.artist ?: "Unknown Artist")
+                    .setImage(createCarIcon(mediaItem.mediaMetadata))
+                    // Add "Open Full Player" as a row action to stay within Pane limits
+                    .addAction(
+                        Action.Builder()
+                            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_info_details)).build())
+                            .setOnClickListener {
+                                screenManager.push(SongDetailScreen(carContext, playControl, mediaItem))
+                            }
+                            .build()
+                    )
+                    .build()
+            )
+
+            // Add basic controls (Max 2 actions supported on PaneTemplate)
+            val isPlaying = playControl.isPlaying == PlayControl.Status.PLAYING
+            val playPauseAction = Action.Builder()
+                .setIcon(
+                    CarIcon.Builder(
+                        IconCompat.createWithResource(
+                            carContext,
+                            if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+                        )
+                    ).build()
+                )
+                .setOnClickListener {
+                    if (isPlaying) playControl.controller.pause() else playControl.controller.play()
+                }
+                .build()
+
+            val skipNextAction = Action.Builder()
+                .setIcon(
+                    CarIcon.Builder(
+                        IconCompat.createWithResource(
+                            carContext,
+                            android.R.drawable.ic_media_next
+                        )
+                    ).build()
+                )
+                .setOnClickListener { playControl.controller.seekToNext() }
+                .build()
+
+            paneBuilder.addAction(playPauseAction)
+            paneBuilder.addAction(skipNextAction)
+        } else {
+            paneBuilder.addRow(Row.Builder().setTitle("Nothing playing").build())
+        }
+
+        return PaneTemplate.Builder(paneBuilder.build())
+            .build()
     }
 
     private fun createSectionedContent(noItemsMessage: String): Template {

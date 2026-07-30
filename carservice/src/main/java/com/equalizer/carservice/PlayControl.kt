@@ -87,6 +87,7 @@ class PlayControl(private val carContext: CarContext) {
     val favourites = mutableSetOf<String>()
 
     internal var isPlaying = Status.PAUSED
+    internal var currentMediaItem: MediaItem? = null
 
     private val invalidateListeners = mutableSetOf<() -> Unit>()
 
@@ -120,6 +121,13 @@ class PlayControl(private val carContext: CarContext) {
             addListener({
                 controller = get()
                 
+                // Sync initial state if available immediately
+                isPlaying = if (controller.isPlaying) Status.PLAYING else {
+                    if (controller.playWhenReady) Status.PAUSED else Status.STOPPED
+                }
+                currentMediaItem = controller.currentMediaItem
+                notifyInvalidate()
+
                 // Add Player.Listener for standard events
                 controller.addListener(object : Player.Listener {
                     override fun onIsPlayingChanged(isitplaying: Boolean) {
@@ -132,6 +140,12 @@ class PlayControl(private val carContext: CarContext) {
                         }
                         notifyInvalidate()
                         super.onIsPlayingChanged(isitplaying)
+                    }
+
+                    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                        log("Media item transition: ${mediaItem?.mediaMetadata?.title}")
+                        currentMediaItem = mediaItem
+                        notifyInvalidate()
                     }
 
                     override fun onVideoSizeChanged(videoSize: VideoSize) {
