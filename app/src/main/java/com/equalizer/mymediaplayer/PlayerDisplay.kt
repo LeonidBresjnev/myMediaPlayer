@@ -78,6 +78,7 @@ fun PlayerDisplay(
         when {
             playbackContext == null -> "None"
             playbackContext == "music_library_root" -> "Music Library"
+            playbackContext == "icecast_root" -> "Radio"
             playbackContext?.startsWith("playlist_") == true -> {
                 playlists.find { it.mediaId == playbackContext }?.mediaMetadata?.title?.toString() ?: "Playlist"
             }
@@ -93,7 +94,7 @@ fun PlayerDisplay(
 
     Surface(
         modifier = modifier,
-        color = Color.DarkGray
+        color = Color.White // Set white background for artwork
     ) {
         if (controller != null) {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -102,13 +103,13 @@ fun PlayerDisplay(
                     model = ImageRequest.Builder(context)
                         .data(currentMetadata.artworkUri)
                         .crossfade(500)
+                        .placeholder(android.R.drawable.ic_menu_gallery)
+                        .error(android.R.drawable.ic_menu_report_image)
                         .build(),
                     contentDescription = "Album Art",
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().padding(32.dp), // More padding for logos
                     contentScale = ContentScale.Fit,
-                    alignment = Alignment.Center,
-                    placeholder = painterResource(id = android.R.drawable.ic_menu_gallery),
-                    error = painterResource(id = android.R.drawable.ic_menu_gallery)
+                    alignment = Alignment.Center
                 )
 
                 // LAYER 2: Rolling Text Marquee

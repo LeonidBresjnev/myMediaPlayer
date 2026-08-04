@@ -521,6 +521,7 @@ class AudioModel: ViewModel() {
                 if (result.value != null) {
                     if (parentId == "icecast_root") {
                         _radioMediaList.value = result.value!!
+                        _currentPath.value = parentId
                     } else {
                         _subItemMediaList.value = result.value!!
                         if (addToStack && parentId != _currentPath.value) {

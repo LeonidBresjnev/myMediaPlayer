@@ -330,6 +330,7 @@ class MyMediaService : MediaLibraryService() {
                                             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
                                             .setTotalDiscCount(station.samplerate)
                                             .setReleaseMonth(station.channels)
+                                            .setArtworkUri("android.resource://$packageName/drawable/ic_icecast".toUri())
                                             .setExtras(Bundle().apply {
                                                 putInt("BITRATE", station.bitrate)
                                                 putString("CODEC", "MP3")

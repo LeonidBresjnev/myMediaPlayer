@@ -316,9 +316,11 @@ class Equalizer(
                     }
                     triggerNativeLoad()
                 } else {
-                    synchronized(equalizerMutex) {
-                        if (equalizerHandle != 0L) {
-                            nativeStop(equalizerHandle)
+                    scope.launch(Dispatchers.IO) {
+                        synchronized(equalizerMutex) {
+                            if (equalizerHandle != 0L) {
+                                nativeStop(equalizerHandle)
+                            }
                         }
                     }
                     abandonFocus()

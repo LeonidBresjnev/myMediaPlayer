@@ -7,8 +7,6 @@
 #include <media/NdkMediaFormat.h>
 #include <jni.h>
 
-#include <utility>
-
 extern JavaVM* g_JavaVM;
 
 namespace equalizer {
@@ -18,15 +16,18 @@ namespace equalizer {
         Oscillator* parent;
         std::string url;
 
-        StreamDecoder(Oscillator* p, std::string  u)
-            : Thread("StreamDecoder"), parent(p), url(std::move(u)) {}
+        StreamDecoder(Oscillator* p, const std::string& u)
+            : Thread("StreamDecoder"), parent(p), url(u) {}
 
         ~StreamDecoder() override {
             stopThread(3000);
         }
 
         void run() override {
-            LOGD("StreamDecoder: Thread starting for %s", url.c_str());
+            LOGD("StreamDecoder: Starting for %s", url.c_str());
+
+            // Lower priority to ensure UI remains responsive
+            setPriority(Priority::low);
 
             JNIEnv* env = nullptr;
             bool attached = false;
@@ -39,7 +40,7 @@ namespace equalizer {
             AMediaExtractor* extractor = AMediaExtractor_new();
             media_status_t status = AMediaExtractor_setDataSource(extractor, url.c_str());
             if (status != AMEDIA_OK) {
-                LOGD("StreamDecoder: AMediaExtractor failed, status=%d", status);
+                LOGD("StreamDecoder: AMediaExtractor failed, error=%d", status);
                 AMediaExtractor_delete(extractor);
                 if (attached) g_JavaVM->DetachCurrentThread();
                 return;
@@ -54,7 +55,6 @@ namespace equalizer {
                 if (AMediaFormat_getString(format, AMEDIAFORMAT_KEY_MIME, &mime)) {
                     if (strncmp(mime, "audio/", 6) == 0) {
                         trackIdx = i;
-                        LOGD("StreamDecoder: Selected track %d (%s)", i, mime);
                         break;
                     }
                 }
@@ -74,14 +74,6 @@ namespace equalizer {
             const char* mime;
             AMediaFormat_getString(format, AMEDIAFORMAT_KEY_MIME, &mime);
             AMediaCodec* codec = AMediaCodec_createDecoderByType(mime);
-            if (!codec) {
-                LOGD("StreamDecoder: Failed to create codec");
-                AMediaFormat_delete(format);
-                AMediaExtractor_delete(extractor);
-                if (attached) g_JavaVM->DetachCurrentThread();
-                return;
-            }
-
             if (AMediaCodec_configure(codec, format, nullptr, nullptr, 0) != AMEDIA_OK) {
                 LOGD("StreamDecoder: Codec config failed");
                 AMediaCodec_delete(codec);
@@ -99,6 +91,13 @@ namespace equalizer {
             int64_t lastSampleTime = 0;
 
             while (!threadShouldExit() && !sawOutputEOS) {
+                // Throttling: If buffer has more than 8 seconds of audio, wait.
+                // This prevents high CPU usage and lock contention.
+                if (parent->getAvailableSamples() > 44100 * 2 * 8) {
+                    juce::Thread::sleep(200);
+                    continue;
+                }
+
                 if (!sawInputEOS) {
                     ssize_t inIdx = AMediaCodec_dequeueInputBuffer(codec, 2000);
                     if (inIdx >= 0) {
@@ -107,7 +106,6 @@ namespace equalizer {
                         ssize_t sampleSize = AMediaExtractor_readSampleData(extractor, inBuf, inSize);
 
                         if (sampleSize < 0) {
-                            LOGD("StreamDecoder: Input EOS");
                             sawInputEOS = true;
                             sampleSize = 0;
                         }
@@ -132,8 +130,7 @@ namespace equalizer {
                     uint8_t* outBuf = AMediaCodec_getOutputBuffer(codec, outIdx, &outSize);
                     AMediaFormat* outFormat = AMediaCodec_getOutputFormat(codec);
 
-                    int32_t outSR = 44100;
-                    int32_t outCh = 2;
+                    int32_t outSR = 44100, outCh = 2;
                     AMediaFormat_getInt32(outFormat, AMEDIAFORMAT_KEY_SAMPLE_RATE, &outSR);
                     AMediaFormat_getInt32(outFormat, AMEDIAFORMAT_KEY_CHANNEL_COUNT, &outCh);
                     AMediaFormat_delete(outFormat);
@@ -152,8 +149,7 @@ namespace equalizer {
 
                     AMediaCodec_releaseOutputBuffer(codec, outIdx, false);
                 } else if (outIdx == AMEDIACODEC_INFO_TRY_AGAIN_LATER) {
-                    // Small sleep if we are waiting for network
-                    juce::Thread::sleep(1);
+                    juce::Thread::sleep(10);
                 }
             }
 
@@ -162,7 +158,7 @@ namespace equalizer {
             AMediaFormat_delete(format);
             AMediaExtractor_delete(extractor);
             if (attached) g_JavaVM->DetachCurrentThread();
-            LOGD("StreamDecoder: Thread finished");
+            LOGD("StreamDecoder: Finished");
         }
     };
 
@@ -176,7 +172,10 @@ namespace equalizer {
 
     void Oscillator::onPlaybackStopped() {
         LOGD("Oscillator: onPlaybackStopped");
-        _streamDecoder.reset();
+        // Don't hold _readerMutex while waiting for thread to stop
+        auto decoder = std::move(_streamDecoder);
+        if (decoder) decoder.reset();
+
         std::lock_guard<std::mutex> lock(_readerMutex);
         if (readerSource != nullptr) readerSource->releaseResources();
         readerSource.reset();
@@ -234,11 +233,13 @@ namespace equalizer {
         std::lock_guard<std::mutex> lock(streamMutex);
         if (streamBuffer.empty()) return;
 
-        // Match channels (Simple mono to stereo expansion or direct stereo)
+        // Optimized push: handle mono to stereo or direct copy
         if (streamChannels == 1 && numChannels == 2) {
             for (int i = 0; i < numSamples; ++i) {
+                float s = data[i];
+                // Push twice for stereo
                 for (int c = 0; c < 2; ++c) {
-                    streamBuffer[streamWritePos] = data[i];
+                    streamBuffer[streamWritePos] = s;
                     streamWritePos = (streamWritePos + 1) % streamBuffer.size();
                     if (streamAvailable < streamBuffer.size()) streamAvailable++;
                     else streamReadPos = (streamReadPos + 1) % streamBuffer.size();
@@ -268,7 +269,7 @@ namespace equalizer {
             {
                 std::lock_guard<std::mutex> lock2(streamMutex);
                 streamBuffer.clear();
-                streamBuffer.resize(sampleRate * numChannels * 20); // 20s ring buffer
+                streamBuffer.resize(sampleRate * numChannels * 20); // 20s
                 streamReadPos = 0;
                 streamWritePos = 0;
                 streamAvailable = 0;

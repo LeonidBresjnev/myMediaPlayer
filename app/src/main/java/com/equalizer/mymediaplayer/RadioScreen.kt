@@ -29,12 +29,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.Image
 import androidx.compose.runtime.*
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
+import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
 
 @UnstableApi
 @Composable
@@ -125,10 +130,25 @@ fun StationRow(
             modifier = Modifier
                 .size(48.dp)
                 .clip(RoundedCornerShape(4.dp))
-                .background(MaterialTheme.colorScheme.primary),
+                .background(if (station.mediaMetadata.artworkUri != null) Color.White else MaterialTheme.colorScheme.primary),
             contentAlignment = Alignment.Center
         ) {
-            if (isSelected) {
+            val artworkUri = station.mediaMetadata.artworkUri
+            if (artworkUri != null) {
+                Image(
+                    painter = rememberAsyncImagePainter(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(artworkUri)
+                            .crossfade(true)
+                            .placeholder(android.R.drawable.ic_menu_gallery)
+                            .error(android.R.drawable.ic_menu_report_image)
+                            .build()
+                    ),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize().padding(4.dp),
+                    contentScale = ContentScale.Fit
+                )
+            } else if (isSelected) {
                 Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
             } else {
                 Icon(Icons.Default.Radio, contentDescription = null, tint = Color.White)
