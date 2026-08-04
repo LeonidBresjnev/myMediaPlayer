@@ -334,6 +334,9 @@ class AudioModel: ViewModel() {
             return _subItemMediaList
     }
 
+    private val _radioMediaList = MutableLiveData<List<MediaItem>>(emptyList())
+    val radioMediaList: LiveData<List<MediaItem>> = _radioMediaList
+
     private val _currentPath = MutableLiveData("music_library_root")
     val currentPath: LiveData<String> = _currentPath
 
@@ -498,6 +501,9 @@ class AudioModel: ViewModel() {
 
                 updateFilterDesign()
                 handlePlaybackBasedOnState()
+                
+                // Initial browse
+                browse("icecast_root")
 
             }, MoreExecutors.directExecutor())
         }
@@ -513,11 +519,15 @@ class AudioModel: ViewModel() {
             try {
                 val result = childrenFuture.get()
                 if (result.value != null) {
-                    _subItemMediaList.value = result.value!!
-                    if (addToStack && parentId != _currentPath.value) {
-                        _currentPath.value?.let { navStack.add(it) }
+                    if (parentId == "icecast_root") {
+                        _radioMediaList.value = result.value!!
+                    } else {
+                        _subItemMediaList.value = result.value!!
+                        if (addToStack && parentId != _currentPath.value) {
+                            _currentPath.value?.let { navStack.add(it) }
+                        }
+                        _currentPath.value = parentId
                     }
-                    _currentPath.value = parentId
                 }
             } catch (e: Exception) {
                 log("Error getting children: ${e.message}")

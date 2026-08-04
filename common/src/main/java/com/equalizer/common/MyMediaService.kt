@@ -32,6 +32,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import androidx.core.net.toUri
 
 @UnstableApi
 class MyMediaService : MediaLibraryService() {
@@ -152,7 +153,7 @@ class MyMediaService : MediaLibraryService() {
                 }
 
                 if (meta != null) {
-                    val artist = when (meta) {
+                 /*   val artist = when (meta) {
                         is Mp3Meta -> meta.artist
                         is M4aMeta -> meta.artist
                         else -> null
@@ -161,7 +162,7 @@ class MyMediaService : MediaLibraryService() {
                         is Mp3Meta -> meta.name
                         is M4aMeta -> meta.name
                         else -> file.name
-                    }
+                    }*/
 
                     // Always set the artwork URI so the thumbnail provider can decide whether to look locally or online
                     metadataBuilder.setArtworkUri(MediaThumbnailProvider.getArtworkUri(applicationContext, file.absolutePath))
@@ -294,6 +295,15 @@ class MyMediaService : MediaLibraryService() {
                                         .build())
                                     .build(),
                                 MediaItem.Builder()
+                                    .setMediaId("icecast_root")
+                                    .setMediaMetadata(MediaMetadata.Builder()
+                                        .setTitle("IceCast Radio")
+                                        .setIsBrowsable(true)
+                                        .setIsPlayable(false)
+                                        .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                                        .build())
+                                    .build(),
+                                MediaItem.Builder()
                                     .setMediaId("playlists_root")
                                     .setMediaMetadata(MediaMetadata.Builder()
                                         .setTitle("Playlists")
@@ -304,6 +314,32 @@ class MyMediaService : MediaLibraryService() {
                                     .build()
                             )
                             settable.set(LibraryResult.ofItemList(ImmutableList.copyOf(items), params))
+                        }
+                        parentId == "icecast_root" -> {
+                            serviceScope.launch {
+                                val stations = IceCastManager.fetchStations()
+                                val items = stations.filter { it.url.isNotBlank() }.map { station ->
+                                    MediaItem.Builder()
+                                        .setMediaId(station.url)
+                                        .setUri(station.url.toUri())
+                                        .setMediaMetadata(MediaMetadata.Builder()
+                                            .setTitle(station.name)
+                                            .setSubtitle(station.genre)
+                                            .setIsBrowsable(false)
+                                            .setIsPlayable(true)
+                                            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                                            .setTotalDiscCount(station.samplerate)
+                                            .setReleaseMonth(station.channels)
+                                            .setExtras(Bundle().apply {
+                                                putInt("BITRATE", station.bitrate)
+                                                putString("CODEC", "MP3")
+                                                putBoolean("IS_RADIO", true)
+                                            })
+                                            .build())
+                                        .build()
+                                }
+                                settable.set(LibraryResult.ofItemList(ImmutableList.copyOf(items), params))
+                            }
                         }
                         parentId == "playlists_root" -> {
                             val playlists = PlaylistManager.getPlaylists(applicationContext)

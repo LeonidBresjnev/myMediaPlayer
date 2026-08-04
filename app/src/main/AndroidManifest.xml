@@ -20,7 +20,8 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/lever_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.MyMediaPlayer">
+        android:theme="@style/Theme.MyMediaPlayer"
+        android:usesCleartextTraffic="true">
 
         <profileable android:shell="true" />
         <meta-data

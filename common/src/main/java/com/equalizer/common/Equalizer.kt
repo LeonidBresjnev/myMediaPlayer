@@ -74,7 +74,7 @@ class Equalizer(
     private external fun nativeInit(context: Context)
     private external fun nativeDelete(synthesizerHandle: Long)
     private external fun nativeStop(synthesizerHandle: Long)
-    private external fun nativePlayWithVol(synthesizerHandle: Long, name: String, vol: FloatArray, deviceId: Int)
+    private external fun nativePlayWithVol(synthesizerHandle: Long, name: String, vol: FloatArray, deviceId: Int, sampleRate: Int, channels: Int)
     private external fun nativeSetVolumenLow(synthesizerHandle: Long, volumeInDb: Float, freqInterval: Int)
     private external fun nativeGetDuration(synthesizerHandle: Long): Double
     private external fun nativeGetCurrentPosition(synthesizerHandle: Long): Double
@@ -83,6 +83,26 @@ class Equalizer(
     private external fun nativeGetFilterDesign(synthesizerHandle: Long): FloatArray?
     private external fun nativeGetAnalysisResponse(synthesizerHandle: Long, start: Double, end: Double, step: Double): FloatArray?
     private external fun nativeGetUnoptimizedAnalysisResponse(synthesizerHandle: Long, start: Double, end: Double, step: Double): FloatArray?
+    //private external fun nativeGetDiagnosticSamples(synthesizerHandle: Long, count: Int): FloatArray?
+    //private external fun nativeGetAvailableSamples(synthesizerHandle: Long): Int
+/*
+    @UnstableApi
+    fun getDiagnosticSamples(count: Int): FloatArray? {
+        createNativeHandleIfNotExists()
+        return synchronized(equalizerMutex) {
+            if (equalizerHandle == 0L) return@synchronized null
+            nativeGetDiagnosticSamples(equalizerHandle, count)
+        }
+    }*/
+/*
+    @UnstableApi
+    fun getAvailableSamples(): Int {
+        createNativeHandleIfNotExists()
+        return synchronized(equalizerMutex) {
+            if (equalizerHandle == 0L) return 0
+            nativeGetAvailableSamples(equalizerHandle)
+        }
+    }*/
 
     @UnstableApi
     data class Complex(val re: Float, val im: Float)
@@ -99,12 +119,12 @@ class Equalizer(
             nativeGetFilterDesign(equalizerHandle)
         }
     }
-
+/*
     @UnstableApi
     fun getFilterDesign(): FilterDesignData? {
         val raw = getRawFilterDesign() ?: return null
         return parseFilterDesign(raw)
-    }
+    }*/
 
     @UnstableApi
     fun getAnalysisResponse(start: Double, end: Double, step: Double): FloatArray? {
@@ -267,11 +287,17 @@ class Equalizer(
             if (isNetworkStream || (file != null && file.exists())) {
                 scope.launch(Dispatchers.IO) {
                     createNativeHandleIfNotExists()
-                    nativePlayWithVol(equalizerHandle, path, volPerFreq.toFloatArray(), deviceId = getBestDeviceId())
+                    // Fallback to 44100 if metadata is missing or invalid
+                    val sampleRate = mediaItem?.mediaMetadata?.totalDiscCount?.let { if (it > 0) it else 44100 } ?: 44100
+                    val channels = mediaItem?.mediaMetadata?.releaseMonth?.let { if (it > 0) it else 2 } ?: 2
+                    log("Calling nativePlayWithVol for: $path (SR: $sampleRate, Ch: $channels)")
+                    nativePlayWithVol(equalizerHandle, path, volPerFreq.toFloatArray(), getBestDeviceId(), sampleRate, channels)
                 }
             } else {
                 log("triggerNativeLoad: Path does not exist or is invalid: $path")
             }
+        } else {
+            log("triggerNativeLoad: path is null for index $currentMediaItemIndex")
         }
     }
 
@@ -523,7 +549,12 @@ class Equalizer(
             
             // Auto-advance check
             val duration = getDuration()
-            if (duration > 0 && posMs >= (duration - 500) && playWhenReady && !isAutoAdvancing) {
+            val mediaItem = mediaItems.getOrNull(currentMediaItemIndex)
+            val uri = mediaItem?.localConfiguration?.uri
+            val isRadio = (mediaItem?.mediaMetadata?.extras?.getBoolean("IS_RADIO") == true) || 
+                          (uri?.scheme == "http" || uri?.scheme == "https")
+            
+            if (!isRadio && duration > 0 && posMs >= (duration - 500) && playWhenReady && !isAutoAdvancing) {
                 isAutoAdvancing = true
                 scope.launch(Dispatchers.Main) { handleEndOfSong() }
             }

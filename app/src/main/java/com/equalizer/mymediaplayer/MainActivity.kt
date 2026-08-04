@@ -22,8 +22,10 @@ import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.DirectionsCarFilled
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.Analytics
+import androidx.compose.material.icons.outlined.Radio
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -59,6 +61,7 @@ data class TabRowItem(
     val screen: @Composable () -> Unit,
 )
 
+@UnstableApi
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
 
@@ -101,6 +104,19 @@ class MainActivity : ComponentActivity() {
                     },
                     selectedIcon = Icons.AutoMirrored.Filled.PlaylistPlay,
                     unselectedIcon = Icons.AutoMirrored.Outlined.PlaylistPlay
+                ),
+                TabRowItem(
+                    title = "Radio",
+                    screen = {
+                        RadioScreen(
+                            audioModel = audioModel,
+                            onSelect = { stations, index ->
+                                audioModel.loadMedia(stations, index)
+                            }
+                        )
+                    },
+                    selectedIcon = Icons.Default.Radio,
+                    unselectedIcon = Icons.Outlined.Radio
                 ),
                 TabRowItem(
                     title = "Sound Setting",

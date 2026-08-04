@@ -17,13 +17,15 @@ namespace equalizer {
         Equalizer();
         ~Equalizer();
         void stop();
-        void play(const std::string&, int32_t deviceId = 0);
+        void play(const std::string&, int32_t deviceId = 0, int32_t sampleRateFallback = 44100, int32_t channelsFallback = 2);
         [[nodiscard]] bool isPlaying() const;
         [[nodiscard]] double getDuration() const;
         [[nodiscard]] double getCurrentPosition() const;
         void seekTo(double positionSeconds);
         void setVolumenLow(float , int);
         void setDelay(float leftDelay, float rightDelay);
+        float getNextSample() { return _filterSource->getSample(); }
+        int getAvailableSamples() { return _oscillator->getAvailableSamples(); }
 
         std::vector<BandDesign> getFilterDesign() const {
             return _filterSource->getFilterDesign();
