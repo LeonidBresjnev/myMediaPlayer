@@ -7,6 +7,8 @@
 #include <media/NdkMediaFormat.h>
 #include <jni.h>
 
+#include <utility>
+
 extern JavaVM* g_JavaVM;
 
 namespace equalizer {
@@ -16,8 +18,8 @@ namespace equalizer {
         Oscillator* parent;
         std::string url;
 
-        StreamDecoder(Oscillator* p, const std::string& u)
-            : Thread("StreamDecoder"), parent(p), url(u) {}
+        StreamDecoder(Oscillator* p, std::string  u)
+            : Thread("StreamDecoder"), parent(p), url(std::move(u)) {}
 
         ~StreamDecoder() override {
             stopThread(3000);
@@ -26,8 +28,8 @@ namespace equalizer {
         void run() override {
             LOGD("StreamDecoder: Starting for %s", url.c_str());
 
-            // Lower priority to ensure UI remains responsive
-            setPriority(Priority::low);
+            // Normal priority for decoding to ensure it stays ahead of playback
+            setPriority(Priority::normal);
 
             JNIEnv* env = nullptr;
             bool attached = false;
@@ -91,15 +93,15 @@ namespace equalizer {
             int64_t lastSampleTime = 0;
 
             while (!threadShouldExit() && !sawOutputEOS) {
-                // Throttling: If buffer has more than 8 seconds of audio, wait.
-                // This prevents high CPU usage and lock contention.
-                if (parent->getAvailableSamples() > 44100 * 2 * 8) {
+                // Throttling: Keep ~10 seconds of audio in the buffer.
+                // This avoids overwhelming the system and prevents lock contention.
+                if (parent->getAvailableSamples() > 44100 * 2 * 10) {
                     juce::Thread::sleep(200);
                     continue;
                 }
 
                 if (!sawInputEOS) {
-                    ssize_t inIdx = AMediaCodec_dequeueInputBuffer(codec, 2000);
+                    ssize_t inIdx = AMediaCodec_dequeueInputBuffer(codec, 5000);
                     if (inIdx >= 0) {
                         size_t inSize;
                         uint8_t* inBuf = AMediaCodec_getInputBuffer(codec, inIdx, &inSize);
@@ -122,7 +124,7 @@ namespace equalizer {
                 }
 
                 AMediaCodecBufferInfo info;
-                ssize_t outIdx = AMediaCodec_dequeueOutputBuffer(codec, &info, 2000);
+                ssize_t outIdx = AMediaCodec_dequeueOutputBuffer(codec, &info, 5000);
                 if (outIdx >= 0) {
                     if (info.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM) sawOutputEOS = true;
 
@@ -158,7 +160,7 @@ namespace equalizer {
             AMediaFormat_delete(format);
             AMediaExtractor_delete(extractor);
             if (attached) g_JavaVM->DetachCurrentThread();
-            LOGD("StreamDecoder: Finished");
+            LOGD("StreamDecoder: Thread finished");
         }
     };
 
@@ -172,8 +174,12 @@ namespace equalizer {
 
     void Oscillator::onPlaybackStopped() {
         LOGD("Oscillator: onPlaybackStopped");
-        // Don't hold _readerMutex while waiting for thread to stop
-        auto decoder = std::move(_streamDecoder);
+        // Move decoder out to avoid holding _readerMutex while waiting for thread to stop
+        std::unique_ptr<StreamDecoder> decoder;
+        {
+            std::lock_guard<std::mutex> lock(_readerMutex);
+            decoder = std::move(_streamDecoder);
+        }
         if (decoder) decoder.reset();
 
         std::lock_guard<std::mutex> lock(_readerMutex);
@@ -196,6 +202,8 @@ namespace equalizer {
 
     float Oscillator::getSample() {
         if (_isStream) {
+            // Priority: Real-time thread accessing the ring buffer.
+            // Using a try_lock or atomics would be better, but lock_guard is used for now.
             std::lock_guard<std::mutex> lock(streamMutex);
             if (streamAvailable > 0) {
                 float sample = streamBuffer[streamReadPos];

@@ -62,6 +62,15 @@
             </intent-filter>
         </service>
 
+        <service
+            android:name="com.equalizer.carservice.ModernCarService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.MEDIA" />
+            </intent-filter>
+        </service>
+
         <provider
             android:name="com.equalizer.common.MediaThumbnailProvider"
             android:authorities="${applicationId}.thumbnail"

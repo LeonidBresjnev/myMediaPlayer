@@ -145,20 +145,24 @@ class Equalizer(
     private val volPerFreq = MutableList(16) { 1f }
 
     fun setVolOnFreq(volumeInDb: Float, freqInterval: Int) {
-        synchronized(equalizerMutex) {
-            createNativeHandleIfNotExists()
-            nativeSetVolumenLow(equalizerHandle, volumeInDb, freqInterval)
+        scope.launch(Dispatchers.IO) {
+            synchronized(equalizerMutex) {
+                createNativeHandleIfNotExists()
+                nativeSetVolumenLow(equalizerHandle, volumeInDb, freqInterval)
+            }
         }
         volPerFreq[freqInterval] = volumeInDb
         listeners.sendEvent(EVENT_VIDEO_SIZE_CHANGED) { it.onVideoSizeChanged(VideoSize(freqInterval, 0, volumeInDb)) }
     }
 
     fun setAllVolOnFreq(volumes: FloatArray) {
-        synchronized(equalizerMutex) {
-            createNativeHandleIfNotExists()
-            for (i in 0 until volumes.size.coerceAtMost(16)) {
-                volPerFreq[i] = volumes[i]
-                nativeSetVolumenLow(equalizerHandle, volumes[i], i)
+        scope.launch(Dispatchers.IO) {
+            synchronized(equalizerMutex) {
+                createNativeHandleIfNotExists()
+                for (i in 0 until volumes.size.coerceAtMost(16)) {
+                    volPerFreq[i] = volumes[i]
+                    nativeSetVolumenLow(equalizerHandle, volumes[i], i)
+                }
             }
         }
         for (i in 0 until volumes.size.coerceAtMost(16)) {
@@ -286,12 +290,14 @@ class Equalizer(
             
             if (isNetworkStream || (file != null && file.exists())) {
                 scope.launch(Dispatchers.IO) {
-                    createNativeHandleIfNotExists()
-                    // Fallback to 44100 if metadata is missing or invalid
-                    val sampleRate = mediaItem?.mediaMetadata?.totalDiscCount?.let { if (it > 0) it else 44100 } ?: 44100
-                    val channels = mediaItem?.mediaMetadata?.releaseMonth?.let { if (it > 0) it else 2 } ?: 2
-                    log("Calling nativePlayWithVol for: $path (SR: $sampleRate, Ch: $channels)")
-                    nativePlayWithVol(equalizerHandle, path, volPerFreq.toFloatArray(), getBestDeviceId(), sampleRate, channels)
+                    synchronized(equalizerMutex) {
+                        createNativeHandleIfNotExists()
+                        // Fallback to 44100 if metadata is missing or invalid
+                        val sampleRate = mediaItem?.mediaMetadata?.totalDiscCount?.let { if (it > 0) it else 44100 } ?: 44100
+                        val channels = mediaItem?.mediaMetadata?.releaseMonth?.let { if (it > 0) it else 2 } ?: 2
+                        log("Calling nativePlayWithVol for: $path (SR: $sampleRate, Ch: $channels)")
+                        nativePlayWithVol(equalizerHandle, path, volPerFreq.toFloatArray(), getBestDeviceId(), sampleRate, channels)
+                    }
                 }
             } else {
                 log("triggerNativeLoad: Path does not exist or is invalid: $path")
@@ -337,6 +343,23 @@ class Equalizer(
                 super.onPlayerError(error)
             }
         })
+    }
+
+    @UnstableApi
+    fun updateCurrentMetadata(metadata: MediaMetadata) {
+        synchronized(equalizerMutex) {
+            if (currentMediaItemIndex in mediaItems.indices) {
+                val oldItem = mediaItems[currentMediaItemIndex]
+                mediaItems[currentMediaItemIndex] = oldItem.buildUpon().setMediaMetadata(metadata).build()
+                log("Updated internal metadata for item $currentMediaItemIndex to: ${metadata.title}")
+                
+                listeners.sendEvent(EVENT_MEDIA_METADATA_CHANGED) { it.onMediaMetadataChanged(metadata) }
+                // Important: Notify timeline change so the session refreshes its view of the item
+                listeners.sendEvent(EVENT_TIMELINE_CHANGED) { 
+                    it.onTimelineChanged(currentTimeline, TIMELINE_CHANGE_REASON_SOURCE_UPDATE) 
+                }
+            }
+        }
     }
 
     override fun onResume(owner: LifecycleOwner) {
@@ -402,6 +425,11 @@ class Equalizer(
         }
 
         if (playWhenReady) triggerNativeLoad()
+
+        val item = this.mediaItems.getOrNull(currentMediaItemIndex)
+        listeners.sendEvent(EVENT_MEDIA_ITEM_TRANSITION) { 
+            it.onMediaItemTransition(item, MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) 
+        }
     }
 
     override fun addMediaItems(index: Int, mediaItems: List<MediaItem>) {
@@ -470,12 +498,20 @@ class Equalizer(
     override fun setPlayWhenReady(playWhenReady: Boolean) {
         log("setPlayWhenReady: $playWhenReady")
         val wasPlaying = isPlaying
+        val oldPlayWhenReady = this.playWhenReady
         this.playWhenReady = playWhenReady
         
         listeners.sendEvent(EVENT_PLAY_WHEN_READY_CHANGED) { it.onPlayWhenReadyChanged(playWhenReady, PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) }
         
         if (wasPlaying != isPlaying) {
             listeners.sendEvent(EVENT_IS_PLAYING_CHANGED) { it.onIsPlayingChanged(isPlaying) }
+        }
+        
+        if (playWhenReady && !oldPlayWhenReady && playbackState == STATE_READY) {
+            val item = mediaItems.getOrNull(currentMediaItemIndex)
+            listeners.sendEvent(EVENT_MEDIA_ITEM_TRANSITION) { 
+                it.onMediaItemTransition(item, MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) 
+            }
         }
         
         if (playWhenReady) {

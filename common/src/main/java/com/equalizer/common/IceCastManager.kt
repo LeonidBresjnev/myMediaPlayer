@@ -36,6 +36,10 @@ data class IceCastStation(
 
 object IceCastManager {
     private val json = Json { ignoreUnknownKeys = true }
+    private val stationNameCache = mutableMapOf<String, String>()
+
+    fun getCachedName(url: String): String? = stationNameCache[url]
+
     private val client = HttpClient(OkHttp) {
         install(ContentNegotiation) {
             json(json)
@@ -75,16 +79,19 @@ object IceCastManager {
                     }
                     
                     Log.d("IceCastManager", "Successfully fetched ${mp3Stations.size} stations from $mirror")
-                    return@withContext mp3Stations.map { 
+                    val result = mp3Stations.map { 
+                        val stationUrl = it.url_resolved ?: it.url
+                        stationNameCache[stationUrl] = it.name
                         IceCastStation(
                             name = it.name,
-                            url = it.url_resolved ?: it.url,
+                            url = stationUrl,
                             genre = it.tags?.split(",")?.firstOrNull()?.trim(),
                             bitrate = it.bitrate ?: 128,
                             samplerate = 44100,
                             channels = 2
                         )
                     }
+                    return@withContext result
                 }
             } catch (e: Exception) {
                 Log.e("IceCastManager", "Mirror $mirror failed: ${e.message}")

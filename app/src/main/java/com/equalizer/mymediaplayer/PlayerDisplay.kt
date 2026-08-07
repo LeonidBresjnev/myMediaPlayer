@@ -23,7 +23,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -87,9 +86,36 @@ fun PlayerDisplay(
     }
 
     val marqueeText = remember(currentMetadata, nextItem, contextName) {
-        val current = "${currentMetadata.title ?: "Unknown"} - ${currentMetadata.artist ?: "Unknown Artist"}"
-        val next = nextItem?.let { "  |  UP NEXT: ${it.mediaMetadata.title ?: "Unknown"} - ${it.mediaMetadata.artist ?: "Unknown Artist"}" } ?: ""
-        "NOW PLAYING: $current  |  FROM: $contextName$next"
+        val artist = currentMetadata.artist?.toString() ?: ""
+        val title = currentMetadata.title?.toString() ?: ""
+        val station = currentMetadata.albumTitle?.toString() ?: ""
+        
+        val isRadio = contextName == "Radio"
+        
+        val nowPlaying = if (isRadio) {
+            // Simplified Radio Logic: Always show what we have
+            val info = listOfNotNull(
+                artist.takeIf { it.isNotBlank() && it != station },
+                title.takeIf { it.isNotBlank() && it != station }
+            ).joinToString(" - ")
+            
+            if (info.isNotBlank()) {
+                "STATION: $station  |  NOW PLAYING: $info"
+            } else {
+                "STATION: $station  |  NOW PLAYING: Live Stream"
+            }
+        } else {
+            val titlePart = title.ifEmpty { "Unknown" }
+            val artistPart = artist.ifEmpty { "Unknown Artist" }
+            "NOW PLAYING: $titlePart - $artistPart"
+        }
+        
+        val fromText = "  |  FROM: $contextName"
+        val nextText = if (!isRadio) {
+            nextItem?.let { "  |  UP NEXT: ${it.mediaMetadata.title ?: "Unknown"} - ${it.mediaMetadata.artist ?: "Unknown Artist"}" } ?: ""
+        } else ""
+        
+        "$nowPlaying$fromText$nextText"
     }
 
     Surface(

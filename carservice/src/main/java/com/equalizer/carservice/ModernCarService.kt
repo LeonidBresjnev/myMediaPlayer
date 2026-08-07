@@ -48,19 +48,35 @@ class ModernCarService : CarAppService() {
 
             @OptIn(UnstableApi::class, ExperimentalCarApi::class)
             override fun onCreateScreen(intent: Intent): Screen {
-                val apiLevel = carContext.carAppApiLevel
-                Log.d("ModernCarService", "Car App API Level: $apiLevel")
-                
-                playControl = PlayControl(carContext)
-                playControl.registerToken()
-                
-                // TabTemplate requires API Level 6+
-                return if (apiLevel <= 5) {
-                    Log.d("ModernCarService", "Starting SimpleMainScreen (Legacy Mode)")
-                    SimpleMainScreen(carContext, playControl)
-                } else {
-                    Log.d("ModernCarService", "Starting MainTabScreen (Modern Mode)")
-                    MainTabScreen(carContext, playControl)
+                return try {
+                    val apiLevel = carContext.carAppApiLevel
+                    Log.d("ModernCarService", "Car App API Level: $apiLevel")
+                    
+                    playControl = PlayControl(carContext)
+                    try {
+                        playControl.registerToken()
+                    } catch (e: Exception) {
+                        Log.e("ModernCarService", "Token registration failed: ${e.message}")
+                    }
+                    
+                    if (apiLevel <= 5) {
+                        Log.d("ModernCarService", "Starting SimpleMainScreen (Legacy Mode)")
+                        SimpleMainScreen(carContext, playControl)
+                    } else {
+                        Log.d("ModernCarService", "Starting MainTabScreen (Modern Mode)")
+                        MainTabScreen(carContext, playControl)
+                    }
+                } catch (e: Exception) {
+                    Log.e("ModernCarService", "Error creating screen: ${e.message}", e)
+                    // Emergency fallback: return a minimal screen
+                    object : Screen(carContext) {
+                        override fun onGetTemplate(): Template {
+                            return ListTemplate.Builder()
+                                .setTitle("Error Starting App")
+                                .setSingleList(ItemList.Builder().addItem(Row.Builder().setTitle("Please restart").build()).build())
+                                .build()
+                        }
+                    }
                 }
             }
 
@@ -112,10 +128,10 @@ class SimpleMainScreen(
 
         listBuilder.addItem(
             Row.Builder()
-                .setTitle("Music Library")
+                .setTitle("Music & Radio Library")
                 .setImage(CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_gallery)).build())
                 .setOnClickListener {
-                    screenManager.push(SongListScreen(carContext, playControl, "music_library_root", "Music Library"))
+                    screenManager.push(SongListScreen(carContext, playControl, "library_combined", "Music & Radio"))
                 }
                 .build()
         )

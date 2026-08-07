@@ -41,6 +41,7 @@ import org.jetbrains.letsPlot.scale.ylim
 import org.jetbrains.letsPlot.compose.PlotPanel
 import org.jetbrains.letsPlot.themes.theme
 import com.equalizer.common.Equalizer
+import org.jetbrains.letsPlot.coord.coordFixed
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.PI
@@ -57,7 +58,6 @@ fun AnalysisPanel(modifier: Modifier = Modifier,
     val phaseResponse by equalizerViewModel.phaseResponse.observeAsState()
     val unoptimizedPhase by equalizerViewModel.unoptimizedPhaseResponse.observeAsState()
     val isDbScale by equalizerViewModel.isDbScale.observeAsState(false)
-    val isPlaying by equalizerViewModel.isPlaying.observeAsState(AudioModel.Status.STOPPED)
 
     LaunchedEffect(Unit) {
         equalizerViewModel.updateFilterDesign()
@@ -166,7 +166,6 @@ fun AnalysisPanel(modifier: Modifier = Modifier,
 }
 
 @UnstableApi
-@OptIn(UnstableApi::class)
 @Composable
 fun ControlPanel(modifier: Modifier = Modifier,
                  equalizerViewModel: AudioModel) {
@@ -617,7 +616,6 @@ fun PhaseResponsePlot(response: FloatArray, unoptimizedResponse: FloatArray?) {
 }
 
 @UnstableApi
-@OptIn(UnstableApi::class)
 @Composable
 fun FilterDesignPlot(design: Equalizer.FilterDesignData) {
     val bandColors = listOf(
@@ -667,6 +665,7 @@ fun FilterDesignPlot(design: Equalizer.FilterDesignData) {
                 this.shape = "type"
             } +
             scaleColorManual(values = bandColors) +
+            coordFixed() +
             ggtitle("8-Band Parametric EQ Design")
 
     PlotPanel(

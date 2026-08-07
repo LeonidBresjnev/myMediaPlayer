@@ -12,8 +12,6 @@ import androidx.car.app.model.GridItem
 import androidx.car.app.model.GridSection
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
-import androidx.car.app.model.Pane
-import androidx.car.app.model.PaneTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.RowSection
 import androidx.car.app.model.SectionedItemTemplate
@@ -42,11 +40,10 @@ class MainTabScreen(
     private var activeTabId = "playlists"
     private var mediaItems: List<MediaItem> = emptyList()
     private var isLoading = true
-    private var isFirstLoad = true
     private var hasPushedInitialPlayback = false
 
     private val invalidateListener = {
-        // Handle initial navigation to full-screen player if already playing
+        // Auto-push to full screen player when music starts, so tabs are not visible
         if (!hasPushedInitialPlayback && playControl.isPlaying == PlayControl.Status.PLAYING) {
             playControl.currentMediaItem?.let {
                 hasPushedInitialPlayback = true
@@ -55,26 +52,16 @@ class MainTabScreen(
                 }
             }
         }
-
-        // If music stopped while we were on the "Playing" tab, move back to playlists
-        if (activeTabId == "playing" && playControl.isPlaying != PlayControl.Status.PLAYING) {
-            activeTabId = "playlists"
-        }
         invalidate()
     }
 
-    /**
-     * Called when a new intent is received for the session (e.g. dashboard tap).
-     */
     fun handleIntent(intent: Intent) {
-        Log.d("MainTabScreen", "handleIntent: $intent")
         if (playControl.isPlaying == PlayControl.Status.PLAYING) {
             playControl.currentMediaItem?.let {
                 if (screenManager.top !is SongDetailScreen) {
                     screenManager.push(SongDetailScreen(carContext, playControl, it))
                 }
             }
-            activeTabId = "playing"
         }
         invalidate()
     }
@@ -83,9 +70,7 @@ class MainTabScreen(
     init {
         checkPermissionsAndLoad()
         
-        // Listen for real-time frequency changes from phone/engine
         playControl.setVolPerFreqSetter0 {
-            Log.d("MainTabScreen", "Frequency update received: $it")
             invalidate()
         }
         
@@ -101,13 +86,10 @@ class MainTabScreen(
 
     private fun checkPermissionsAndLoad() {
         val permissions = listOf(android.Manifest.permission.READ_MEDIA_AUDIO)
-
-        carContext.requestPermissions(permissions) { granted, rejected ->
+        carContext.requestPermissions(permissions) { granted, _ ->
             if (granted.containsAll(permissions)) {
                 loadMediaItems("playlists_root")
             } else {
-                Log.e("MainTabScreen", "Permissions rejected: $rejected")
-                // Fallback: try loading anyway or show error
                 loadMediaItems("playlists_root")
             }
         }
@@ -120,23 +102,46 @@ class MainTabScreen(
 
         if (playControl.mediaControllerFuture.isDone) {
             val controller = playControl.controller
-            val childrenFuture = controller.getChildren(parentId, 0, Int.MAX_VALUE, null)
-            childrenFuture.addListener({
-                try {
-                    val result = childrenFuture.get()
-                    if (result.value != null) {
-                        mediaItems = result.value!!
+            
+            if (parentId == "library_combined") {
+                val musicFuture = controller.getChildren("music_library_root", 0, Int.MAX_VALUE, null)
+                musicFuture.addListener({
+                    try {
+                        val musicResult = musicFuture.get().value ?: emptyList()
+                        val radioFuture = controller.getChildren("icecast_root", 0, 15, null)
+                        radioFuture.addListener({
+                            try {
+                                val radioResult = radioFuture.get().value ?: emptyList()
+                                mediaItems = musicResult + radioResult
+                                isLoading = false
+                                invalidate()
+                            } catch (e: Exception) {
+                                mediaItems = musicResult
+                                isLoading = false
+                                invalidate()
+                            }
+                        }, MoreExecutors.directExecutor())
+                    } catch (e: Exception) {
                         isLoading = false
                         invalidate()
                     }
-                } catch (e: Exception) {
-                    isLoading = false
-                    e.message?.let {
-                        Log.d("MainTabScreen", it)
+                }, MoreExecutors.directExecutor())
+            } else {
+                val childrenFuture = controller.getChildren(parentId, 0, Int.MAX_VALUE, null)
+                childrenFuture.addListener({
+                    try {
+                        val result = childrenFuture.get()
+                        if (result.value != null) {
+                            mediaItems = result.value!!
+                            isLoading = false
+                            invalidate()
+                        }
+                    } catch (e: Exception) {
+                        isLoading = false
+                        invalidate()
                     }
-                    invalidate()
-                }
-            }, MoreExecutors.directExecutor())
+                }, MoreExecutors.directExecutor())
+            }
         } else {
             playControl.mediaControllerFuture.addListener({
                 loadMediaItems(parentId)
@@ -145,50 +150,35 @@ class MainTabScreen(
     }
 
     private fun createCarIcon(metadata: MediaMetadata): CarIcon {
-
-        metadata
-            .artworkUri
-            ?.let { uri ->
+        metadata.artworkUri?.let { uri ->
             val uriString = uri.toString()
+            if (uriString.startsWith("android.resource://")) {
+                if (uriString.contains("ic_icecast")) {
+                    return CarIcon.Builder(IconCompat.createWithResource(carContext, com.equalizer.common.R.drawable.ic_icecast)).build()
+                }
+            }
+
             val finalUri = if (uriString.startsWith("content://${MediaThumbnailProvider.getAuthority(carContext)}")) {
                 uri
-            } else {
+            } else if (uriString.isNotEmpty()) {
                 MediaThumbnailProvider.getArtworkUri(carContext, uriString)
-            }
-            return CarIcon.Builder(IconCompat.createWithContentUri(finalUri)).build()
-            }
+            } else null
 
-
-
-            // Fallbacks using Media3 built-in icons
-            return if (metadata.isBrowsable == true) {
-                CarIcon
-                    .Builder(
-                        IconCompat
-                            .createWithResource(
-                                carContext,
-                                androidx.media3.session.R.drawable.media3_icon_album
-                            )
-                    ).build()
+            return if (finalUri != null) {
+                CarIcon.Builder(IconCompat.createWithContentUri(finalUri)).build()
             } else {
-                CarIcon
-                    .Builder(
-                        IconCompat
-                            .createWithResource(
-                                carContext,
-                                androidx.media3.session.R.drawable.media3_icon_artist
-                            )
-                    ).build()
+                CarIcon.Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_artist)).build()
+            }
+        }
 
-}
+        return if (metadata.isBrowsable == true) {
+            CarIcon.Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_album)).build()
+        } else {
+            CarIcon.Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_artist)).build()
+        }
     }
 
     override fun onGetTemplate(): Template {
-        if (isFirstLoad && playControl.isPlaying == PlayControl.Status.PLAYING) {
-            activeTabId = "playing"
-            isFirstLoad = false
-        }
-
         val playlistsTab = Tab.Builder()
             .setTitle("Playlists")
             .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_agenda)).build())
@@ -207,22 +197,11 @@ class MainTabScreen(
             .setContentId("equalizer")
             .build()
 
-        val playingTab = if (playControl.isPlaying == PlayControl.Status.PLAYING) {
-            Tab.Builder()
-                .setTitle("Playing")
-                .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_media_play)).build())
-                .setContentId("playing")
-                .build()
-        } else null
-
         val currentContent: Template = when (activeTabId) {
-            "playing" -> createNowPlayingContent()
-            "playlists" -> createSectionedContent("No playlists found")
-            "library" -> createSectionedContent("No albums or songs found")
+            "playlists" -> createSectionedContent()
+            "library" -> createSectionedContent()
             else -> createEqualizerTemplate()
         }
-
-        Log.d("MainTabScreen", "onGetTemplate: activeTab=$activeTabId, hostApi=${carContext.carAppApiLevel}")
 
         val tabTemplateBuilder = TabTemplate.Builder(object : TabTemplate.TabCallback {
             override fun onTabSelected(tabTag: String) {
@@ -230,19 +209,14 @@ class MainTabScreen(
                     activeTabId = tabTag
                     when (tabTag) {
                         "playlists" -> loadMediaItems("playlists_root")
-                        "library" -> loadMediaItems("music_library_root")
+                        "library" -> loadMediaItems("library_combined")
                     }
                     invalidate()
                 }
             }
         })
         
-        tabTemplateBuilder
-            .addTab(playlistsTab)
-            .addTab(libraryTab)
-            .addTab(eqTab)
-
-        playingTab?.let { tabTemplateBuilder.addTab(it) }
+        tabTemplateBuilder.addTab(playlistsTab).addTab(libraryTab).addTab(eqTab)
         
         return tabTemplateBuilder
             .setActiveTabContentId(activeTabId)
@@ -251,115 +225,63 @@ class MainTabScreen(
             .build()
     }
 
-    private fun createNowPlayingContent(): Template {
-        val mediaItem = playControl.currentMediaItem
-        val paneBuilder = Pane.Builder()
-
-        if (mediaItem != null) {
-            paneBuilder.addRow(
-                Row.Builder()
-                    .setTitle(mediaItem.mediaMetadata.title ?: "Unknown")
-                    .addText(mediaItem.mediaMetadata.artist ?: "Unknown Artist")
-                    .setImage(createCarIcon(mediaItem.mediaMetadata))
-                    // Add "Open Full Player" as a row action to stay within Pane limits
-                    .addAction(
-                        Action.Builder()
-                            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_info_details)).build())
-                            .setOnClickListener {
-                                screenManager.push(SongDetailScreen(carContext, playControl, mediaItem))
-                            }
-                            .build()
-                    )
-                    .build()
-            )
-
-            // Add basic controls (Max 2 actions supported on PaneTemplate)
-            val isPlaying = playControl.isPlaying == PlayControl.Status.PLAYING
-            val playPauseAction = Action.Builder()
-                .setIcon(
-                    CarIcon.Builder(
-                        IconCompat.createWithResource(
-                            carContext,
-                            if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
-                        )
-                    ).build()
-                )
-                .setOnClickListener {
-                    if (isPlaying) playControl.controller.pause() else playControl.controller.play()
-                }
-                .build()
-
-            val skipNextAction = Action.Builder()
-                .setIcon(
-                    CarIcon.Builder(
-                        IconCompat.createWithResource(
-                            carContext,
-                            android.R.drawable.ic_media_next
-                        )
-                    ).build()
-                )
-                .setOnClickListener { playControl.controller.seekToNext() }
-                .build()
-
-            paneBuilder.addAction(playPauseAction)
-            paneBuilder.addAction(skipNextAction)
-        } else {
-            paneBuilder.addRow(Row.Builder().setTitle("Nothing playing").build())
-        }
-
-        return PaneTemplate.Builder(paneBuilder.build())
-            .build()
-    }
-
-    private fun createSectionedContent(noItemsMessage: String): Template {
+    private fun createSectionedContent(): Template {
         val builder = SectionedItemTemplate.Builder()
         if (isLoading) return builder.setLoading(true).build()
 
-        val browsableItems = mediaItems.filter { it.mediaMetadata.isBrowsable == true }
-        val playableItems = mediaItems.filter { it.mediaMetadata.isBrowsable != true }
-
         if (mediaItems.isEmpty()) {
             val sectionBuilder = RowSection.Builder()
-            sectionBuilder.addItem(Row.Builder().setTitle(noItemsMessage).setEnabled(false).build())
+            sectionBuilder.addItem(Row.Builder().setTitle("No items found").setEnabled(false).build())
             builder.addSection(sectionBuilder.build())
             return builder.build()
         }
 
-        // 1. Grid Section for Albums/Playlists
-        if (browsableItems.isNotEmpty()) {
+        val folders = mediaItems.filter { it.mediaMetadata.isBrowsable == true }
+        val radioStations = mediaItems.filter { it.mediaMetadata.extras?.getBoolean("IS_RADIO") == true }
+        val songs = mediaItems.filter { it.mediaMetadata.isBrowsable != true && it.mediaMetadata.extras?.getBoolean("IS_RADIO") != true }
+
+        if (folders.isNotEmpty()) {
             val gridSectionBuilder = GridSection.Builder().setTitle("Folders")
-            browsableItems.forEach { item ->
-                gridSectionBuilder.addItem(
-                    GridItem.Builder()
-                        .setTitle(item.mediaMetadata.title ?: "Unknown")
-                        .setText(item.mediaMetadata.artist ?: "")
-                        .setImage(createCarIcon(item.mediaMetadata), GridItem.IMAGE_TYPE_LARGE)
-                        .setOnClickListener {
-                            screenManager.push(SongListScreen(carContext, playControl, item.mediaId, item.mediaMetadata.title?.toString() ?: "Album"))
-                        }
-                        .build()
-                )
+            folders.forEach { item ->
+                gridSectionBuilder.addItem(GridItem.Builder()
+                    .setTitle(item.mediaMetadata.title ?: "Unknown")
+                    .setImage(createCarIcon(item.mediaMetadata), GridItem.IMAGE_TYPE_LARGE)
+                    .setOnClickListener { screenManager.push(SongListScreen(carContext, playControl, item.mediaId, item.mediaMetadata.title?.toString() ?: "Folder")) }
+                    .build())
             }
             builder.addSection(gridSectionBuilder.build())
         }
 
-        // 2. Row Section for Songs
-        if (playableItems.isNotEmpty()) {
-            val rowSectionBuilder = RowSection.Builder().setTitle("Songs")
-            playableItems.forEach { item ->
-                rowSectionBuilder.addItem(
-                    Row.Builder()
-                        .setTitle(item.mediaMetadata.title ?: "Unknown")
-                        .addText(item.mediaMetadata.artist ?: "")
-                        .setImage(createCarIcon(item.mediaMetadata), Row.IMAGE_TYPE_SMALL)
-                        .setOnClickListener {
-                            playControl.playMedia(item)
-                            screenManager.push(SongDetailScreen(carContext, playControl, item))
-                        }
-                        .build()
-                )
+        if (radioStations.isNotEmpty()) {
+            val radioSectionBuilder = RowSection.Builder().setTitle("Radio Stations")
+            radioStations.forEach { item ->
+                radioSectionBuilder.addItem(Row.Builder()
+                    .setTitle(item.mediaMetadata.title ?: "Unknown Station")
+                    .addText(item.mediaMetadata.subtitle ?: "Live Radio")
+                    .setImage(createCarIcon(item.mediaMetadata), Row.IMAGE_TYPE_SMALL)
+                    .setOnClickListener {
+                        playControl.playMedia(item)
+                        screenManager.push(SongDetailScreen(carContext, playControl, item))
+                    }
+                    .build())
             }
-            builder.addSection(rowSectionBuilder.build())
+            builder.addSection(radioSectionBuilder.build())
+        }
+
+        if (songs.isNotEmpty()) {
+            val songSectionBuilder = RowSection.Builder().setTitle("Songs")
+            songs.forEach { item ->
+                songSectionBuilder.addItem(Row.Builder()
+                    .setTitle(item.mediaMetadata.title ?: "Unknown")
+                    .addText(item.mediaMetadata.artist ?: "")
+                    .setImage(createCarIcon(item.mediaMetadata), Row.IMAGE_TYPE_SMALL)
+                    .setOnClickListener {
+                        playControl.playMedia(item)
+                        screenManager.push(SongDetailScreen(carContext, playControl, item))
+                    }
+                    .build())
+            }
+            builder.addSection(songSectionBuilder.build())
         }
 
         return builder.build()
@@ -367,47 +289,30 @@ class MainTabScreen(
 
     private fun createEqualizerTemplate(): Template {
         val listBuilder = ItemList.Builder()
-
-        // Mode Selector Row
-        listBuilder.addItem(
-            Row.Builder()
+        listBuilder.addItem(Row.Builder()
                 .setTitle("Equalizer Mode: ${if (playControl.isAdvancedMode) "Advanced" else "Basic"}")
-                .addText("Tap to switch to ${if (playControl.isAdvancedMode) "Basic" else "Advanced"} mode")
+                .addText("Tap to switch mode")
                 .setOnClickListener {
-                    val newMode = !playControl.isAdvancedMode
-                    playControl.isAdvancedMode = newMode
-
-                    val extras = Bundle().apply { putBoolean("IS_ADVANCED", newMode) }
+                    playControl.isAdvancedMode = !playControl.isAdvancedMode
+                    val extras = Bundle().apply { putBoolean("IS_ADVANCED", playControl.isAdvancedMode) }
                     if (playControl.mediaControllerFuture.isDone) {
                         playControl.controller.sendCustomCommand(SessionCommand("setEqMode", Bundle()), extras)
                     }
                     invalidate()
                 }
-                .build()
-        )
+                .build())
 
-        // Build frequency rows.
         val maxBands = if (playControl.isAdvancedMode) 16 else 8
         for (i in 0 until maxBands) {
             val vol = playControl.volPerFreq[i]
-            val channelLabel = if (i < 8) "Left" else "Right"
             val bandName = playControl.frequencyLabels[i % 8]
-
-            val title = if (playControl.isAdvancedMode) "$channelLabel: $bandName" else bandName
-
-            listBuilder.addItem(
-                Row.Builder()
+            val title = if (playControl.isAdvancedMode) "${if (i < 8) "Left" else "Right"}: $bandName" else bandName
+            listBuilder.addItem(Row.Builder()
                     .setTitle(title)
                     .addText("Volume: ${String.format(Locale.GERMAN, "%.1f", vol)}")
-                    .setOnClickListener {
-                        screenManager.push(BandDetailScreen(carContext, playControl, i))
-                    }
-                    .build()
-            )
+                    .setOnClickListener { screenManager.push(BandDetailScreen(carContext, playControl, i)) }
+                    .build())
         }
-
-        return ListTemplate.Builder()
-            .setSingleList(listBuilder.build())
-            .build()
+        return ListTemplate.Builder().setSingleList(listBuilder.build()).build()
     }
 }

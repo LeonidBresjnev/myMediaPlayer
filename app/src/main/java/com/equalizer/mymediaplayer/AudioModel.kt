@@ -10,6 +10,11 @@ import androidx.annotation.OptIn
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
@@ -269,16 +274,26 @@ class AudioModel: ViewModel() {
         _isDbScale.value = enabled
     }
 
+    private var analysisUpdateJob: kotlinx.coroutines.Job? = null
+
     @OptIn(UnstableApi::class)
     fun updateFilterDesign() {
-        if (::controller.isInitialized) {
+        if (!::controller.isInitialized) return
+        
+        analysisUpdateJob?.cancel()
+        analysisUpdateJob = viewModelScope.launch {
+            delay(100) // Debounce analysis requests
+            
             val future = controller.sendCustomCommand(SessionCommand("getFilterDesign", Bundle()), Bundle())
             future.addListener({
-                val result = future.get()
-                if (result.resultCode == SessionResult.RESULT_SUCCESS) {
+                val result = try { future.get() } catch (e: Exception) { null }
+                if (result?.resultCode == SessionResult.RESULT_SUCCESS) {
                     val raw = result.extras.getFloatArray("DESIGN_DATA")
                     if (raw != null) {
-                        _filterDesign.postValue(Equalizer.parseFilterDesign(raw))
+                        viewModelScope.launch(Dispatchers.Default) {
+                            val parsed = Equalizer.parseFilterDesign(raw)
+                            _filterDesign.postValue(parsed)
+                        }
                     }
                 }
             }, MoreExecutors.directExecutor())

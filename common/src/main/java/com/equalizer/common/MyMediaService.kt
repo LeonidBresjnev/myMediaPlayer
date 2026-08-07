@@ -45,6 +45,7 @@ class MyMediaService : MediaLibraryService() {
     }
 
     var mediaSession: MediaLibrarySession? = null
+    private lateinit var metadataTracker: IcyMetadataTracker
 
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.Main + serviceJob)
@@ -109,6 +110,30 @@ class MyMediaService : MediaLibraryService() {
 
         Log.d("MyMediaService", "SELECTED ROOT: ${bestPath.absolutePath}")
         return bestPath
+    }
+
+    private suspend fun createMediaItemFromId(id: String): MediaItem? {
+        if (id.startsWith("http://") || id.startsWith("https://")) {
+            val cachedName = IceCastManager.getCachedName(id)
+            val name = cachedName ?: id.substringAfter("://").substringBefore("/").ifBlank { "Radio Stream" }
+            return MediaItem.Builder()
+                .setMediaId(id)
+                .setUri(id.toUri())
+                .setMediaMetadata(MediaMetadata.Builder()
+                    .setTitle(name)
+                    .setArtist("Icecast")
+                    .setIsBrowsable(false)
+                    .setIsPlayable(true)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                    .setArtworkUri("android.resource://$packageName/drawable/ic_icecast".toUri())
+                    .setExtras(Bundle().apply {
+                        putBoolean("IS_RADIO", true)
+                        putString("STATION_NAME", name)
+                    })
+                    .build())
+                .build()
+        }
+        return createMediaItemFromFile(File(id))
     }
 
     private suspend fun createMediaItemFromFile(file: File): MediaItem? {
@@ -210,6 +235,40 @@ class MyMediaService : MediaLibraryService() {
         Log.d("MyMediaService", "onCreate starting")
         MediaThumbnailProvider.init(this)
         val player = Equalizer(context = this)
+        metadataTracker = IcyMetadataTracker( serviceScope) { fullTitle ->
+            val parts = fullTitle.split(" - ", limit = 2)
+            val artist = if (parts.size > 1) parts[0].trim() else ""
+            val trackTitle = if (parts.size > 1) parts[1].trim() else fullTitle.trim()
+            
+            val currentMetadata = player.mediaMetadata
+            val stationName = currentMetadata.extras?.getString("STATION_NAME") ?: "Radio"
+            
+            val newMetadata = currentMetadata.buildUpon()
+                .setArtist(artist)
+                .setTitle(trackTitle)
+                .setAlbumTitle(stationName) 
+                .build()
+            
+            Log.i("MyMediaService", "RADIO UPDATE: Station=[$stationName] Artist=[$artist] Title=[$trackTitle]")
+            
+            // Update on Main thread
+            serviceScope.launch(Dispatchers.Main) {
+                player.updateCurrentMetadata(newMetadata)
+            }
+        }
+
+        player.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                val url = mediaItem?.mediaId
+                Log.i("MyMediaService", "TRACK TRANSITION: $url (Reason: $reason)")
+                if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
+                    if (::metadataTracker.isInitialized) metadataTracker.startTracking(url)
+                } else {
+                    Log.d("MyMediaService", "Not a network stream, stopping metadata tracker")
+                    if (::metadataTracker.isInitialized) metadataTracker.stopTracking()
+                }
+            }
+        })
 
         val notificationProvider = DefaultMediaNotificationProvider(this)
         notificationProvider.setSmallIcon(R.drawable.ic_lever)
@@ -324,6 +383,8 @@ class MyMediaService : MediaLibraryService() {
                                         .setUri(station.url.toUri())
                                         .setMediaMetadata(MediaMetadata.Builder()
                                             .setTitle(station.name)
+                                            .setArtist("Icecast")
+                                            .setAlbumTitle(station.name)
                                             .setSubtitle(station.genre)
                                             .setIsBrowsable(false)
                                             .setIsPlayable(true)
@@ -335,11 +396,43 @@ class MyMediaService : MediaLibraryService() {
                                                 putInt("BITRATE", station.bitrate)
                                                 putString("CODEC", "MP3")
                                                 putBoolean("IS_RADIO", true)
+                                                putString("STATION_NAME", station.name)
                                             })
                                             .build())
                                         .build()
                                 }
                                 settable.set(LibraryResult.ofItemList(ImmutableList.copyOf(items), params))
+                            }
+                        }
+                        parentId == "library_combined" -> {
+                            serviceScope.launch {
+                                val musicDir = getMusicLibraryRoot()
+                                val folders = musicDir.listFiles()?.filter { it.isDirectory && !it.name.startsWith(".") }?.sortedBy { it.name } ?: emptyList()
+                                val folderItems = folders.map { createMediaItemFromFile(it) }.filterNotNull()
+                                
+                                val stations = IceCastManager.fetchStations()
+                                val stationItems = stations.filter { it.url.isNotBlank() }.map { station ->
+                                    MediaItem.Builder()
+                                        .setMediaId(station.url)
+                                        .setUri(station.url.toUri())
+                                        .setMediaMetadata(MediaMetadata.Builder()
+                                            .setTitle(station.name)
+                                            .setArtist("Icecast")
+                                            .setAlbumTitle(station.name)
+                                            .setSubtitle(station.genre)
+                                            .setIsBrowsable(false)
+                                            .setIsPlayable(true)
+                                            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                                            .setArtworkUri("android.resource://com.equalizer.mymediaplayer/drawable/ic_icecast".toUri())
+                                            .setExtras(Bundle().apply {
+                                                putInt("BITRATE", station.bitrate)
+                                                putBoolean("IS_RADIO", true)
+                                                putString("STATION_NAME", station.name)
+                                            })
+                                            .build())
+                                        .build()
+                                }
+                                settable.set(LibraryResult.ofItemList(ImmutableList.copyOf(folderItems + stationItems), params))
                             }
                         }
                         parentId == "playlists_root" -> {
@@ -362,7 +455,7 @@ class MyMediaService : MediaLibraryService() {
                             val playlist = playlists.find { it.id == parentId }
                             if (playlist != null) {
                                 val mediaItems = playlist.songIds.map { songId ->
-                                    async { createMediaItemFromFile(File(songId)) }
+                                    async { createMediaItemFromId(songId) }
                                 }.awaitAll().filterNotNull()
                                 settable.set(LibraryResult.ofItemList(ImmutableList.copyOf(mediaItems), params))
                             } else {
@@ -432,12 +525,10 @@ class MyMediaService : MediaLibraryService() {
                 val settable = SettableFuture.create<List<MediaItem>>()
                 serviceScope.launch {
                     val resolvedItems = mediaItems.map { item ->
-                        // If the item already has a URI, we trust it. 
-                        // Otherwise, we try to resolve it from our local file system using the mediaId as path.
                         if (item.localConfiguration?.uri != null) {
                             item
                         } else {
-                            createMediaItemFromFile(File(item.mediaId)) ?: item
+                            createMediaItemFromId(item.mediaId) ?: item
                         }
                     }
                     settable.set(resolvedItems)
@@ -623,6 +714,7 @@ class MyMediaService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        if (::metadataTracker.isInitialized) metadataTracker.stopTracking()
         mediaSession?.run {
             player.release()
             release()

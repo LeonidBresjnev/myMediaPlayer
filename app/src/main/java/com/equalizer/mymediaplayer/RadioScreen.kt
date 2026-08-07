@@ -18,6 +18,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -50,7 +53,9 @@ fun RadioScreen(
 ) {
     val stations by audioModel.radioMediaList.observeAsState(emptyList())
     val nowPlayingId by audioModel.nowPlayingId.observeAsState()
+    val favourites by audioModel.favourites.observeAsState(emptySet())
     var isLoading by remember { mutableStateOf(true) }
+    var showPlaylistDialog by remember { mutableStateOf<MediaItem?>(null) }
 
     LaunchedEffect(stations) {
         if (stations.isNotEmpty()) {
@@ -103,11 +108,22 @@ fun RadioScreen(
                     StationRow(
                         station = station,
                         isSelected = station.mediaId == nowPlayingId,
-                        onClick = { onSelect(stations, index) }
+                        isFavourite = favourites.contains(station.mediaId),
+                        onClick = { onSelect(stations, index) },
+                        onFavouriteClick = { audioModel.toggleFavourite(station.mediaId) },
+                        onAddClick = { showPlaylistDialog = station }
                     )
                 }
             }
         }
+    }
+
+    if (showPlaylistDialog != null) {
+        PlaylistSelectionDialog(
+            audioModel = audioModel,
+            mediaItem = showPlaylistDialog!!,
+            onDismiss = { showPlaylistDialog = null }
+        )
     }
 }
 
@@ -115,7 +131,10 @@ fun RadioScreen(
 fun StationRow(
     station: MediaItem,
     isSelected: Boolean,
-    onClick: () -> Unit
+    isFavourite: Boolean,
+    onClick: () -> Unit,
+    onFavouriteClick: () -> Unit,
+    onAddClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -140,12 +159,10 @@ fun StationRow(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(artworkUri)
                             .crossfade(true)
-                            .placeholder(android.R.drawable.ic_menu_gallery)
-                            .error(android.R.drawable.ic_menu_report_image)
                             .build()
                     ),
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize().padding(4.dp),
+                    modifier = Modifier.fillMaxSize().padding(2.dp),
                     contentScale = ContentScale.Fit
                 )
             } else if (isSelected) {
@@ -172,21 +189,38 @@ fun StationRow(
             )
         }
         
-        Column(horizontalAlignment = Alignment.End) {
-            val bitrate = station.mediaMetadata.extras?.getInt("BITRATE") ?: 0
-            if (bitrate > 0) {
-                Text(
-                    text = "${bitrate}kbps",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.secondary
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onFavouriteClick) {
+                Icon(
+                    imageVector = if (isFavourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = "Favourite",
+                    tint = if (isFavourite) Color.Red else Color.Gray
                 )
             }
-            station.mediaMetadata.totalDiscCount?.let { sampleRate ->
-                Text(
-                    text = "${sampleRate/1000}kHz",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary
+            IconButton(onClick = onAddClick) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Add to Playlist",
+                    tint = MaterialTheme.colorScheme.primary
                 )
+            }
+            
+            Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
+                val bitrate = station.mediaMetadata.extras?.getInt("BITRATE") ?: 0
+                if (bitrate > 0) {
+                    Text(
+                        text = "${bitrate}kbps",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
+                station.mediaMetadata.totalDiscCount?.let { sampleRate ->
+                    Text(
+                        text = "${sampleRate/1000}kHz",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
     }
