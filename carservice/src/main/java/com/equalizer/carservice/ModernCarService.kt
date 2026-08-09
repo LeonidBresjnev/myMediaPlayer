@@ -7,6 +7,7 @@ import androidx.car.app.CarAppService
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.Session
+import androidx.car.app.annotations.ExperimentalCarApi
 import androidx.car.app.model.Action
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.ItemList
@@ -15,9 +16,12 @@ import androidx.car.app.model.Row
 import androidx.car.app.model.Template
 import androidx.car.app.validation.HostValidator
 import androidx.core.graphics.drawable.IconCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.util.UnstableApi
 import java.util.Locale
 
+@OptIn(UnstableApi::class)
 class ModernCarService : CarAppService() {
     override fun createHostValidator(): HostValidator {
         return HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
@@ -25,27 +29,62 @@ class ModernCarService : CarAppService() {
 
     override fun onCreateSession(): Session {
         return object : Session() {
-            @OptIn(UnstableApi::class)
-            override fun onCreateScreen(intent: Intent): Screen {
-                val apiLevel = carContext.carAppApiLevel
-                Log.d("ModernCarService", "Car App API Level: $apiLevel")
-                
-                // Show a toast with the detected API level for debugging
-                androidx.car.app.CarToast.makeText(
-                    carContext,
-                    "Detected Car API Level: $apiLevel",
-                    androidx.car.app.CarToast.LENGTH_LONG
-                ).show()
+            private lateinit var playControl: PlayControl
 
-                val playControl = PlayControl(carContext)
-                
-                // TabTemplate requires API Level 6+
-                return if (apiLevel <= 5) {
-                    Log.d("ModernCarService", "Starting SimpleMainScreen (Legacy Mode)")
-                    SimpleMainScreen(carContext, playControl)
-                } else {
-                    Log.d("ModernCarService", "Starting MainTabScreen (Modern Mode)")
-                    MainTabScreen(carContext, playControl)
+            init {
+                lifecycle.addObserver(LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_CREATE) {
+                        doTokenRegistration()
+                    }
+                })
+            }
+
+            @OptIn(ExperimentalCarApi::class, UnstableApi::class)
+            private fun doTokenRegistration() {
+                if (::playControl.isInitialized) {
+                    playControl.registerToken()
+                }
+            }
+
+            @OptIn(UnstableApi::class, ExperimentalCarApi::class)
+            override fun onCreateScreen(intent: Intent): Screen {
+                return try {
+                    val apiLevel = carContext.carAppApiLevel
+                    Log.d("ModernCarService", "Car App API Level: $apiLevel")
+                    
+                    playControl = PlayControl(carContext)
+                    try {
+                        playControl.registerToken()
+                    } catch (e: Exception) {
+                        Log.e("ModernCarService", "Token registration failed: ${e.message}")
+                    }
+                    
+                    if (apiLevel <= 5) {
+                        Log.d("ModernCarService", "Starting SimpleMainScreen (Legacy Mode)")
+                        SimpleMainScreen(carContext, playControl)
+                    } else {
+                        Log.d("ModernCarService", "Starting MainTabScreen (Modern Mode)")
+                        MainTabScreen(carContext, playControl)
+                    }
+                } catch (e: Exception) {
+                    Log.e("ModernCarService", "Error creating screen: ${e.message}", e)
+                    // Emergency fallback: return a minimal screen
+                    object : Screen(carContext) {
+                        override fun onGetTemplate(): Template {
+                            return ListTemplate.Builder()
+                                .setTitle("Error Starting App")
+                                .setSingleList(ItemList.Builder().addItem(Row.Builder().setTitle("Please restart").build()).build())
+                                .build()
+                        }
+                    }
+                }
+            }
+
+            override fun onNewIntent(intent: Intent) {
+                Log.d("ModernCarService", "onNewIntent: $intent")
+                val topScreen = carContext.getCarService(androidx.car.app.ScreenManager::class.java).top
+                if (topScreen is MainTabScreen) {
+                    topScreen.handleIntent(intent)
                 }
             }
         }
@@ -62,6 +101,18 @@ class SimpleMainScreen(
     private val playControl: PlayControl
 ) : Screen(carContext) {
 
+    init {
+        checkPermissions()
+    }
+
+    private fun checkPermissions() {
+        val permissions =
+            listOf(android.Manifest.permission.READ_MEDIA_AUDIO)
+        carContext.requestPermissions(permissions) { _, _ ->
+            invalidate()
+        }
+    }
+
     override fun onGetTemplate(): Template {
         val listBuilder = ItemList.Builder()
 
@@ -77,10 +128,10 @@ class SimpleMainScreen(
 
         listBuilder.addItem(
             Row.Builder()
-                .setTitle("Music Library")
+                .setTitle("Music & Radio Library")
                 .setImage(CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_gallery)).build())
                 .setOnClickListener {
-                    screenManager.push(SongListScreen(carContext, playControl, "music_library_root", "Music Library"))
+                    screenManager.push(SongListScreen(carContext, playControl, "library_combined", "Music & Radio"))
                 }
                 .build()
         )
@@ -105,7 +156,9 @@ class SimpleMainScreen(
         // or just accept the deprecation for now as it's the most stable way for legacy.
         try {
             builder.setTitle("My Media Player")
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            e.message?.let { Log.d("Modern Car Service", it) }
+        }
 
         return builder.build()
     }

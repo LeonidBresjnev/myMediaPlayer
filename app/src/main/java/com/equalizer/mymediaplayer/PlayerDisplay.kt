@@ -23,7 +23,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -78,6 +77,7 @@ fun PlayerDisplay(
         when {
             playbackContext == null -> "None"
             playbackContext == "music_library_root" -> "Music Library"
+            playbackContext == "icecast_root" -> "Radio"
             playbackContext?.startsWith("playlist_") == true -> {
                 playlists.find { it.mediaId == playbackContext }?.mediaMetadata?.title?.toString() ?: "Playlist"
             }
@@ -86,14 +86,41 @@ fun PlayerDisplay(
     }
 
     val marqueeText = remember(currentMetadata, nextItem, contextName) {
-        val current = "${currentMetadata.title ?: "Unknown"} - ${currentMetadata.artist ?: "Unknown Artist"}"
-        val next = nextItem?.let { "  |  UP NEXT: ${it.mediaMetadata.title ?: "Unknown"} - ${it.mediaMetadata.artist ?: "Unknown Artist"}" } ?: ""
-        "NOW PLAYING: $current  |  FROM: $contextName$next"
+        val artist = currentMetadata.artist?.toString() ?: ""
+        val title = currentMetadata.title?.toString() ?: ""
+        val station = currentMetadata.albumTitle?.toString() ?: ""
+        
+        val isRadio = contextName == "Radio"
+        
+        val nowPlaying = if (isRadio) {
+            // Simplified Radio Logic: Always show what we have
+            val info = listOfNotNull(
+                artist.takeIf { it.isNotBlank() && it != station },
+                title.takeIf { it.isNotBlank() && it != station }
+            ).joinToString(" - ")
+            
+            if (info.isNotBlank()) {
+                "STATION: $station  |  NOW PLAYING: $info"
+            } else {
+                "STATION: $station  |  NOW PLAYING: Live Stream"
+            }
+        } else {
+            val titlePart = title.ifEmpty { "Unknown" }
+            val artistPart = artist.ifEmpty { "Unknown Artist" }
+            "NOW PLAYING: $titlePart - $artistPart"
+        }
+        
+        val fromText = "  |  FROM: $contextName"
+        val nextText = if (!isRadio) {
+            nextItem?.let { "  |  UP NEXT: ${it.mediaMetadata.title ?: "Unknown"} - ${it.mediaMetadata.artist ?: "Unknown Artist"}" } ?: ""
+        } else ""
+        
+        "$nowPlaying$fromText$nextText"
     }
 
     Surface(
         modifier = modifier,
-        color = Color.DarkGray
+        color = Color.White // Set white background for artwork
     ) {
         if (controller != null) {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -102,13 +129,13 @@ fun PlayerDisplay(
                     model = ImageRequest.Builder(context)
                         .data(currentMetadata.artworkUri)
                         .crossfade(500)
+                        .placeholder(android.R.drawable.ic_menu_gallery)
+                        .error(android.R.drawable.ic_menu_report_image)
                         .build(),
                     contentDescription = "Album Art",
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().padding(32.dp), // More padding for logos
                     contentScale = ContentScale.Fit,
-                    alignment = Alignment.Center,
-                    placeholder = painterResource(id = android.R.drawable.ic_menu_gallery),
-                    error = painterResource(id = android.R.drawable.ic_menu_gallery)
+                    alignment = Alignment.Center
                 )
 
                 // LAYER 2: Rolling Text Marquee

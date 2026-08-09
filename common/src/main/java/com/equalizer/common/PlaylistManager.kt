@@ -14,16 +14,27 @@ data class Playlist(
 
 object PlaylistManager {
     private const val FILE_NAME = "playlists.json"
+    const val FAVOURITES_ID = "playlist_favourites"
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
 
     fun getPlaylists(context: Context): List<Playlist> {
         val file = File(context.filesDir, FILE_NAME)
-        if (!file.exists()) return emptyList()
-        return try {
-            json.decodeFromString<List<Playlist>>(file.readText())
+        var playlists = try {
+            if (file.exists()) {
+                json.decodeFromString<List<Playlist>>(file.readText())
+            } else {
+                emptyList()
+            }
         } catch (e: Exception) {
             emptyList()
         }
+
+        if (playlists.none { it.id == FAVOURITES_ID }) {
+            playlists = listOf(Playlist(FAVOURITES_ID, "Favourites")) + playlists
+            savePlaylists(context, playlists)
+        }
+
+        return playlists
     }
 
     private fun savePlaylists(context: Context, playlists: List<Playlist>) {
@@ -62,5 +73,17 @@ object PlaylistManager {
             } else it
         }
         savePlaylists(context, playlists)
+    }
+
+    fun isFavourite(context: Context, songId: String): Boolean {
+        return getPlaylists(context).find { it.id == FAVOURITES_ID }?.songIds?.contains(songId) ?: false
+    }
+
+    fun toggleFavourite(context: Context, songId: String) {
+        if (isFavourite(context, songId)) {
+            removeSongFromPlaylist(context, FAVOURITES_ID, songId)
+        } else {
+            addSongToPlaylist(context, FAVOURITES_ID, songId)
+        }
     }
 }

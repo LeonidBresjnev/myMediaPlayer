@@ -21,13 +21,12 @@ namespace equalizer {
         this->providerRaw = nullptr;
         this->numerator[0] = 1.f;
         this->denominator[0] = 1.f;
-       // this->takeNew=takeNew_;
-
     }
 
     void FilterElement::setNumerator(std::array<float, 2> coefs) {
         this->numerator[0] = coefs[0];
         this->numerator[1] = coefs[1];
+        this->numerator[2] = 0.0f;
         x.size = 2;
     }
     void FilterElement::setNumerator(std::array<float, 3> coefs, double scalar) {
@@ -48,6 +47,7 @@ namespace equalizer {
     void FilterElement::setDenominator(double d) {
         this->denominator[0] = 1.f;
         this->denominator[1] = static_cast<float>(d);
+        this->denominator[2] = 0.0f;
         y.size = 1;
     }
 
@@ -58,28 +58,40 @@ namespace equalizer {
         y.size = 2;
     }
 
+    void FilterElement::setAllpass(std::complex<double> p) {
+        float re = static_cast<float>(p.real());
+        float norm2 = static_cast<float>(std::norm(p));
+
+        this->numerator[0] = norm2;
+        this->numerator[1] = -2.0f * re;
+        this->numerator[2] = 1.0f;
+        x.size = 3;
+
+        this->denominator[0] = 1.0f;
+        this->denominator[1] = -2.0f * re;
+        this->denominator[2] = norm2;
+        y.size = 2;
+    }
 
     float FilterElement::getSample() {
         if (providerType == 0) x.push_back(providerRaw->getSample());
-        else x.push_back(providerFilter->getSample());
+        else if (providerType == 1) x.push_back(providerFilter->getSample());
+        return compute();
+    }
+
+    float FilterElement::process(float input) {
+        x.push_back(input);
+        return compute();
+    }
+
+    float FilterElement::compute() {
         float newSample =
                 (numerator[0] * x.buffer[(x.head + 2) % x.size] +
                  numerator[1] * x.buffer[(x.head + 1) % x.size] +
                  numerator[2] * x.buffer[(x.head + 0) % x.size]
                  - denominator[1] * y.buffer[(y.head + 1) % y.size]
-                 - denominator[2] * y.buffer[(y.head + 0) % y.size]) /*/ denominator[0]*/;
+                 - denominator[2] * y.buffer[(y.head + 0) % y.size]);
         y.push_back(newSample);
-        //LOGD("sample value %f", newSample);
         return newSample;
     }
 }
-/*
-void Filter::display() {
-    std::cout<<"numerator:"<<numerator[0]<<" "<<numerator[1]<<" "<<numerator[2]<<std::endl;
-    x.display();
-    std::cout<<"y:\n";
-    y.display();
-    std::cout<<"denominator"<<denominator[0]<<" "<<denominator[1]<<" "<<denominator[2]<<std::endl;
-}
-*/
-

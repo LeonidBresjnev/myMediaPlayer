@@ -1,19 +1,22 @@
 package com.equalizer.carservice
 
+import android.os.Bundle
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
+import androidx.car.app.model.CarColor
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.Header
-import androidx.car.app.model.Pane
-import androidx.car.app.model.PaneTemplate
-import androidx.car.app.model.Row
 import androidx.car.app.model.Template
+import androidx.annotation.OptIn
+import androidx.car.app.annotations.ExperimentalCarApi
+import androidx.car.app.media.model.MediaPlaybackTemplate
 import androidx.core.graphics.drawable.IconCompat
-import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.SessionCommand
 
+@OptIn(ExperimentalCarApi::class)
 @UnstableApi
 class SongDetailScreen(
     carContext: CarContext,
@@ -21,92 +24,51 @@ class SongDetailScreen(
     private val mediaItem: MediaItem
 ) : Screen(carContext) {
 
+    private val invalidateListener = { invalidate() }
+
     init {
-        // Listen for playback changes to refresh the Play/Pause button state
-        playControl.setInvalidate0 {
-            invalidate()
-        }
-    }
-
-
-    private fun createCarIcon(uriString: String?): CarIcon {
-        if (uriString != null) {
-            val finalUri = if (uriString.startsWith("content://${com.equalizer.common.MediaThumbnailProvider.getAuthority(carContext)}")) {
-                uriString.toUri()
-            } else {
-                com.equalizer.common.MediaThumbnailProvider.getArtworkUri(carContext, uriString)
-            }
-            return CarIcon.Builder(IconCompat.createWithContentUri(finalUri)).build()
-        }
-        return CarIcon.Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_artist)).build()
+        playControl.addInvalidateListener(invalidateListener)
+        playControl.registerToken()
     }
 
     override fun onGetTemplate(): Template {
-        val metadata = mediaItem.mediaMetadata
-        val isPlaying = playControl.isPlaying == PlayControl.Status.PLAYING
+        // Use current media item if it's available, otherwise fallback to the one passed in
+        val effectiveItem = playControl.currentMediaItem ?: mediaItem
+        val isFavourite = playControl.favourites.contains(effectiveItem.mediaId)
         
-        val paneBuilder = Pane.Builder()
-        
-        // Detailed Information
-        val infoRow = Row.Builder()
-            .setTitle(metadata.title ?: "Unknown Title")
-            .addText(metadata.artist ?: "Unknown Artist")
-           /* .setImage(createCarIcon(metadata.artworkUri?.toString()), Row.IMAGE_TYPE_LARGE)*/
+        val favAction = Action.Builder()
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext,
+                if (isFavourite) com.equalizer.common.R.drawable.ic_favourite else com.equalizer.common.R.drawable.ic_favourite_border
+            ))
+                .setTint(if (isFavourite) CarColor.RED else CarColor.DEFAULT)
+                .build())
+            .setOnClickListener {
+                val extras = Bundle().apply {
+                    putString("SONG_ID", effectiveItem.mediaId)
+                }
+                val customCommand = SessionCommand("toggleFavourite", Bundle())
+                if (playControl.mediaControllerFuture.isDone) {
+                    playControl.controller.sendCustomCommand(customCommand, extras)
+                }
+            }
             .build()
-        
-        paneBuilder
-            .setImage(createCarIcon(metadata.artworkUri?.toString()))
-            .addRow(infoRow)
-        
-        // Technical Info if available
-        metadata.totalDiscCount?.let { 
-            paneBuilder.addRow(Row.Builder().setTitle("Sample Rate").addText("$it Hz").build())
-        }
-        metadata.releaseMonth?.let {
-            paneBuilder.addRow(Row.Builder().setTitle("Channels").addText("$it").build())
-        }
 
-        // Integrated Toggle Action
-        val playPauseAction = if (isPlaying) {
-            Action.Builder()
-                .setIcon(CarIcon
-                    .Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_pause))
-                    .build())
-                .setOnClickListener {
-                    if (playControl.mediaControllerFuture.isDone) {
-                        playControl.controller.pause()
-                    }
-                }
-                .build()
-        } else {
-            Action.Builder()
-                .setIcon(CarIcon
-                    .Builder(IconCompat.createWithResource(carContext, androidx.media3.session.R.drawable.media3_icon_circular_play))
-                    .build())
-                .setOnClickListener {
-                    playControl.playMedia(mediaItem)
-                }
-                .build()
-        }
+        val infoAction = Action.Builder()
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, android.R.drawable.ic_menu_info_details)).build())
+            .setOnClickListener {
+                screenManager.push(TechnicalInfoScreen(carContext, effectiveItem))
+            }
+            .build()
 
-        paneBuilder.addAction(playPauseAction)
-
-        val builder = PaneTemplate.Builder(paneBuilder.build())
-        
-        if (carContext.carAppApiLevel >= 5) {
-            builder.setHeader(
+        return MediaPlaybackTemplate.Builder()
+            .setHeader(
                 Header.Builder()
-                    .setTitle("Playback Control")
+                    .setTitle("Now Playing")
                     .setStartHeaderAction(Action.BACK)
+                    .addEndHeaderAction(favAction)
+                    .addEndHeaderAction(infoAction)
                     .build()
             )
-        } else {
-            try {
-                builder.setTitle("Playback Control")
-                builder.setHeaderAction(Action.BACK)
-            } catch (_: Exception) {}
-        }
-
-        return builder.build()
+            .build()
     }
 }

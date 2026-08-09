@@ -36,8 +36,14 @@
 }
 
 # Protect Media3 components and custom service
+
+-keep class com.equalizer.common.Equalizer$BandDesign { *; }
+-keep class com.equalizer.common.Equalizer$Complex { *; }
+-keep class com.equalizer.common.Equalizer$FilterDesignData { *; }
 -keep class com.equalizer.common.MyMediaService { *; }
+-keep class com.equalizer.common.MyMediaService$Companion { *; }
 -keep class com.equalizer.common.Equalizer { *; }
+-keep class com.equalizer.common.Equalizer$Companion { *; }
 -keep class * extends androidx.media3.session.MediaSession$Callback { *; }
 -keep class * extends androidx.media3.session.MediaSessionService { *; }
 -keep class * extends androidx.media3.session.MediaLibraryService { *; }

@@ -2,12 +2,10 @@ package com.equalizer.common
 
 import android.app.PendingIntent
 import android.content.Intent
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.util.Log
-import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
@@ -17,6 +15,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
+import androidx.media3.session.DefaultMediaNotificationProvider
 import com.equalizer.common.metadata.M4aMeta
 import com.equalizer.common.metadata.MetaFactory
 import com.equalizer.common.metadata.Mp3Meta
@@ -33,88 +32,123 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import androidx.core.net.toUri
 
 @UnstableApi
 class MyMediaService : MediaLibraryService() {
+    companion object {
+        private var instance: MyMediaService? = null
+        
+        fun getSession(): MediaLibrarySession? {
+            return instance?.mediaSession
+        }
+    }
+
     var mediaSession: MediaLibrarySession? = null
+    private lateinit var metadataTracker: IcyMetadataTracker
 
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.Main + serviceJob)
 
     private val setVolOnFreq = SessionCommand("setVolOnFreq", Bundle())
     private val setAllVolOnFreq = SessionCommand("setAllVolOnFreq", Bundle())
+    private val setDelayCmd = SessionCommand("setDelay", Bundle())
+    private val setEqModeCmd = SessionCommand("setEqMode", Bundle())
+    private val toggleFavouriteCmd = SessionCommand("toggleFavourite", Bundle())
     private val createPlaylistCmd = SessionCommand("createPlaylist", Bundle())
     private val addToPlaylistCmd = SessionCommand("addToPlaylist", Bundle())
     private val deletePlaylistCmd = SessionCommand("deletePlaylist", Bundle())
+    private val getFilterDesignCmd = SessionCommand("getFilterDesign", Bundle())
+    private val getAnalysisCmd = SessionCommand("getAnalysis", Bundle())
+    private val getUnoptimizedAnalysisCmd = SessionCommand("getUnoptimizedAnalysis", Bundle())
 
-    private val volPerFreq = MutableList(8) { 1.0f }
+    private val volPerFreq = MutableList(16) { 1.0f }
+    private var isAdvancedMode = false
+
+    private fun getMusicLibraryRoot(): File {
+        val standardRoot = Environment.getExternalStorageDirectory()
+        Environment.getExternalStorageDirectory().path
+        val musicPaths = listOf(
+            File(standardRoot, "Music"),
+            File(Environment.getExternalStorageDirectory().path + "/Music"),
+            File("/storage/emulated/0/Music"),  // Explicit User 0
+            File("/storage/emulated/10/Music"), // Explicit User 10
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            File(Environment.getExternalStorageDirectory().path + "/Download"),
+            standardRoot // Last resort: root of SD card
+        )
+
+        Log.d("MyMediaService", "--- STARTING OMNI-SEARCH ---")
+        musicPaths.forEach { dir ->
+            try {
+                val exists = dir.exists()
+                val canRead = dir.canRead()
+                val list = if (exists && canRead) dir.listFiles() else null
+                val totalCount = list?.size ?: 0
+                val playableCount = list?.count { 
+                    it.isFile && (it.name.endsWith(".mp3", true) || 
+                                 it.name.endsWith(".wav", true) || 
+                                 it.name.endsWith(".m4a", true)) 
+                } ?: 0
+                
+                Log.d("MyMediaService", "SCAN: path=${dir.absolutePath} exists=$exists canRead=$canRead total=$totalCount playable=$playableCount")
+                if (playableCount > 0) {
+                    val sample = list?.firstOrNull { it.isFile }?.name
+                    Log.d("MyMediaService", "SCAN: FOUND MUSIC in ${dir.absolutePath}! (Sample: $sample)")
+                }
+            } catch (e: Exception) {
+                Log.w("MyMediaService", "SCAN: Error checking ${dir.absolutePath}: ${e.message}")
+            }
+        }
+
+        // Return the first path that actually has music files
+        val bestPath = musicPaths.firstOrNull { 
+            it.exists() && it.canRead() && (it.listFiles()?.any { f -> 
+                f.isFile && (f.name.endsWith(".mp3", true) || f.name.endsWith(".wav", true) || f.name.endsWith(".m4a", true)) 
+            } == true) 
+        } ?: File(standardRoot, "Music")
+
+        Log.d("MyMediaService", "SELECTED ROOT: ${bestPath.absolutePath}")
+        return bestPath
+    }
+
+    private suspend fun createMediaItemFromId(id: String): MediaItem? {
+        if (id.startsWith("http://") || id.startsWith("https://")) {
+            val cachedName = IceCastManager.getCachedName(id)
+            val name = cachedName ?: id.substringAfter("://").substringBefore("/").ifBlank { "Radio Stream" }
+            return MediaItem.Builder()
+                .setMediaId(id)
+                .setUri(id.toUri())
+                .setMediaMetadata(MediaMetadata.Builder()
+                    .setTitle(name)
+                    .setArtist("Icecast")
+                    .setIsBrowsable(false)
+                    .setIsPlayable(true)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                    .setArtworkUri("android.resource://$packageName/drawable/ic_icecast".toUri())
+                    .setExtras(Bundle().apply {
+                        putBoolean("IS_RADIO", true)
+                        putString("STATION_NAME", name)
+                    })
+                    .build())
+                .build()
+        }
+        return createMediaItemFromFile(File(id))
+    }
 
     private suspend fun createMediaItemFromFile(file: File): MediaItem? {
         if (!file.exists()) return null
 
         return withContext(Dispatchers.IO) {
             if (file.isDirectory) {
-                var firstArtist: String? = null
-                var firstTitle: String? = null
-
-                // Try to find a thumbnail and metadata for the folder from its contents
-                // Limit scan to first 10 files to avoid hanging on large folders
-                val firstWithArt = file.listFiles()
-                    ?.filter { it.isFile && (it.name.endsWith(".mp3", true) || it.name.endsWith(".m4a", true)) }
-                    ?.take(10)
-                    ?.onEach { songFile ->
-                        if (firstArtist == null) {
-                            when (val meta = MetaFactory.createMeta(songFile, applicationContext)) {
-                                is Mp3Meta -> {
-                                    firstArtist = meta.artist
-                                    firstTitle = meta.name
-                                }
-                                is M4aMeta -> {
-                                    firstArtist = meta.artist
-                                    firstTitle = meta.name
-                                }
-                            }
-                        }
-                    }
-                    ?.firstOrNull {
-                        val retriever = MediaMetadataRetriever()
-                        try {
-                            retriever.setDataSource(it.absolutePath)
-                            retriever.embeddedPicture != null
-                        } catch (_: Exception) {
-                            false
-                        } finally {
-                            retriever.release()
-                        }
-                    }
-
+                // Simplified folder creation: Avoid scanning contents upfront for performance.
+                // The MediaThumbnailProvider will handle finding the artwork asynchronously.
                 val folderMetadataBuilder = MediaMetadata.Builder()
                     .setIsBrowsable(true)
                     .setIsPlayable(false)
                     .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
                     .setTitle(file.name)
-                    .setArtist(firstArtist)
-
-                if (firstWithArt != null) {
-                    val artworkUri = MediaThumbnailProvider.getArtworkUri(applicationContext, firstWithArt.absolutePath)
-                    folderMetadataBuilder.setArtworkUri(artworkUri)
-                    
-                    // Also set artwork data as fallback if possible
-                    try {
-                        val retriever = MediaMetadataRetriever()
-                        retriever.setDataSource(firstWithArt.absolutePath)
-                        folderMetadataBuilder.setArtworkData(retriever.embeddedPicture, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
-                        retriever.release()
-                    } catch (_: Exception) {}
-                } else if (firstArtist != null && firstTitle != null) {
-                    // Try online artwork if local is not found
-                    val onlineInfo = OnlineMetadataManager.getOnlineInfo(applicationContext,
-                        firstArtist, firstTitle
-                    )
-                    onlineInfo?.artworkUrl?.let {
-                        folderMetadataBuilder.setArtworkUri(it.toUri())
-                    }
-                }
+                    .setArtworkUri(MediaThumbnailProvider.getArtworkUri(applicationContext, file.absolutePath))
 
                 MediaItem.Builder()
                     .setMediaId(file.absolutePath)
@@ -141,17 +175,10 @@ class MyMediaService : MediaLibraryService() {
                 if (hasLocalArt) {
                     val artworkUri = MediaThumbnailProvider.getArtworkUri(applicationContext, file.absolutePath)
                     metadataBuilder.setArtworkUri(artworkUri)
-
-                    // Set artwork data as reliable fallback
-                    metadataBuilder.setArtworkData(when (meta) {
-                        is Mp3Meta -> meta.imageArray
-                        is M4aMeta -> meta.imageArray
-                        else -> null
-                    }, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
                 }
 
                 if (meta != null) {
-                    val artist = when (meta) {
+                 /*   val artist = when (meta) {
                         is Mp3Meta -> meta.artist
                         is M4aMeta -> meta.artist
                         else -> null
@@ -160,14 +187,10 @@ class MyMediaService : MediaLibraryService() {
                         is Mp3Meta -> meta.name
                         is M4aMeta -> meta.name
                         else -> file.name
-                    }
+                    }*/
 
-                    if (!hasLocalArt && !artist.isNullOrBlank() && !title.isNullOrBlank()) {
-                        val onlineInfo = OnlineMetadataManager.getOnlineInfo(applicationContext, artist, title)
-                        onlineInfo?.artworkUrl?.let {
-                            metadataBuilder.setArtworkUri(it.toUri())
-                        }
-                    }
+                    // Always set the artwork URI so the thumbnail provider can decide whether to look locally or online
+                    metadataBuilder.setArtworkUri(MediaThumbnailProvider.getArtworkUri(applicationContext, file.absolutePath))
 
                     when (meta) {
                         is Mp3Meta -> {
@@ -208,9 +231,48 @@ class MyMediaService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         Log.d("MyMediaService", "onCreate starting")
         MediaThumbnailProvider.init(this)
         val player = Equalizer(context = this)
+        metadataTracker = IcyMetadataTracker( serviceScope) { fullTitle ->
+            val parts = fullTitle.split(" - ", limit = 2)
+            val artist = if (parts.size > 1) parts[0].trim() else ""
+            val trackTitle = if (parts.size > 1) parts[1].trim() else fullTitle.trim()
+            
+            val currentMetadata = player.mediaMetadata
+            val stationName = currentMetadata.extras?.getString("STATION_NAME") ?: "Radio"
+            
+            val newMetadata = currentMetadata.buildUpon()
+                .setArtist(artist)
+                .setTitle(trackTitle)
+                .setAlbumTitle(stationName) 
+                .build()
+            
+            Log.i("MyMediaService", "RADIO UPDATE: Station=[$stationName] Artist=[$artist] Title=[$trackTitle]")
+            
+            // Update on Main thread
+            serviceScope.launch(Dispatchers.Main) {
+                player.updateCurrentMetadata(newMetadata)
+            }
+        }
+
+        player.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                val url = mediaItem?.mediaId
+                Log.i("MyMediaService", "TRACK TRANSITION: $url (Reason: $reason)")
+                if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
+                    if (::metadataTracker.isInitialized) metadataTracker.startTracking(url)
+                } else {
+                    Log.d("MyMediaService", "Not a network stream, stopping metadata tracker")
+                    if (::metadataTracker.isInitialized) metadataTracker.stopTracking()
+                }
+            }
+        })
+
+        val notificationProvider = DefaultMediaNotificationProvider(this)
+        notificationProvider.setSmallIcon(R.drawable.ic_lever)
+        setMediaNotificationProvider(notificationProvider)
 
         val intent = packageManager.getLaunchIntentForPackage(packageName)
         val pendingIntent = PendingIntent.getActivity(this, 0, intent!!, PendingIntent.FLAG_IMMUTABLE)
@@ -229,18 +291,17 @@ class MyMediaService : MediaLibraryService() {
                 val availableSessionCommands = connectionResult.availableSessionCommands.buildUpon()
                 availableSessionCommands.add(setVolOnFreq)
                 availableSessionCommands.add(setAllVolOnFreq)
+                availableSessionCommands.add(setDelayCmd)
+                availableSessionCommands.add(setEqModeCmd)
+                availableSessionCommands.add(toggleFavouriteCmd)
                 availableSessionCommands.add(createPlaylistCmd)
                 availableSessionCommands.add(addToPlaylistCmd)
                 availableSessionCommands.add(deletePlaylistCmd)
-                /*
-                val availablePlayerCommands = connectionResult.availablePlayerCommands.buildUpon()
-                    .add(COMMAND_PLAY_PAUSE)
-                    .add(COMMAND_STOP)
-                    .add(COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
-                    .add(COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
-                    .add(COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
-                    .addAllCommands()
-                    .build()*/
+                availableSessionCommands.add(getFilterDesignCmd)
+                availableSessionCommands.add(getAnalysisCmd)
+                availableSessionCommands.add(getUnoptimizedAnalysisCmd)
+
+                pushEqualizerState(session)
 
                 return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                     .setAvailableSessionCommands(availableSessionCommands.build())
@@ -293,6 +354,15 @@ class MyMediaService : MediaLibraryService() {
                                         .build())
                                     .build(),
                                 MediaItem.Builder()
+                                    .setMediaId("icecast_root")
+                                    .setMediaMetadata(MediaMetadata.Builder()
+                                        .setTitle("IceCast Radio")
+                                        .setIsBrowsable(true)
+                                        .setIsPlayable(false)
+                                        .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                                        .build())
+                                    .build(),
+                                MediaItem.Builder()
                                     .setMediaId("playlists_root")
                                     .setMediaMetadata(MediaMetadata.Builder()
                                         .setTitle("Playlists")
@@ -303,6 +373,67 @@ class MyMediaService : MediaLibraryService() {
                                     .build()
                             )
                             settable.set(LibraryResult.ofItemList(ImmutableList.copyOf(items), params))
+                        }
+                        parentId == "icecast_root" -> {
+                            serviceScope.launch {
+                                val stations = IceCastManager.fetchStations()
+                                val items = stations.filter { it.url.isNotBlank() }.map { station ->
+                                    MediaItem.Builder()
+                                        .setMediaId(station.url)
+                                        .setUri(station.url.toUri())
+                                        .setMediaMetadata(MediaMetadata.Builder()
+                                            .setTitle(station.name)
+                                            .setArtist("Icecast")
+                                            .setAlbumTitle(station.name)
+                                            .setSubtitle(station.genre)
+                                            .setIsBrowsable(false)
+                                            .setIsPlayable(true)
+                                            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                                            .setTotalDiscCount(station.samplerate)
+                                            .setReleaseMonth(station.channels)
+                                            .setArtworkUri("android.resource://$packageName/drawable/ic_icecast".toUri())
+                                            .setExtras(Bundle().apply {
+                                                putInt("BITRATE", station.bitrate)
+                                                putString("CODEC", "MP3")
+                                                putBoolean("IS_RADIO", true)
+                                                putString("STATION_NAME", station.name)
+                                            })
+                                            .build())
+                                        .build()
+                                }
+                                settable.set(LibraryResult.ofItemList(ImmutableList.copyOf(items), params))
+                            }
+                        }
+                        parentId == "library_combined" -> {
+                            serviceScope.launch {
+                                val musicDir = getMusicLibraryRoot()
+                                val folders = musicDir.listFiles()?.filter { it.isDirectory && !it.name.startsWith(".") }?.sortedBy { it.name } ?: emptyList()
+                                val folderItems = folders.map { createMediaItemFromFile(it) }.filterNotNull()
+                                
+                                val stations = IceCastManager.fetchStations()
+                                val stationItems = stations.filter { it.url.isNotBlank() }.map { station ->
+                                    MediaItem.Builder()
+                                        .setMediaId(station.url)
+                                        .setUri(station.url.toUri())
+                                        .setMediaMetadata(MediaMetadata.Builder()
+                                            .setTitle(station.name)
+                                            .setArtist("Icecast")
+                                            .setAlbumTitle(station.name)
+                                            .setSubtitle(station.genre)
+                                            .setIsBrowsable(false)
+                                            .setIsPlayable(true)
+                                            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                                            .setArtworkUri("android.resource://com.equalizer.mymediaplayer/drawable/ic_icecast".toUri())
+                                            .setExtras(Bundle().apply {
+                                                putInt("BITRATE", station.bitrate)
+                                                putBoolean("IS_RADIO", true)
+                                                putString("STATION_NAME", station.name)
+                                            })
+                                            .build())
+                                        .build()
+                                }
+                                settable.set(LibraryResult.ofItemList(ImmutableList.copyOf(folderItems + stationItems), params))
+                            }
                         }
                         parentId == "playlists_root" -> {
                             val playlists = PlaylistManager.getPlaylists(applicationContext)
@@ -324,7 +455,7 @@ class MyMediaService : MediaLibraryService() {
                             val playlist = playlists.find { it.id == parentId }
                             if (playlist != null) {
                                 val mediaItems = playlist.songIds.map { songId ->
-                                    async { createMediaItemFromFile(File(songId)) }
+                                    async { createMediaItemFromId(songId) }
                                 }.awaitAll().filterNotNull()
                                 settable.set(LibraryResult.ofItemList(ImmutableList.copyOf(mediaItems), params))
                             } else {
@@ -332,24 +463,32 @@ class MyMediaService : MediaLibraryService() {
                             }
                         }
                         else -> {
-                            val musicDir = File(Environment.getExternalStorageDirectory(), "Music")
                             val parentDir = if (parentId == "music_library_root") {
-                                musicDir
+                                getMusicLibraryRoot()
                             } else {
                                 File(parentId)
                             }
+                            
+                            Log.d("MyMediaService", "onGetChildren: parentId=$parentId, parentDir=${parentDir.absolutePath}")
+                            Log.d("MyMediaService", "onGetChildren: exists=${parentDir.exists()}, isDir=${parentDir.isDirectory}, canRead=${parentDir.canRead()}")
 
                             if (!parentDir.exists() || !parentDir.isDirectory) {
+                                Log.e("MyMediaService", "onGetChildren: Parent directory does not exist or is not a directory: ${parentDir.absolutePath}")
                                 settable.set(LibraryResult.ofItemList(ImmutableList.of(), params))
                                 return@launch
                             }
 
-                            val filesList = parentDir.listFiles()?.sortedBy { it.name } ?: emptyList()
+                            val filesList = parentDir.listFiles()?.filter { !it.name.startsWith(".") }?.sortedBy { it.name } ?: emptyList()
+                            Log.d("MyMediaService", "onGetChildren: Found ${filesList.size} files in ${parentDir.absolutePath}")
 
                             val mediaItems = withContext(Dispatchers.IO) {
                                 filesList.map { file ->
                                     async {
-                                        createMediaItemFromFile(file)
+                                        val item = createMediaItemFromFile(file)
+                                        if (item == null) {
+                                            Log.w("MyMediaService", "onGetChildren: createMediaItemFromFile failed for ${file.absolutePath} (isFile=${file.isFile}, ext=${file.extension})")
+                                        }
+                                        item
                                     }
                                 }.awaitAll().filterNotNull()
                             }
@@ -386,12 +525,10 @@ class MyMediaService : MediaLibraryService() {
                 val settable = SettableFuture.create<List<MediaItem>>()
                 serviceScope.launch {
                     val resolvedItems = mediaItems.map { item ->
-                        // If the item already has a URI, we trust it. 
-                        // Otherwise, we try to resolve it from our local file system using the mediaId as path.
                         if (item.localConfiguration?.uri != null) {
                             item
                         } else {
-                            createMediaItemFromFile(File(item.mediaId)) ?: item
+                            createMediaItemFromId(item.mediaId) ?: item
                         }
                     }
                     settable.set(resolvedItems)
@@ -416,22 +553,70 @@ class MyMediaService : MediaLibraryService() {
                 if (customCommand.customAction == "setVolOnFreq") {
                     val index = args.getInt("KEY_INDEX")
                     val volume = args.getFloat("KEY_VOLUME")
-                    volPerFreq[index] = volume
                     
                     val player = session.player
                     if (player is Equalizer) {
+                        volPerFreq[index] = volume
                         player.setVolOnFreq(volume, index)
+                        
+                        // Sync channels if in Basic mode
+                        if (!isAdvancedMode) {
+                            val otherIndex = if (index < 8) index + 8 else index - 8
+                            volPerFreq[otherIndex] = volume
+                            player.setVolOnFreq(volume, otherIndex)
+                        }
                     }
                     pushEqualizerState(session)
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 } else if (customCommand.customAction == "setAllVolOnFreq") {
                     val volumes = args.getFloatArray("KEY_VOLUMES")
-                    if (volumes != null && volumes.size == 8) {
-                        for (i in 0 until 8) volPerFreq[i] = volumes[i]
+                    if (volumes != null) {
                         val player = session.player
                         if (player is Equalizer) {
-                            player.setAllVolOnFreq(volumes)
+                            if (volumes.size == 8) {
+                                // Apply same 8 bands to both L and R
+                                for (i in 0 until 8) {
+                                    volPerFreq[i] = volumes[i]
+                                    volPerFreq[i + 8] = volumes[i]
+                                }
+                                player.setAllVolOnFreq(volPerFreq.toFloatArray())
+                            } else if (volumes.size == 16) {
+                                for (i in 0 until 16) volPerFreq[i] = volumes[i]
+                                player.setAllVolOnFreq(volumes)
+                            }
                         }
+                        pushEqualizerState(session)
+                        return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                    }
+                } else if (customCommand.customAction == "setDelay") {
+                    val left = args.getFloat("KEY_LEFT_DELAY")
+                    val right = args.getFloat("KEY_RIGHT_DELAY")
+                    val player = session.player
+                    if (player is Equalizer) {
+                        player.setDelay(left, right)
+                    }
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                } else if (customCommand.customAction == "setEqMode") {
+                    isAdvancedMode = args.getBoolean("IS_ADVANCED")
+                    
+                    // If switching to Basic mode, sync Right to Left immediately
+                    if (!isAdvancedMode) {
+                        for (i in 0 until 8) {
+                            volPerFreq[i + 8] = volPerFreq[i]
+                        }
+                        val player = session.player
+                        if (player is Equalizer) {
+                            player.setAllVolOnFreq(volPerFreq.toFloatArray())
+                        }
+                    }
+                    
+                    pushEqualizerState(session)
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                } else if (customCommand.customAction == "toggleFavourite") {
+                    val songId = args.getString("SONG_ID")
+                    if (songId != null) {
+                        PlaylistManager.toggleFavourite(applicationContext, songId)
+                        mediaSession?.notifyChildrenChanged(PlaylistManager.FAVOURITES_ID, 0, null)
                         pushEqualizerState(session)
                         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                     }
@@ -455,6 +640,57 @@ class MyMediaService : MediaLibraryService() {
                         mediaSession?.notifyChildrenChanged("playlists_root", 0, null)
                         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                     }
+                } else if (customCommand.customAction == "getFilterDesign") {
+                    val player = session.player
+                    val settable = SettableFuture.create<SessionResult>()
+                    if (player is Equalizer) {
+                        serviceScope.launch(Dispatchers.Default) {
+                            val raw = player.getRawFilterDesign()
+                            if (raw != null) {
+                                val extras = Bundle().apply {
+                                    putFloatArray("DESIGN_DATA", raw)
+                                }
+                                settable.set(SessionResult(SessionResult.RESULT_SUCCESS, extras))
+                            } else {
+                                settable.set(SessionResult(SessionError.ERROR_BAD_VALUE))
+                            }
+                        }
+                        return settable
+                    }
+                } else if (customCommand.customAction == "getAnalysis") {
+                    val player = session.player
+                    val settable = SettableFuture.create<SessionResult>()
+                    if (player is Equalizer) {
+                        serviceScope.launch(Dispatchers.Default) {
+                            val raw = player.getAnalysisResponse(0.0, 4000.0, 10.0)
+                            if (raw != null) {
+                                val extras = Bundle().apply {
+                                    putFloatArray("ANALYSIS_DATA", raw)
+                                }
+                                settable.set(SessionResult(SessionResult.RESULT_SUCCESS, extras))
+                            } else {
+                                settable.set(SessionResult(SessionError.ERROR_BAD_VALUE))
+                            }
+                        }
+                        return settable
+                    }
+                } else if (customCommand.customAction == "getUnoptimizedAnalysis") {
+                    val player = session.player
+                    val settable = SettableFuture.create<SessionResult>()
+                    if (player is Equalizer) {
+                        serviceScope.launch(Dispatchers.Default) {
+                            val raw = player.getUnoptimizedAnalysisResponse(0.0, 4000.0, 10.0)
+                            if (raw != null) {
+                                val extras = Bundle().apply {
+                                    putFloatArray("ANALYSIS_DATA", raw)
+                                }
+                                settable.set(SessionResult(SessionResult.RESULT_SUCCESS, extras))
+                            } else {
+                                settable.set(SessionResult(SessionError.ERROR_BAD_VALUE))
+                            }
+                        }
+                        return settable
+                    }
                 }
                 return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
             }
@@ -463,18 +699,28 @@ class MyMediaService : MediaLibraryService() {
     }
 
     private fun pushEqualizerState(session: MediaSession) {
+        val favourites = PlaylistManager.getPlaylists(applicationContext)
+            .find { it.id == PlaylistManager.FAVOURITES_ID }?.songIds ?: emptyList()
+
         val extras = Bundle().apply {
             putFloatArray("EQ_STATE", volPerFreq.toFloatArray())
+            putBoolean("IS_ADVANCED", isAdvancedMode)
+            putStringArray("FAVOURITES", favourites.toTypedArray())
+            
+            // We'll skip pushing FILTER_DESIGN here to avoid blocking the main thread.
+            // The AudioModel proactively requests it via custom command anyway.
         }
         session.sessionExtras = extras
     }
 
     override fun onDestroy() {
+        if (::metadataTracker.isInitialized) metadataTracker.stopTracking()
         mediaSession?.run {
             player.release()
             release()
             mediaSession = null
         }
+        instance = null
         serviceJob.cancel()
         super.onDestroy()
     }

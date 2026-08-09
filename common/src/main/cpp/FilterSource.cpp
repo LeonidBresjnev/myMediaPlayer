@@ -4,216 +4,270 @@
 namespace equalizer {
     FilterSource::FilterSource(std::shared_ptr<AudioSource> source) :
     myDuplicator{std::make_shared<Duplicator>()},
-    _source(std::move(source)){}
-
+    _source(std::move(source)){
+        bands.resize(8);
+        for(int i=0; i<7; ++i) allpassChains.push_back(std::make_shared<AllpassFilter>());
+        setFilter(44100, 2);
+    }
 
     void FilterSource::setFilter(int sampleRate, int numChannels_) {
+        if (sampleRate == lastSampleRate && numChannels_ == lastNumChannels) {
+            return;
+        }
         this->numChannels = numChannels_;
-        const double PI = acos(-1);
+        this->lastSampleRate = sampleRate;
+        this->lastNumChannels = numChannels_;
 
+        c_const = ChebyshevPrototype::PI * 2.0 / sampleRate;
 
-        //Define digital prototype of Chebyshev type;
-        const double mu = PI / 8;
-        const double wa = tan(mu/2)*2*sampleRate;
-        const double e = 0.4;
+        const double epsilon = 0.5;
+        prototype.calculate(order, sampleRate, epsilon);
+        const auto& polesD = prototype.getPolesD();
 
-        std::array<std::complex<double>, order> polesD;
-        for (auto m = 1; m <= order; m++) {
-            std::complex<double> poleA=std::complex(
-                    -sinh(asinh(1.0 / e) / order) * sin(PI * (2 * m - 1) / (2 * order)),
-                    cosh(asinh(1.0 / e) / order) * cos(PI * (2 * m - 1) / (2 * order)))*wa;
-            polesD[m-1] = -(poleA+2.0 * sampleRate)/(poleA-2.0 * sampleRate);
+        // 1. Link the processing chain
+        bands[0].setup(ChebyshevFilter::Type::LowPass, order, numChannels, myDuplicator);
 
-            // LOGD("m=%d, pole proto: %f, %f, pole analog: %f, %f",m, polesD[m-1].real(), polesD[m-1].imag(), poleA.real(), poleA.imag());
+        allpassChains[0]->setup(numChannels, myDuplicator);
+        for (int i = 1; i < 7; ++i) {
+            allpassChains[i]->setup(numChannels, allpassChains[i - 1]);
         }
 
+        for (int i = 0; i < 6; ++i) {
+            bands[i + 1].setup(ChebyshevFilter::Type::BandPass, order, numChannels, allpassChains[i]);
+        }
+        bands[7].setup(ChebyshevFilter::Type::HighPass, order, numChannels, allpassChains[6]);
 
+        // 2. Design the Chebyshev bands
+        for (int i = 0; i < 8; ++i) {
+            bands[i].design(polesD, sampleRate, freqBorders, i, epsilon);
+        }
 
-        //make lowpass;
-        double cutoff = PI * 2.0 * static_cast<double>(freqBorders[0]) / static_cast<double>(sampleRate);
-        //double tanwc = tan(cutoff / 2.0);
+        // 3. Optimize and design Allpass filters
+        optimizeAllpassFilters();
 
-        double alpha = sin((mu-cutoff)/2) / sin((mu+cutoff)/2);
-            //LOGD("alpha=%f", alpha);
+        LOGD("Filter Source: Hierarchical design constructed with allpass optimization for %d channels at %d Hz", numChannels, sampleRate);
+    }
 
-        for (auto i = 0; i < (order / 2); i++) {
-            std::complex<double> pole = (polesD[i]+alpha)/(polesD[i]*alpha+1.0);
-            double scale = std::pow( abs((pole+1.0)*tan(mu/2)*(alpha-1.0)/((alpha+1.0)*4.0)*(std::pow(2.0/e,1.0/order ))),2.0);
+    void FilterSource::setDelay(int leftDelay, int rightDelay) {
+        myDelay[0].setSize(min(max(1, leftDelay), 4096 - 1));
+        myDelay[1].setSize(min(max(1, rightDelay), 4096 - 1));
+        LOGD("Filter Source: delay set %d, %d", leftDelay, rightDelay);
+    }
 
+    std::complex<double> FilterSource::h(double f) const {
+        std::complex<double> z = std::exp(std::complex<double>(0.0, f * c_const));
 
-           // LOGD("i= %d, pole: %f, %f, scale: %f",i, pole.real(), pole.imag(), scale);
-            for (auto &channel: lowpass) {
-                    /*
-                    double theta = PI / 2.0 + PI * (2.0 * i + 1.0) / order;
-                    std::complex<double> e = std::complex(cos(theta), sin(theta));
-                    std::complex<double> poles =
-                            (ComplexOne + (e * tanwc)) / (ComplexOne - (e * tanwc));
-                    //std::cout<<"theta: "<<theta<<", "<<poles<<"\n";
-                    double scale = (1.0 - 2.0 * poles.real() + std::pow(abs(poles), 2.0)) / 4.0;
-    */
-                channel[i] = (i==0) ? FilterElement(myDuplicator) : FilterElement(&channel[i - 1]);
+        std::complex<double> total = static_cast<double>(amplitude[0][0]) * bands[0].h(z);
+        std::complex<double> cumulativeAP(1.0, 0.0);
 
+        for (int i = 0; i < 6; ++i) {
+            cumulativeAP *= allpassChains[i]->getGain(z);
+            total += static_cast<double>(amplitude[0][i + 1]) * (cumulativeAP * bands[i + 1].h(z));
+        }
 
-                channel[i].setNumerator(MinusComplexOne, scale);
-                channel[i].setDenominator(pole);
+        cumulativeAP *= allpassChains[6]->getGain(z);
+        total += static_cast<double>(amplitude[0][7]) * (cumulativeAP * bands[7].h(z));
+
+        return total;
+    }
+
+    std::complex<double> FilterSource::hUnoptimized(double f) const {
+        std::complex<double> z = std::exp(std::complex<double>(0.0, f * c_const));
+        std::complex<double> total(0.0, 0.0);
+        for (int i = 0; i < 8; ++i) {
+            total += static_cast<double>(amplitude[0][i]) * bands[i].h(z);
+        }
+        return total;
+    }
+
+    std::vector<double> FilterSource::getAnalysisResponse(double f_start, double f_end, double f_step) const {
+        std::vector<double> res;
+        for (double f = f_start; f <= f_end; f += f_step) {
+            std::complex<double> g = h(f);
+            res.push_back(std::abs(g));
+            res.push_back(std::arg(g));
+        }
+        return res;
+    }
+
+    std::vector<double> FilterSource::getUnoptimizedAnalysisResponse(double f_start, double f_end, double f_step) const {
+        std::vector<double> res;
+        for (double f = f_start; f <= f_end; f += f_step) {
+            std::complex<double> g = hUnoptimized(f);
+            res.push_back(std::abs(g));
+            res.push_back(std::arg(g));
+        }
+        return res;
+    }
+
+    std::vector<BandDesign> FilterSource::getFilterDesign() const {
+        std::vector<BandDesign> designs;
+        designs.reserve(8);
+
+        for (int i = 0; i < 8; ++i) {
+            BandDesign bd;
+            const auto& p = bands[i].getPoles();
+            bd.poles.reserve(p.size() * 2);
+            for (const auto& pole : p) {
+                bd.poles.push_back(pole);
+                bd.poles.push_back(std::conj(pole));
             }
-        }
-/*
-        for (int band=0; band<6; band++) {
-            double cutoffLow = PI * 2.0 * static_cast<double>(freqBorders[band+1]) / static_cast<double>(sampleRate);
-            double tanwcLow = tan(cutoffLow / 2.0);
-            double cutoffHigh = PI * 2.0 * static_cast<double>(freqBorders[band]) / static_cast<double>(sampleRate);
-            double tanwcHigh = tan(cutoffHigh / 2.0);
-            for (int c=0; c<numChannels; c++) {
-                for (int j = 0; j < order; j++) {
-                    if (j < order / 2) {
-                        int i=j;
-                        double theta = PI / 2.0 + PI * (2.0 * i + 1.0) / order;
-                        std::complex<double> e = std::complex(cos(theta), sin(theta));
-                        std::complex<double> poles =
-                                (ComplexOne + (e * tanwcLow)) / (ComplexOne - (e * tanwcLow));
 
-                        double scale = (1.0 - 2.0 * poles.real() + std::pow(abs(poles), 2.0)) / 4.0;
-                        if (i == 0) bandpass[band][c][i] = FilterElement(myDuplicator);
-                        else bandpass[band][c][i] = FilterElement(&bandpass[band][c][i - 1]);
-                        bandpass[band][c][i].setNumerator(MinusComplexOne, scale);
-                        bandpass[band][c][i].setDenominator(poles);
-                    }
-                    else {
-                        int i=j-order/2;
-                        double theta = PI / 2.0 + PI * (2.0 * i + 1.0) / order;
-                        std::complex<double> e = std::complex(cos(theta), sin(theta));
-                        std::complex<double> poles =
-                                (ComplexOne + (e * tanwcHigh)) / (ComplexOne - (e * tanwcHigh));
-
-                        double scale = (1.0 + 2.0 * poles.real() + std::pow(abs(poles), 2.0)) / 4.0;
-
-                        bandpass[band][c][j] = FilterElement(bandpass[band][c][j - 1]);
-                        bandpass[band][c][j].setNumerator(ComplexOne, scale);
-                        bandpass[band][c][j].setDenominator(poles);
-                    }
-                }
-
+            // Add Zeros
+            if (i == 0) { // LP
+                bd.zeros.emplace_back(-1.0, 0.0);
+                bd.zeros.emplace_back(-1.0, 0.0);
+            } else if (i == 7) { // HP
+                bd.zeros.emplace_back(1.0, 0.0);
+                bd.zeros.emplace_back(1.0, 0.0);
+            } else { // BP
+                bd.zeros.emplace_back(1.0, 0.0);
+                bd.zeros.emplace_back(-1.0, 0.0);
             }
-        }*/
 
-        //
-
-
-
-        for (int band=0; band<6; band++) {
-            double cutoffLow = (PI * 2.0 * static_cast<double>(freqBorders[band])) / static_cast<double>(sampleRate);
-            double cutoffHigh = (PI * 2.0 * static_cast<double>(freqBorders[band+1])) / static_cast<double>(sampleRate);
-            //double wal = tan(cutoffLow/2.0);
-            //double wau = tan(cutoffHigh/2.0);
-
-            //double w0 = wau*wal;
-            //double w1=(wau-wal);
-
-
-            //LOGD("cutoffs, %f, %f", cutoffLow, cutoffHigh);
-            //LOGD("w, %f, %f", w0, w1);
-
-            alpha = cos((cutoffLow+cutoffHigh)/2) / cos((cutoffLow-cutoffHigh)/2);
-            double k = tan(mu/2)/tan((cutoffHigh-cutoffLow)/2);
-
-            //std::complex<double> scaleAngle = Complex(cos((cutoffLow+cutoffHigh)/2),sin((cutoffLow+cutoffHigh)/2));
-
-            for (auto i = 0; i < order; i++) {
-                //Buttersworth with analog prototype:;
-                //double theta = PI / 2.0 + PI * (2.0 * i + 1.0) / (2*order);
-                //analog poles
-               /* std::complex<double> e = std::complex(cos(theta), sin(theta));
-
-                std::complex<double> discriminant = std::pow(e*w1,2.0 )-w0*4.0;
-
-                std::complex<double> pole;
-                if (i<order/2 ) {
-                    pole = (std::pow(discriminant,0.5)+(w0-1))/(e*w1-(1+w0) );
-                } else {
-                    pole = (-std::pow(discriminant,0.5)+(w0-1))/(e*w1-(1+w0) );
-                }
-
-                double scale = abs( (scaleAngle-ComplexOne)*(scaleAngle+ComplexOne))/
-                               abs(scaleAngle*scaleAngle
-                                   - scaleAngle*pole.real()*2.0+(abs(pole)*abs(pole)));
-*/
-                //Chebyshev with digital prototype:;
-                std::complex a = (polesD[i]+1.0)*alpha*k,
-                b= (polesD[i]*(k+1)+(k-1))*(polesD[i]*(k-1)+k+1.0),
-                d=std::pow(a*a-b,0.5);
-                std::complex<double> pole = ((i<order/2) ? -d+a : d+a)/(polesD[i]*(k-1)+k+1.0);
-
-                double scale = abs( ((polesD[i]+1.0)*tan(mu/2)/((polesD[i]*(k-1)+k+1.0)*2.0)) *  (std::pow(2.0/e,1.0/order)));
-
-
-                for (auto c=0; c<numChannels; c++) {
-
-                    bandpass[band][c][i] = (i==0)? FilterElement(myDuplicator): FilterElement(&bandpass[band][c][i - 1]);
-                    bandpass[band][c][i].setNumerator({1.f,0.f,-1.f}, scale);
-                    bandpass[band][c][i].setDenominator(pole);
-                }
-            }
+            designs.push_back(std::move(bd));
         }
-
-        //Highpass:;
-        cutoff = PI * 2.0 * static_cast<double>(freqBorders[6]) / static_cast<double>(sampleRate);
-        //double tanwc = tan(cutoff / 2.0);
-
-        alpha = -cos((mu+cutoff)/2) / cos((mu-cutoff)/2);
-
-      //  LOGD("alpha=%f", alpha);
-        for (auto i = 0; i < (order / 2); i++) {
-            std::complex pole = -(polesD[i]+alpha)/(polesD[i]*alpha+1.0);
-            double scale = std::pow( abs((-pole+1.0)*tan(mu/2)*(alpha-1.0)/((alpha+1.0)*4.0)*(std::pow(2.0/e,1.0/order ))),2.0);
-
-//            LOGD("i= %d, pole: %f, %f, scale: %f",i, pole.real(), pole.imag(), scale);
-            for (auto &channel: highpass) {
-                    //double theta = PI / 2.0 + PI * (2.0 * i + 1.0) / order;
-                    //std::complex<double> e = std::complex(cos(theta), sin(theta));
-                    //std::complex<double> poles = (ComplexOne + (e * tanwc)) / (ComplexOne - (e * tanwc));
-                    //std::cout<<"theta: "<<theta<<", "<<poles<<"\n";
-                    //double scale = (1.0 + 2.0 * poles.real() + std::pow(abs(poles), 2.0)) / 4.0;
-
-                    channel[i] = (i==0) ? FilterElement(myDuplicator) : FilterElement(&channel[i - 1]);
-                    channel[i].setNumerator(ComplexOne, scale);
-                    channel[i].setDenominator(pole);
-                }
-        }
-
-        LOGD("filter constucted");
+        return designs;
     }
 
     float FilterSource::getSample() {
-        myDuplicator->setSample(_source->getSample());
-        auto sample =
-                amplitude[0]*lowpass[currentChannel][order/2-1].getSample()
-                +  amplitude[1]*bandpass[0][currentChannel][order-1].getSample()
-                   +  amplitude[2]*bandpass[1][currentChannel][order-1].getSample()
-                      +  amplitude[3]*bandpass[2][currentChannel][order-1].getSample()
-                         +  amplitude[4]*bandpass[3][currentChannel][order-1].getSample()
-                            +  amplitude[5]*bandpass[4][currentChannel][order-1].getSample()
-                               +  amplitude[6]*bandpass[5][currentChannel][order-1].getSample()
-                   +  amplitude[7]*highpass[currentChannel][order/2-1].getSample();
-        currentChannel = (currentChannel +1)%numChannels;
-        //LOGD("filtered sample value, return %f", sample);
-        return sample;
+        float inSample = _source->getSample();
+        myDuplicator->setSample(inSample);
+
+        float sample = amplitude[currentChannel][0] * bands[0].process(inSample, currentChannel);
+
+        float currentAPInput = inSample;
+        for (int i = 0; i < 7; ++i) {
+            float apOut = allpassChains[i]->process(currentAPInput, currentChannel);
+            sample += amplitude[currentChannel][i + 1] * bands[i + 1].process(apOut, currentChannel);
+            currentAPInput = apOut;
+        }
+
+        currentChannel = (currentChannel + 1) % numChannels;
+        myDelay[currentChannel].setSample(sample);
+        return myDelay[currentChannel].getSample();
     }
 
     void FilterSource::onPlaybackStopped() {
         _source->onPlaybackStopped();
     }
+
     void FilterSource::setAmplitude(float newAmplitude, int freqInterval) {
-        amplitude[freqInterval].store(newAmplitude);
+        if (freqInterval < 8) {
+            amplitude[0][freqInterval] = newAmplitude;
+        } else if (freqInterval < 16) {
+            amplitude[1][freqInterval - 8] = newAmplitude;
+        }
+    }
+
+    double FilterSource::lossfunction(int pairIndex, std::complex<double> pole) const {
+        lossFunctionCalls++;
+        if (pairIndex < 0 || pairIndex >= 7) return 1e18;
+
+        double loss = 0.0;
+        int borderFreq = freqBorders[pairIndex];
+        int fStart = static_cast<int>(0.8 * borderFreq);
+        int fEnd = static_cast<int>(1.2 * borderFreq);
+
+        double fStep = static_cast<double>(fEnd - fStart) / 40.0;
+        if (fStep < 1.0) fStep = 1.0;
+
+        for (double f = static_cast<double>(fStart); f < static_cast<double>(fEnd); f += 1.0) {
+            std::complex<double> z = std::exp(std::complex<double>(0.0, f * c_const));
+
+            // Optimization: Only consider the two bands adjacent to the current crossover.
+            // This is sufficient for local phase alignment and significantly faster.
+            std::complex<double> h1 = bands[pairIndex].getGain(z);
+            std::complex<double> h2 = AllpassFilter::calculateGain(z, pole) * bands[pairIndex + 1].getGain(z);
+
+            loss += std::pow(std::abs(h1 + h2) - 1.0, 2.0);
+        }
+        return loss;
+    }
+
+    void FilterSource::optimizeAllpassFilters() {
+        auto mapToDisk = [](std::complex<double> z) {
+            double absZ = std::abs(z);
+            if (absZ < 1e-9) return z;
+            double r_w = (-1.0 + std::sqrt(1.0 + 4.0 * absZ * absZ)) / (2.0 * absZ);
+            return (z / absZ) * r_w;
+        };
+
+        auto mapToPlane = [](std::complex<double> w) {
+            double absW2 = std::norm(w);
+            if (absW2 >= 1.0) absW2 = 0.9999;
+            return w / (1.0 - absW2);
+        };
+
+        for (int k = 0; k < 7; ++k) {
+            lossFunctionCalls = 0;
+            std::complex<double> currentPole(0.5, 0.1);
+            std::complex<double> planeZ = mapToPlane(currentPole);
+            double x = planeZ.real();
+            double y = planeZ.imag();
+
+            auto f_opt = [&](double px, double py) {
+                return lossfunction(k, mapToDisk({px, py}));
+            };
+
+            double startLoss = f_opt(x, y);
+            LOGD("FilterSource: Band %d start unoptimized loss: %f", k, startLoss);
+
+            for (int iter = 0; iter < 100; ++iter) {
+                double h_d = 1e-4;
+                double f0 = f_opt(x, y);
+
+                double fx_p = f_opt(x + h_d, y);
+                double fx_m = f_opt(x - h_d, y);
+                double fy_p = f_opt(x, y + h_d);
+                double fy_m = f_opt(x, y - h_d);
+
+                double fx = (fx_p - fx_m) / (2.0 * h_d);
+                double fy = (fy_p - fy_m) / (2.0 * h_d);
+
+                double fxx = (fx_p - 2.0 * f0 + fx_m) / (h_d * h_d);
+                double fyy = (fy_p - 2.0 * f0 + fy_m) / (h_d * h_d);
+                double fxy = (f_opt(x + h_d, y + h_d) - fx_p - fy_p + f0) / (h_d * h_d);
+
+                double det = fxx * fyy - fxy * fxy;
+                double dx, dy;
+
+                if (std::abs(det) > 1e-12 && fxx > 0 && det > 0) {
+                    dx = (fyy * fx - fxy * fy) / det;
+                    dy = (fxx * fy - fxy * fx) / det;
+                } else {
+                    double gn = std::sqrt(fx * fx + fy * fy);
+                    if (gn < 1e-12) break;
+                    double al = 0.1;
+                    dx = al * fx / gn;
+                    dy = al * fy / gn;
+                }
+
+                double ss = 1.0;
+                bool sf = false;
+                while (ss > 1e-3) {
+                    if (f_opt(x - ss * dx, y - ss * dy) < f0) {
+                        x -= ss * dx;
+                        y -= ss * dy;
+                        sf = true;
+                        break;
+                    }
+                    ss *= 0.5;
+                }
+                if (!sf || (ss * std::sqrt(dx * dx + dy * dy) < 1e-4)) break;
+            }
+            auto finalPole = mapToDisk({x, y});
+            allpassChains[k]->design(finalPole);
+            LOGD("FilterSource: Band %d optimized. Loss: %f, Pole: %f + %fi, Calls: %d",
+                 k, lossfunction(k, finalPole), finalPole.real(), finalPole.imag(), lossFunctionCalls);
+        }
     }
 
     float Duplicator::getSample() {
         return currentSample;
     }
     void Duplicator::setSample(float sample) {
-        this->currentSample=sample;
+        this->currentSample = sample;
     }
-    void Duplicator::onPlaybackStopped() {
-    }
-
+    void Duplicator::onPlaybackStopped() {}
 }

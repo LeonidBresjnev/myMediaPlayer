@@ -20,8 +20,12 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
+import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.DirectionsCarFilled
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.Analytics
+import androidx.compose.material.icons.outlined.Radio
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,6 +61,7 @@ data class TabRowItem(
     val screen: @Composable () -> Unit,
 )
 
+@UnstableApi
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
 
@@ -101,7 +106,20 @@ class MainActivity : ComponentActivity() {
                     unselectedIcon = Icons.AutoMirrored.Outlined.PlaylistPlay
                 ),
                 TabRowItem(
-                    title = "Equalizer",
+                    title = "Radio",
+                    screen = {
+                        RadioScreen(
+                            audioModel = audioModel,
+                            onSelect = { stations, index ->
+                                audioModel.loadMedia(stations, index)
+                            }
+                        )
+                    },
+                    selectedIcon = Icons.Default.Radio,
+                    unselectedIcon = Icons.Outlined.Radio
+                ),
+                TabRowItem(
+                    title = "Sound Setting",
                     screen = {
                         ControlPanel(
                             modifier = Modifier,
@@ -110,6 +128,17 @@ class MainActivity : ComponentActivity() {
                     },
                     selectedIcon = Icons.Default.Tune,
                     unselectedIcon = Icons.Outlined.Tune
+                ),
+                TabRowItem(
+                    title = "Analysis",
+                    screen = {
+                        AnalysisPanel(
+                            modifier = Modifier,
+                            equalizerViewModel = audioModel
+                        )
+                    },
+                    selectedIcon = Icons.Default.Analytics,
+                    unselectedIcon = Icons.Outlined.Analytics
                 )
             )
             
@@ -134,7 +163,16 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize(),
                         topBar = {
                             CenterAlignedTopAppBar(
-                                title = { Text(text = "Equalizer", color = Color.White) },
+                                title = {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(text = "SoundsGood", color = Color.White)
+                                        Text(
+                                            text = "Auch im Auto",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White.copy(alpha = 0.8f)
+                                        )
+                                    }
+                                },
                                 actions = {
                                     if (carConnectionType != CarConnection.CONNECTION_TYPE_NOT_CONNECTED) {
                                         Icon(

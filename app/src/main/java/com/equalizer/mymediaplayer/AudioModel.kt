@@ -10,19 +10,26 @@ import androidx.annotation.OptIn
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
-//import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaBrowser
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
 import androidx.media3.session.SessionToken
+import com.equalizer.common.Equalizer
 import com.equalizer.common.MyMediaService
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
+@UnstableApi
 class AudioModel: ViewModel() {
     /*companion object {
         private const val MEDIA_ITEM_ID_KEY = "MEDIA_ITEM_ID_KEY"
@@ -32,12 +39,118 @@ class AudioModel: ViewModel() {
         Log.i("AudioModel", message)
     }
 
-    private val _volumenLow = MutableLiveData(List(8){1f})
-
     val volumenLow: LiveData<List<Float>>
-        get() {
-            return _volumenLow
+        field = MutableLiveData(List(16) { 1f })
+
+    private val _isAdvancedMode = MutableLiveData(false)
+    val isAdvancedMode: LiveData<Boolean> = _isAdvancedMode
+
+    private val _favourites = MutableLiveData<Set<String>>(emptySet())
+    val favourites: LiveData<Set<String>> = _favourites
+
+    enum class DelayUnit { MS, CM }
+
+    private val _delayUnit = MutableLiveData(DelayUnit.MS)
+    val delayUnit: LiveData<DelayUnit> = _delayUnit
+
+    private val _leftDelayRaw = MutableLiveData(0.0f)
+    val leftDelayRaw: LiveData<Float> = _leftDelayRaw
+
+    private val _rightDelayRaw = MutableLiveData(0.0f)
+    val rightDelayRaw: LiveData<Float> = _rightDelayRaw
+
+    private val _leftDelayMs = MutableLiveData(0.0f)
+    val leftDelayMs: LiveData<Float> = _leftDelayMs
+
+    private val _rightDelayMs = MutableLiveData(0.0f)
+    val rightDelayMs: LiveData<Float> = _rightDelayMs
+
+    fun setDelayUnit(unit: DelayUnit) {
+        _delayUnit.value = unit
+        recalculateAndSyncDelay()
+    }
+
+    fun setLeftDelay(delay: Float) {
+        _leftDelayRaw.value = delay
+        recalculateAndSyncDelay()
+    }
+
+    fun setRightDelay(delay: Float) {
+        _rightDelayRaw.value = delay
+        recalculateAndSyncDelay()
+    }
+
+    private fun recalculateAndSyncDelay() {
+        val unit = _delayUnit.value ?: DelayUnit.MS
+        val rawL = _leftDelayRaw.value ?: 0.0f
+        val rawR = _rightDelayRaw.value ?: 0.0f
+        
+        val finalLeft: Float
+        val finalRight: Float
+
+        if (unit == DelayUnit.MS) {
+            finalLeft = rawL
+            finalRight = rawR
+        } else {
+            // Speed of sound is approx 343 m/s = 34.3 cm/ms
+            val leftMs = rawL / 34.3f
+            val rightMs = rawR / 34.3f
+
+            if (leftMs < rightMs) {
+                finalLeft = rightMs - leftMs
+                finalRight = 0.0f
+            } else if (rightMs < leftMs) {
+                finalLeft = 0.0f
+                finalRight = leftMs - rightMs
+            } else {
+                finalLeft = 0.0f
+                finalRight = 0.0f
+            }
         }
+
+        _leftDelayMs.value = finalLeft
+        _rightDelayMs.value = finalRight
+        syncDelayWithController()
+    }
+
+    private fun syncDelayWithController() {
+        if (::controller.isInitialized) {
+            val extras = Bundle().apply {
+                putFloat("KEY_LEFT_DELAY", _leftDelayMs.value ?: 0.0f)
+                putFloat("KEY_RIGHT_DELAY", _rightDelayMs.value ?: 0.0f)
+            }
+            controller.sendCustomCommand(SessionCommand("setDelay", Bundle()), extras)
+        }
+    }
+
+    fun toggleFavourite(songId: String) {
+        if (!::controller.isInitialized) return
+        val extras = Bundle().apply {
+            putString("SONG_ID", songId)
+        }
+        controller.sendCustomCommand(SessionCommand("toggleFavourite", Bundle()), extras)
+    }
+
+    fun setAdvancedMode(enabled: Boolean) {
+        if (_isAdvancedMode.value == enabled) return
+        
+        _isAdvancedMode.value = enabled
+        // If disabling advanced mode, sync Left to Right
+        if (!enabled) {
+            val current = volumenLow.value?.toMutableList() ?: MutableList(16) { 1f }
+            for (i in 0 until 8) {
+                current[i + 8] = current[i]
+            }
+            volumenLow.value = current
+            syncWithController(current)
+        }
+
+        // Notify service
+        if (::controller.isInitialized) {
+            val extras = Bundle().apply { putBoolean("IS_ADVANCED", enabled) }
+            controller.sendCustomCommand(SessionCommand("setEqMode", Bundle()), extras)
+        }
+    }
 
     private val _selectedPreset = MutableLiveData("Flat")
     val selectedPreset: LiveData<String> = _selectedPreset
@@ -59,8 +172,16 @@ class AudioModel: ViewModel() {
         
         val values = presets[name] ?: return
         _selectedPreset.value = name
-        _volumenLow.value = values
         
+        // Apply preset to both L and R channels (0-7 and 8-15)
+        val fullValues = values + values
+        volumenLow.value = fullValues
+        
+        syncWithController(fullValues)
+        updateFilterDesign()
+    }
+
+    private fun syncWithController(values: List<Float>) {
         if (::controller.isInitialized) {
             val extras = Bundle().apply {
                 putFloatArray("KEY_VOLUMES", values.toFloatArray())
@@ -80,10 +201,20 @@ class AudioModel: ViewModel() {
         }
 
         // Update local state immediately for better responsiveness
-        val currentList = _volumenLow.value?.toMutableList() ?: MutableList(8) { 1f }
-        if (index in 0 until 8) {
+        val currentList = volumenLow.value?.toMutableList() ?: MutableList(16) { 1f }
+        if (index in 0 until 16) {
             currentList[index] = volumeInDb
-            _volumenLow.value = currentList
+            
+            // If NOT in advanced mode, sync the other channel
+            if (_isAdvancedMode.value != true) {
+                if (index < 8) {
+                    currentList[index + 8] = volumeInDb
+                } else {
+                    currentList[index - 8] = volumeInDb
+                }
+            }
+            
+            volumenLow.value = currentList
         }
 
         currentSlider = index
@@ -97,6 +228,7 @@ class AudioModel: ViewModel() {
         if (::controller.isInitialized) {
             controller.sendCustomCommand(customCommand, extras)
         }
+        updateFilterDesign()
     }
 
     fun resetEqualizer() {
@@ -106,12 +238,102 @@ class AudioModel: ViewModel() {
 
 
     private val _isPlaying = MutableLiveData(Status.STOPPED)
+    val isPlaying: LiveData<Status> = _isPlaying
     
     private val _nowPlayingId = MutableLiveData<String?>(null)
     val nowPlayingId: LiveData<String?> = _nowPlayingId
 
     private val _nextMediaItem = MutableLiveData<MediaItem?>(null)
     val nextMediaItem: LiveData<MediaItem?> = _nextMediaItem
+
+    @OptIn(UnstableApi::class)
+    private val _filterDesign = MutableLiveData<Equalizer.FilterDesignData?>(null)
+    @OptIn(UnstableApi::class)
+    val filterDesign: LiveData<Equalizer.FilterDesignData?> = _filterDesign
+
+    private val _magnitudeResponse = MutableLiveData<FloatArray?>(null)
+    val magnitudeResponse: LiveData<FloatArray?> = _magnitudeResponse
+
+    private val _unoptimizedMagnitudeResponse = MutableLiveData<FloatArray?>(null)
+    val unoptimizedMagnitudeResponse: LiveData<FloatArray?> = _unoptimizedMagnitudeResponse
+
+    private val _phaseResponse = MutableLiveData<FloatArray?>(null)
+    val phaseResponse: LiveData<FloatArray?> = _phaseResponse
+
+    private val _unoptimizedPhaseResponse = MutableLiveData<FloatArray?>(null)
+    val unoptimizedPhaseResponse: LiveData<FloatArray?> = _unoptimizedPhaseResponse
+
+    private val _isDbScale = MutableLiveData(false)
+    val isDbScale: LiveData<Boolean> = _isDbScale
+
+    fun setDbScale(enabled: Boolean) {
+        _isDbScale.value = enabled
+    }
+
+    private var analysisUpdateJob: kotlinx.coroutines.Job? = null
+
+    @OptIn(UnstableApi::class)
+    fun updateFilterDesign() {
+        if (!::controller.isInitialized) return
+        
+        analysisUpdateJob?.cancel()
+        analysisUpdateJob = viewModelScope.launch {
+            delay(100.milliseconds) // Debounce analysis requests
+            
+            val future = controller.sendCustomCommand(SessionCommand("getFilterDesign", Bundle()), Bundle())
+            future.addListener({
+                val result = try { future.get() } catch (e: Exception) {
+                    e.message?.let { Log.e("AudioModel", it) }
+                    null
+                }
+                if (result?.resultCode == SessionResult.RESULT_SUCCESS) {
+                    val raw = result.extras.getFloatArray("DESIGN_DATA")
+                    if (raw != null) {
+                        viewModelScope.launch(Dispatchers.Default) {
+                            val parsed = Equalizer.parseFilterDesign(raw)
+                            _filterDesign.postValue(parsed)
+                        }
+                    }
+                }
+            }, MoreExecutors.directExecutor())
+
+            val analysisFuture = controller.sendCustomCommand(SessionCommand("getAnalysis", Bundle()), Bundle())
+            analysisFuture.addListener({
+                val result = analysisFuture.get()
+                if (result.resultCode == SessionResult.RESULT_SUCCESS) {
+                    val raw = result.extras.getFloatArray("ANALYSIS_DATA")
+                    if (raw != null) {
+                        val mag = FloatArray(raw.size / 2)
+                        val phase = FloatArray(raw.size / 2)
+                        for (i in 0 until raw.size / 2) {
+                            mag[i] = raw[i * 2]
+                            phase[i] = raw[i * 2 + 1]
+                        }
+                        _magnitudeResponse.postValue(mag)
+                        _phaseResponse.postValue(phase)
+                    }
+                }
+            }, MoreExecutors.directExecutor())
+
+            val unoptFuture = controller.sendCustomCommand(SessionCommand("getUnoptimizedAnalysis", Bundle()), Bundle())
+            unoptFuture.addListener({
+                val result = unoptFuture.get()
+                if (result.resultCode == SessionResult.RESULT_SUCCESS) {
+                    val raw = result.extras.getFloatArray("ANALYSIS_DATA")
+                    if (raw != null) {
+                        val mag = FloatArray(raw.size / 2)
+                        val phase = FloatArray(raw.size / 2)
+                        for (i in 0 until raw.size / 2) {
+                            mag[i] = raw[i * 2]
+                            phase[i] = raw[i * 2 + 1]
+                        }
+                        _unoptimizedMagnitudeResponse.postValue(mag)
+                        _unoptimizedPhaseResponse.postValue(phase)
+                    }
+                }
+            }, MoreExecutors.directExecutor())
+        }
+    }
 
     enum class Status {
         PLAYING ,
@@ -120,13 +342,13 @@ class AudioModel: ViewModel() {
     }
 
 
-    private val _subItemMediaList = MutableLiveData<List<MediaItem>>(emptyList())
-    val subItemMediaList : LiveData<List<MediaItem>>
-        get() {
-            return _subItemMediaList
-    }
+    val subItemMediaList: LiveData<List<MediaItem>>
+        field = MutableLiveData<List<MediaItem>>(emptyList())
 
-    private val _currentPath = MutableLiveData("root")
+    private val _radioMediaList = MutableLiveData<List<MediaItem>>(emptyList())
+    val radioMediaList: LiveData<List<MediaItem>> = _radioMediaList
+
+    private val _currentPath = MutableLiveData("music_library_root")
     val currentPath: LiveData<String> = _currentPath
 
     private val _currentPlaybackContext = MutableLiveData<String?>(null)
@@ -165,7 +387,7 @@ class AudioModel: ViewModel() {
             @OptIn(UnstableApi::class)
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 // Keep for legacy compatibility if needed
-                _volumenLow.value = _volumenLow.value!!.mapIndexed { i, v -> if (i==videoSize.width) videoSize.pixelWidthHeightRatio else v }
+                volumenLow.value = volumenLow.value!!.mapIndexed { i, v -> if (i==videoSize.width) videoSize.pixelWidthHeightRatio else v }
                 super.onVideoSizeChanged(videoSize)
             }
 
@@ -183,6 +405,7 @@ class AudioModel: ViewModel() {
                 log("Track changed: ${mediaItem?.mediaId}")
                 _nowPlayingId.postValue(mediaItem?.mediaId)
                 updateNextMediaItem()
+                updateFilterDesign()
             }
 
             override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
@@ -221,9 +444,28 @@ class AudioModel: ViewModel() {
         val browserListener = object : MediaBrowser.Listener {
             override fun onExtrasChanged(controller: MediaController, extras: Bundle) {
                 val eqState = extras.getFloatArray("EQ_STATE")
-                if (eqState != null && eqState.size == 8) {
+                if (eqState != null && (eqState.size == 8 || eqState.size == 16)) {
                     log("Updating phone UI from session extras")
-                    _volumenLow.postValue(eqState.toList())
+                    if (eqState.size == 8) {
+                        volumenLow.postValue(eqState.toList() + eqState.toList())
+                    } else {
+                        volumenLow.postValue(eqState.toList())
+                    }
+                }
+                
+                val advanced = extras.getBoolean("IS_ADVANCED", false)
+                if (_isAdvancedMode.value != advanced) {
+                    _isAdvancedMode.postValue(advanced)
+                }
+
+                val favs = extras.getStringArray("FAVOURITES")
+                if (favs != null) {
+                    _favourites.postValue(favs.toSet())
+                }
+
+                val designRaw = extras.getFloatArray("FILTER_DESIGN")
+                if (designRaw != null) {
+                    _filterDesign.postValue(Equalizer.parseFilterDesign(designRaw))
                 }
             }
         }
@@ -241,17 +483,38 @@ class AudioModel: ViewModel() {
                 log("MediaController connected")
                 
                 // Initial browse
-                browse("root"/*, context = context*/)
+                browse("music_library_root"/*, context = context*/)
                 fetchPlaylists()
 
                 // Sync initial state if available
                 val sessionExtras = controller.sessionExtras
                 val eqState = sessionExtras.getFloatArray("EQ_STATE")
-                if (eqState != null && eqState.size == 8) {
-                    _volumenLow.postValue(eqState.toList())
+                if (eqState != null && (eqState.size == 8 || eqState.size == 16)) {
+                    if (eqState.size == 8) {
+                        volumenLow.postValue(eqState.toList() + eqState.toList())
+                    } else {
+                        volumenLow.postValue(eqState.toList())
+                    }
+                }
+                
+                val advanced = sessionExtras.getBoolean("IS_ADVANCED", false)
+                _isAdvancedMode.postValue(advanced)
+
+                val favs = sessionExtras.getStringArray("FAVOURITES")
+                if (favs != null) {
+                    _favourites.postValue(favs.toSet())
                 }
 
+                val designRaw = sessionExtras.getFloatArray("FILTER_DESIGN")
+                if (designRaw != null) {
+                    _filterDesign.postValue(Equalizer.parseFilterDesign(designRaw))
+                }
+
+                updateFilterDesign()
                 handlePlaybackBasedOnState()
+                
+                // Initial browse
+                browse("icecast_root")
 
             }, MoreExecutors.directExecutor())
         }
@@ -267,11 +530,16 @@ class AudioModel: ViewModel() {
             try {
                 val result = childrenFuture.get()
                 if (result.value != null) {
-                    _subItemMediaList.value = result.value!!
-                    if (addToStack && parentId != _currentPath.value) {
-                        _currentPath.value?.let { navStack.add(it) }
+                    if (parentId == "icecast_root") {
+                        _radioMediaList.value = result.value!!
+                        _currentPath.value = parentId
+                    } else {
+                        subItemMediaList.value = result.value!!
+                        if (addToStack && parentId != _currentPath.value) {
+                            _currentPath.value?.let { navStack.add(it) }
+                        }
+                        _currentPath.value = parentId
                     }
-                    _currentPath.value = parentId
                 }
             } catch (e: Exception) {
                 log("Error getting children: ${e.message}")

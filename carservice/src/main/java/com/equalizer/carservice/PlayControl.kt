@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.os.Bundle
 import android.util.Log
 import androidx.car.app.CarContext
+import androidx.car.app.media.MediaPlaybackManager
 import androidx.core.content.ContextCompat.getString
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -18,7 +19,7 @@ import com.google.common.util.concurrent.MoreExecutors
 
 
 @UnstableApi
-class PlayControl(carContext: CarContext) {
+class PlayControl(private val carContext: CarContext) {
 
     init {
         com.equalizer.common.MediaThumbnailProvider.init(carContext)
@@ -43,12 +44,19 @@ class PlayControl(carContext: CarContext) {
     private val browserListener = object : MediaBrowser.Listener {
         override fun onExtrasChanged(controller: MediaController, extras: Bundle) {
             val eqState = extras.getFloatArray("EQ_STATE")
-            if (eqState != null && eqState.size == 8) {
+            if (eqState != null && (eqState.size == 8 || eqState.size == 16)) {
                 log("Updating car UI from session extras")
-                for (i in 0 until 8) {
+                for (i in eqState.indices) {
                     volPerFreq[i] = eqState[i]
                 }
-                invalidate()
+                isAdvancedMode = extras.getBoolean("IS_ADVANCED", false)
+                val favs = extras.getStringArray("FAVOURITES")
+                if (favs != null) {
+                    log("Received ${favs.size} favourites from session")
+                    favourites.clear()
+                    favourites.addAll(favs)
+                }
+                notifyInvalidate()
                 volPerFreqSetter(-1) // Signal a full refresh to components
             }
         }
@@ -73,14 +81,28 @@ class PlayControl(carContext: CarContext) {
         getString(carContext,R.string.air_8_khz_and_above)
     )
 
-    val volPerFreq= MutableList(8) { 1.0f}
+    val volPerFreq= MutableList(16) { 1.0f}
+    var isAdvancedMode = false
+    val favourites = mutableSetOf<String>()
 
     internal var isPlaying = Status.PAUSED
+    internal var currentMediaItem: MediaItem? = null
 
-    var invalidate = { }
+    private val invalidateListeners = mutableSetOf<() -> Unit>()
 
-    fun setInvalidate0 (func: () -> Unit) {
-        invalidate = func
+    fun addInvalidateListener(listener: () -> Unit) {
+        invalidateListeners.add(listener)
+    }
+
+    fun removeInvalidateListener(listener: () -> Unit) {
+        invalidateListeners.remove(listener)
+    }
+
+    private fun notifyInvalidate() {
+        carContext.mainExecutor.execute {
+            log("Notifying ${invalidateListeners.size} invalidation listeners")
+            invalidateListeners.forEach { it() }
+        }
     }
 
     var volPerFreqSetter:  (x:Int) -> Unit  = { x ->
@@ -98,6 +120,13 @@ class PlayControl(carContext: CarContext) {
             addListener({
                 controller = get()
                 
+                // Sync initial state if available immediately
+                isPlaying = if (controller.isPlaying) Status.PLAYING else {
+                    if (controller.playWhenReady) Status.PAUSED else Status.STOPPED
+                }
+                currentMediaItem = controller.currentMediaItem
+                notifyInvalidate()
+
                 // Add Player.Listener for standard events
                 controller.addListener(object : Player.Listener {
                     override fun onIsPlayingChanged(isitplaying: Boolean) {
@@ -108,8 +137,14 @@ class PlayControl(carContext: CarContext) {
                             if (controller.playWhenReady) Status.PAUSED
                             else Status.STOPPED
                         }
-                        invalidate()
+                        notifyInvalidate()
                         super.onIsPlayingChanged(isitplaying)
+                    }
+
+                    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                        log("Media item transition: ${mediaItem?.mediaMetadata?.title}")
+                        currentMediaItem = mediaItem
+                        notifyInvalidate()
                     }
 
                     override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -124,9 +159,15 @@ class PlayControl(carContext: CarContext) {
                 // Sync initial state if available
                 val initialExtras = controller.sessionExtras
                 val eqState = initialExtras.getFloatArray("EQ_STATE")
-                if (eqState != null && eqState.size == 8) {
-                    for (i in 0 until 8) volPerFreq[i] = eqState[i]
-                    invalidate()
+                if (eqState != null && (eqState.size == 8 || eqState.size == 16)) {
+                    for (i in eqState.indices) volPerFreq[i] = eqState[i]
+                    isAdvancedMode = initialExtras.getBoolean("IS_ADVANCED", false)
+                    val favs = initialExtras.getStringArray("FAVOURITES")
+                    if (favs != null) {
+                        favourites.clear()
+                        favourites.addAll(favs)
+                    }
+                    notifyInvalidate()
                     volPerFreqSetter(-1)
                 }
 
@@ -152,5 +193,25 @@ class PlayControl(carContext: CarContext) {
                 controller.play()
             }, MoreExecutors.directExecutor())
         }
+    }
+
+    @androidx.car.app.annotations.ExperimentalCarApi
+    fun registerToken() {
+        MyMediaService.getSession()?.let { session ->
+            try {
+                val playbackManager = carContext.getCarService(CarContext.MEDIA_PLAYBACK_SERVICE) as MediaPlaybackManager
+                val getSessionCompatToken = session.javaClass.methods.find { it.name == "getSessionCompatToken" }
+                val token = getSessionCompatToken?.invoke(session) as? android.support.v4.media.session.MediaSessionCompat.Token
+
+                if (token != null) {
+                    playbackManager.registerMediaPlaybackToken(token)
+                    log("MediaPlaybackToken registered successfully")
+                } else {
+                    log("Could not retrieve MediaSessionCompat.Token from session")
+                }
+            } catch (e: Exception) {
+                log("Failed to register MediaPlaybackToken: ${e.message}")
+            }
+        } ?: log("MyMediaService session not available for registration yet")
     }
 }

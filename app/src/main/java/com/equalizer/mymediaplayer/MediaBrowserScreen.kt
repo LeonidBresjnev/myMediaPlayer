@@ -18,12 +18,15 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -31,10 +34,9 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
@@ -51,8 +53,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.MediaItem
+import androidx.media3.common.util.UnstableApi
 import coil.compose.AsyncImage
 
+@UnstableApi
 @Composable
 fun MediaBrowserScreen(modifier: Modifier = Modifier,
                        audioModel: AudioModel,
@@ -63,6 +67,13 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
     val currentPath by audioModel.currentPath.observeAsState("root")
     val currentPlaybackContext by audioModel.currentPlaybackContext.observeAsState()
     val nowPlayingId by audioModel.nowPlayingId.observeAsState()
+    val favourites by audioModel.favourites.observeAsState(emptySet())
+
+    val gridState = rememberLazyGridState()
+
+    LaunchedEffect(currentPath) {
+        gridState.scrollToItem(0)
+    }
 
     var infoItem by remember {
         mutableStateOf<MediaItem?>(null)
@@ -79,7 +90,7 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
 
         Row(verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(bottom = 8.dp)) {
-            if (currentPath != "root") {
+            if (currentPath != "music_library_root" && currentPath != "root") {
                 Text(
                     text = "< Back",
                     modifier = Modifier
@@ -109,6 +120,7 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
 
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
+            state = gridState,
             modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -143,6 +155,7 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
                     FileRow(
                         mediaItem = mediaItem,
                         isSelected = mediaItem.mediaId == nowPlayingId,
+                        isFavourite = favourites.contains(mediaItem.mediaId),
                         onClick = {
                             onSelect(files, idx)
                         },
@@ -151,6 +164,9 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
                         },
                         onAddClick = {
                             showPlaylistDialog = mediaItem
+                        },
+                        onFavouriteClick = {
+                            audioModel.toggleFavourite(mediaItem.mediaId)
                         }
                     )
                 }
@@ -200,10 +216,12 @@ fun MediaBrowserScreen(modifier: Modifier = Modifier,
 
 @Composable
 fun FileRow(mediaItem: MediaItem, 
-            isSelected: Boolean, 
+            isSelected: Boolean,
+            isFavourite: Boolean,
             onClick: () -> Unit,
             onInfoClick: () -> Unit,
-            onAddClick: () -> Unit) {
+            onAddClick: () -> Unit,
+            onFavouriteClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -256,6 +274,13 @@ fun FileRow(mediaItem: MediaItem,
                 color = Color.Gray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
+            )
+        }
+        IconButton(onClick = onFavouriteClick) {
+            Icon(
+                imageVector = if (isFavourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                contentDescription = "Favourite",
+                tint = if (isFavourite) Color.Red else Color.Gray
             )
         }
         IconButton(onClick = onAddClick) {
@@ -387,84 +412,6 @@ fun MediaInfoDialog(mediaItem: MediaItem, onDismiss: () -> Unit) {
                 InfoField("Channels", mediaItem.mediaMetadata.releaseMonth?.toString() ?: "N/A")
                 InfoField("Type", if (mediaItem.mediaMetadata.isBrowsable == true) "Folder" else "Audio File")
                 InfoField("Path", mediaItem.mediaId)
-            }
-        }
-    )
-}
-
-@Composable
-fun PlaylistSelectionDialog(
-    audioModel: AudioModel,
-    mediaItem: MediaItem,
-    onDismiss: () -> Unit
-) {
-    val playlists by audioModel.playlists.observeAsState(emptyList())
-    var newPlaylistName by remember { mutableStateOf("") }
-    var isCreatingNew by remember { mutableStateOf(false) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (isCreatingNew) "Create New Playlist" else "Add to Playlist") },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                if (isCreatingNew) {
-                    OutlinedTextField(
-                        value = newPlaylistName,
-                        onValueChange = { newPlaylistName = it },
-                        label = { Text("Playlist Name") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                } else {
-                    if (playlists.isEmpty()) {
-                        Text("No playlists found.", modifier = Modifier.padding(vertical = 8.dp))
-                    } else {
-                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                            playlists.forEach { playlist ->
-                                Text(
-                                    text = playlist.mediaMetadata.title?.toString() ?: "Unnamed",
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            audioModel.addToPlaylist(mediaItem.mediaId, playlist.mediaId)
-                                            onDismiss()
-                                        }
-                                        .padding(vertical = 12.dp, horizontal = 8.dp),
-                                    style = MaterialTheme.typography.bodyLarge
-                                )
-                                HorizontalDivider()
-                            }
-                        }
-                    }
-                    TextButton(
-                        onClick = { isCreatingNew = true },
-                        modifier = Modifier.align(Alignment.End).padding(top = 8.dp)
-                    ) {
-                        Text("New Playlist")
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            if (isCreatingNew) {
-                Button(
-                    onClick = {
-                        if (newPlaylistName.isNotBlank()) {
-                            audioModel.createPlaylist(newPlaylistName)
-                            isCreatingNew = false
-                            newPlaylistName = ""
-                        }
-                    },
-                    enabled = newPlaylistName.isNotBlank()
-                ) {
-                    Text("Create")
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = {
-                if (isCreatingNew) isCreatingNew = false else onDismiss()
-            }) {
-                Text("Cancel")
             }
         }
     )

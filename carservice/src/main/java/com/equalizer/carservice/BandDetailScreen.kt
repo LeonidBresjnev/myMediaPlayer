@@ -24,20 +24,34 @@ class BandDetailScreen(
     private val bandIndex: Int
 ) : Screen(carContext) {
 
+    private val invalidateListener = { invalidate() }
+
     init {
-        playControl.setVolPerFreqSetter0 {
-            invalidate()
-        }
+        lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
+            override fun onStart(owner: androidx.lifecycle.LifecycleOwner) {
+                playControl.addInvalidateListener(invalidateListener)
+            }
+            override fun onStop(owner: androidx.lifecycle.LifecycleOwner) {
+                playControl.removeInvalidateListener(invalidateListener)
+            }
+        })
     }
 
     override fun onGetTemplate(): Template {
-        val bandName = playControl.frequencyLabels[bandIndex]
+        val bandName = playControl.frequencyLabels[bandIndex % 8]
         val currentVol = playControl.volPerFreq[bandIndex]
+
+        val title = if (playControl.isAdvancedMode) {
+            val channelLabel = if (bandIndex < 8) "Left" else "Right"
+            "$channelLabel: $bandName"
+        } else {
+            bandName
+        }
 
         val paneBuilder = Pane.Builder()
         
         val statusRow = Row.Builder()
-            .setTitle(bandName)
+            .setTitle(title)
             .addText("Current Volume: ${String.format(Locale.GERMAN, "%.1f", currentVol)}x")
             .build()
         

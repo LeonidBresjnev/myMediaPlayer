@@ -23,9 +23,12 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         receiver.cpp
         Oscillator.cpp
         equalizer.cpp
+        Delayfilter.cpp
         FilterElement.cpp
         FilterSource.cpp
         OboeAudioPlayer.cpp
+        ChebyshevFilter.cpp
+        AllpassFilter.cpp
 )
 
 include_directories(include)
@@ -38,4 +41,5 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
         android
         log
         oboe::oboe
+        mediandk
 )

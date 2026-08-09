@@ -13,8 +13,8 @@ android {
         applicationId = "com.equalizer.mymediaplayer"
         minSdk = 33
         targetSdk = 37
-        versionCode = 7
-        versionName = "4.2"
+        versionCode = 15
+        versionName = "4.10"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -37,7 +37,7 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
-            resValue("string", "app_name", "Media Player Dev")
+            resValue("string", "app_name", "SoundsGood")
         }
 
     }
@@ -84,6 +84,8 @@ dependencies {
     implementation(libs.androidx.app.projected)
     implementation(libs.mp3agic)
     implementation(libs.coil.compose)
+    implementation(libs.lets.plot.compose)
+    implementation(libs.lets.plot.main)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

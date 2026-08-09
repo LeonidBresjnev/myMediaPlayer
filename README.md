@@ -7,7 +7,11 @@ A high-performance Android Media Player featuring a custom C++ audio engine, 8-b
 ## 🚀 Key Features
 
 *   **Custom C++ Audio Engine**: Powered by Oboe and JUCE for low-latency, high-fidelity audio playback.
-*   **8-Band Parametric Equalizer**: Real-time frequency adjustment with built-in presets (Bass Boost, Vocal, Rock, etc.).
+*   **8-Band Parametric Equalizer**: 
+    *   **Smooth Transitions**: Advanced filter design for seamless transitions between frequency intervals.
+    *   **Real-time Visualization**: Dynamic visualization of the frequency response and filter designs.
+    *   **Presets**: Built-in configurations like Bass Boost, Vocal, Rock, etc.
+*   **Icecast Radio Support**: Browse and stream thousands of online radio stations directly within the app and on Android Auto.
 *   **Intelligent Android Auto Integration**:
     *   **Modern Mode**: Fully featured tab-based UI for modern head units (API 6+).
     *   **Legacy Mode**: Simplified list-based UI for older infotainment systems (API 1-5).
@@ -26,8 +30,9 @@ A high-performance Android Media Player featuring a custom C++ audio engine, 8-b
 
 ### Android Auto
 <p align="center">
-  <img src="screenshots/androidAuto1.png" width="45%" />
-  <img src="screenshots/androidAuto2.png" width="45%" />
+  <img src="screenshots/androidAuto1.png" width="30%" />
+  <img src="screenshots/androidAuto2.png" width="30%" />
+  <img src="screenshots/Icecast.png" width="30%" />
 </p>
 
 ## 🛠 Tech Stack
