@@ -11,10 +11,6 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
@@ -24,10 +20,14 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import androidx.media3.session.SessionToken
-import com.equalizer.common.MyMediaService
 import com.equalizer.common.Equalizer
+import com.equalizer.common.MyMediaService
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 @UnstableApi
 class AudioModel: ViewModel() {
@@ -39,12 +39,8 @@ class AudioModel: ViewModel() {
         Log.i("AudioModel", message)
     }
 
-    private val _volumenLow = MutableLiveData(List(16){1f})
-
     val volumenLow: LiveData<List<Float>>
-        get() {
-            return _volumenLow
-        }
+        field = MutableLiveData(List(16) { 1f })
 
     private val _isAdvancedMode = MutableLiveData(false)
     val isAdvancedMode: LiveData<Boolean> = _isAdvancedMode
@@ -141,11 +137,11 @@ class AudioModel: ViewModel() {
         _isAdvancedMode.value = enabled
         // If disabling advanced mode, sync Left to Right
         if (!enabled) {
-            val current = _volumenLow.value?.toMutableList() ?: MutableList(16) { 1f }
+            val current = volumenLow.value?.toMutableList() ?: MutableList(16) { 1f }
             for (i in 0 until 8) {
                 current[i + 8] = current[i]
             }
-            _volumenLow.value = current
+            volumenLow.value = current
             syncWithController(current)
         }
 
@@ -179,7 +175,7 @@ class AudioModel: ViewModel() {
         
         // Apply preset to both L and R channels (0-7 and 8-15)
         val fullValues = values + values
-        _volumenLow.value = fullValues
+        volumenLow.value = fullValues
         
         syncWithController(fullValues)
         updateFilterDesign()
@@ -205,7 +201,7 @@ class AudioModel: ViewModel() {
         }
 
         // Update local state immediately for better responsiveness
-        val currentList = _volumenLow.value?.toMutableList() ?: MutableList(16) { 1f }
+        val currentList = volumenLow.value?.toMutableList() ?: MutableList(16) { 1f }
         if (index in 0 until 16) {
             currentList[index] = volumeInDb
             
@@ -218,7 +214,7 @@ class AudioModel: ViewModel() {
                 }
             }
             
-            _volumenLow.value = currentList
+            volumenLow.value = currentList
         }
 
         currentSlider = index
@@ -282,11 +278,14 @@ class AudioModel: ViewModel() {
         
         analysisUpdateJob?.cancel()
         analysisUpdateJob = viewModelScope.launch {
-            delay(100) // Debounce analysis requests
+            delay(100.milliseconds) // Debounce analysis requests
             
             val future = controller.sendCustomCommand(SessionCommand("getFilterDesign", Bundle()), Bundle())
             future.addListener({
-                val result = try { future.get() } catch (e: Exception) { null }
+                val result = try { future.get() } catch (e: Exception) {
+                    e.message?.let { Log.e("AudioModel", it) }
+                    null
+                }
                 if (result?.resultCode == SessionResult.RESULT_SUCCESS) {
                     val raw = result.extras.getFloatArray("DESIGN_DATA")
                     if (raw != null) {
@@ -343,11 +342,8 @@ class AudioModel: ViewModel() {
     }
 
 
-    private val _subItemMediaList = MutableLiveData<List<MediaItem>>(emptyList())
-    val subItemMediaList : LiveData<List<MediaItem>>
-        get() {
-            return _subItemMediaList
-    }
+    val subItemMediaList: LiveData<List<MediaItem>>
+        field = MutableLiveData<List<MediaItem>>(emptyList())
 
     private val _radioMediaList = MutableLiveData<List<MediaItem>>(emptyList())
     val radioMediaList: LiveData<List<MediaItem>> = _radioMediaList
@@ -391,7 +387,7 @@ class AudioModel: ViewModel() {
             @OptIn(UnstableApi::class)
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 // Keep for legacy compatibility if needed
-                _volumenLow.value = _volumenLow.value!!.mapIndexed { i, v -> if (i==videoSize.width) videoSize.pixelWidthHeightRatio else v }
+                volumenLow.value = volumenLow.value!!.mapIndexed { i, v -> if (i==videoSize.width) videoSize.pixelWidthHeightRatio else v }
                 super.onVideoSizeChanged(videoSize)
             }
 
@@ -451,9 +447,9 @@ class AudioModel: ViewModel() {
                 if (eqState != null && (eqState.size == 8 || eqState.size == 16)) {
                     log("Updating phone UI from session extras")
                     if (eqState.size == 8) {
-                        _volumenLow.postValue(eqState.toList() + eqState.toList())
+                        volumenLow.postValue(eqState.toList() + eqState.toList())
                     } else {
-                        _volumenLow.postValue(eqState.toList())
+                        volumenLow.postValue(eqState.toList())
                     }
                 }
                 
@@ -495,9 +491,9 @@ class AudioModel: ViewModel() {
                 val eqState = sessionExtras.getFloatArray("EQ_STATE")
                 if (eqState != null && (eqState.size == 8 || eqState.size == 16)) {
                     if (eqState.size == 8) {
-                        _volumenLow.postValue(eqState.toList() + eqState.toList())
+                        volumenLow.postValue(eqState.toList() + eqState.toList())
                     } else {
-                        _volumenLow.postValue(eqState.toList())
+                        volumenLow.postValue(eqState.toList())
                     }
                 }
                 
@@ -538,7 +534,7 @@ class AudioModel: ViewModel() {
                         _radioMediaList.value = result.value!!
                         _currentPath.value = parentId
                     } else {
-                        _subItemMediaList.value = result.value!!
+                        subItemMediaList.value = result.value!!
                         if (addToStack && parentId != _currentPath.value) {
                             _currentPath.value?.let { navStack.add(it) }
                         }

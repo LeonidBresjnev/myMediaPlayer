@@ -231,6 +231,11 @@ class Equalizer(
 
     private var audioFocusRequest: AudioFocusRequest? = null
 
+    private var audioAttributes: AudioAttributes = AudioAttributes.Builder()
+        .setUsage(C.USAGE_MEDIA)
+        .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+        .build()
+
     private fun requestFocus(): Boolean {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val playbackAttributes = AndroidAudioAttributes.Builder()
@@ -261,16 +266,36 @@ class Equalizer(
 
     private fun getBestDeviceId(): Int {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-        val carDevice = devices.find { it.type == AudioDeviceInfo.TYPE_BUS }
-
-        return if (carDevice != null) {
-            log("Car device detected: ${carDevice.productName}, using id=${carDevice.id}")
-            carDevice.id
-        } else {
-            log("No car device detected, using default (0)")
-            0
+        
+        // Log all output devices for debugging
+        val allOutputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        allOutputs.forEach { device ->
+            log("Output Device: name=${device.productName}, type=${device.type}, id=${device.id}")
         }
+
+        // Priority 1: Car Bus (Standard for Android Automotive / Android Auto)
+        val carBus = allOutputs.find { it.type == AudioDeviceInfo.TYPE_BUS }
+        if (carBus != null) {
+            log("Car BUS detected: ${carBus.productName}, id=${carBus.id}")
+            return carBus.id
+        }
+
+        // Priority 2: Bluetooth A2DP (Standard for Phone-to-Car wireless)
+        val bluetooth = allOutputs.find { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
+        if (bluetooth != null) {
+            log("Bluetooth A2DP detected: ${bluetooth.productName}, id=${bluetooth.id}")
+            return bluetooth.id
+        }
+
+        // Priority 3: USB Headset/Device (Often used for wired Android Auto)
+        val usb = allOutputs.find { it.type == AudioDeviceInfo.TYPE_USB_DEVICE || it.type == AudioDeviceInfo.TYPE_USB_HEADSET }
+        if (usb != null) {
+            log("USB Output detected: ${usb.productName}, id=${usb.id}")
+            return usb.id
+        }
+
+        log("No car or BT device detected, using default (0)")
+        return 0
     }
 
     private fun triggerNativeLoad() {
@@ -292,11 +317,20 @@ class Equalizer(
                 scope.launch(Dispatchers.IO) {
                     synchronized(equalizerMutex) {
                         createNativeHandleIfNotExists()
+                        
+                        // Re-evaluate device ID, possibly retrying once if 0
+                        var deviceId = getBestDeviceId()
+                        if (deviceId == 0) {
+                            log("Device ID is 0, waiting 200ms for car bus detection...")
+                            Thread.sleep(200)
+                            deviceId = getBestDeviceId()
+                        }
+
                         // Fallback to 44100 if metadata is missing or invalid
                         val sampleRate = mediaItem?.mediaMetadata?.totalDiscCount?.let { if (it > 0) it else 44100 } ?: 44100
                         val channels = mediaItem?.mediaMetadata?.releaseMonth?.let { if (it > 0) it else 2 } ?: 2
-                        log("Calling nativePlayWithVol for: $path (SR: $sampleRate, Ch: $channels)")
-                        nativePlayWithVol(equalizerHandle, path, volPerFreq.toFloatArray(), getBestDeviceId(), sampleRate, channels)
+                        log("Calling nativePlayWithVol for: $path (Device: $deviceId, SR: $sampleRate, Ch: $channels)")
+                        nativePlayWithVol(equalizerHandle, path, volPerFreq.toFloatArray(), deviceId, sampleRate, channels)
                     }
                 }
             } else {
@@ -624,7 +658,7 @@ class Equalizer(
     override fun getCurrentAdIndexInAdGroup(): Int = C.INDEX_UNSET
     override fun getContentPosition(): Long = 0
     override fun getContentBufferedPosition(): Long = 0
-    override fun getAudioAttributes(): AudioAttributes = AudioAttributes.DEFAULT
+    override fun getAudioAttributes(): AudioAttributes = audioAttributes
     override fun setVolume(volume: Float) {}
     override fun getVolume(): Float = 1f
     override fun mute() {}
@@ -648,7 +682,11 @@ class Equalizer(
     override fun increaseDeviceVolume(flags: Int) {}
     override fun decreaseDeviceVolume(flags: Int) {}
     override fun setDeviceMuted(muted: Boolean, flags: Int) {}
-    override fun setAudioAttributes(audioAttributes: AudioAttributes, handleAudioFocus: Boolean) {}
+    override fun setAudioAttributes(audioAttributes: AudioAttributes, handleAudioFocus: Boolean) {
+        this.audioAttributes = audioAttributes
+        // If handleAudioFocus is true, we might want to trigger a re-request, 
+        // but for now we'll just store them so getAudioAttributes returns the session's preference.
+    }
 
     override fun getCurrentPeriodIndex(): Int = currentMediaItemIndex
     override fun getCurrentMediaItemIndex(): Int = currentMediaItemIndex
