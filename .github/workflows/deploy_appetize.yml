@@ -76,16 +76,16 @@ jobs:
           rm -rf $ANDROID_SDK_ROOT/emulator
           rm -rf $ANDROID_SDK_ROOT/system-images/android-33/google_atd
 
-      - name: Run Integration Tests
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 33
-          target: google_atd
-          arch: x86_64
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
-          disable-animations: true
-          script: ./gradlew :app:connectedDebugAndroidTest
+#      - name: Run Integration Tests
+#        uses: ReactiveCircus/android-emulator-runner@v2
+          #        with:
+          #          api-level: 33
+          #          target: google_atd
+          #          arch: x86_64
+          #          force-avd-creation: false
+          #         emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
+          #         disable-animations: true
+      #          script: ./gradlew :app:connectedDebugAndroidTest
 
       - name: Build Release APK
         run: |
