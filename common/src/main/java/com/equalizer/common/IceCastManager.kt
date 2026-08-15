@@ -19,6 +19,7 @@ data class RadioBrowserStation(
     val name: String,
     val url: String,
     val url_resolved: String? = null,
+    val favicon: String? = null,
     val tags: String? = null,
     val bitrate: Int? = null,
     val codec: String? = null,
@@ -28,6 +29,7 @@ data class RadioBrowserStation(
 data class IceCastStation(
     val name: String,
     val url: String,
+    val logoUrl: String?,
     val genre: String?,
     val bitrate: Int,
     val samplerate: Int,
@@ -37,8 +39,10 @@ data class IceCastStation(
 object IceCastManager {
     private val json = Json { ignoreUnknownKeys = true }
     private val stationNameCache = mutableMapOf<String, String>()
+    private val stationLogoCache = mutableMapOf<String, String>()
 
     fun getCachedName(url: String): String? = stationNameCache[url]
+    fun getCachedLogo(url: String): String? = stationLogoCache[url]
 
     private val client = HttpClient(OkHttp) {
         install(ContentNegotiation) {
@@ -82,9 +86,11 @@ object IceCastManager {
                     val result = mp3Stations.map { 
                         val stationUrl = it.url_resolved ?: it.url
                         stationNameCache[stationUrl] = it.name
+                        it.favicon?.let { logo -> if (logo.isNotBlank()) stationLogoCache[stationUrl] = logo }
                         IceCastStation(
                             name = it.name,
                             url = stationUrl,
+                            logoUrl = it.favicon,
                             genre = it.tags?.split(",")?.firstOrNull()?.trim(),
                             bitrate = it.bitrate ?: 128,
                             samplerate = 44100,

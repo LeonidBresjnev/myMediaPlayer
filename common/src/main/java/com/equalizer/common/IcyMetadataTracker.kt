@@ -22,7 +22,7 @@ import kotlin.time.Duration.Companion.milliseconds
 
 class IcyMetadataTracker(
     private val scope: CoroutineScope,
-    private val onMetadataChanged: (String) -> Unit
+    private val onMetadataChanged: (String, String?) -> Unit
 ) {
     private var job: Job? = null
     private val client = HttpClient(OkHttp) {
@@ -67,10 +67,16 @@ class IcyMetadataTracker(
                                         .substringBefore("';")
                                         .trim()
                                     
+                                    val streamUrl = if (metadataString.contains("StreamUrl='")) {
+                                        metadataString
+                                            .substringAfter("StreamUrl='")
+                                            .substringBefore("';")
+                                            .trim()
+                                    } else null
+                                    
                                     if (title.isNotBlank() && title != lastTitle) {
                                         lastTitle = title
-                                        onMetadataChanged(title)
-
+                                        onMetadataChanged(title, streamUrl)
                                     }
                                 }
                             }

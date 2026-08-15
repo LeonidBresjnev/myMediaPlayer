@@ -115,7 +115,15 @@ class MyMediaService : MediaLibraryService() {
     private suspend fun createMediaItemFromId(id: String): MediaItem? {
         if (id.startsWith("http://") || id.startsWith("https://")) {
             val cachedName = IceCastManager.getCachedName(id)
+            val cachedLogo = IceCastManager.getCachedLogo(id)
             val name = cachedName ?: id.substringAfter("://").substringBefore("/").ifBlank { "Radio Stream" }
+            
+            val artworkUri = if (!cachedLogo.isNullOrBlank()) {
+                MediaThumbnailProvider.getArtworkUri(applicationContext, cachedLogo)
+            } else {
+                "android.resource://$packageName/drawable/ic_icecast".toUri()
+            }
+
             return MediaItem.Builder()
                 .setMediaId(id)
                 .setUri(id.toUri())
@@ -125,10 +133,11 @@ class MyMediaService : MediaLibraryService() {
                     .setIsBrowsable(false)
                     .setIsPlayable(true)
                     .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
-                    .setArtworkUri("android.resource://$packageName/drawable/ic_icecast".toUri())
+                    .setArtworkUri(artworkUri)
                     .setExtras(Bundle().apply {
                         putBoolean("IS_RADIO", true)
                         putString("STATION_NAME", name)
+                        putString("STATION_LOGO", cachedLogo)
                     })
                     .build())
                 .build()
@@ -235,25 +244,58 @@ class MyMediaService : MediaLibraryService() {
         Log.d("MyMediaService", "onCreate starting")
         MediaThumbnailProvider.init(this)
         val player = Equalizer(context = this)
-        metadataTracker = IcyMetadataTracker( serviceScope) { fullTitle ->
+        metadataTracker = IcyMetadataTracker( serviceScope) { fullTitle, streamUrl ->
             val parts = fullTitle.split(" - ", limit = 2)
             val artist = if (parts.size > 1) parts[0].trim() else ""
             val trackTitle = if (parts.size > 1) parts[1].trim() else fullTitle.trim()
             
             val currentMetadata = player.mediaMetadata
             val stationName = currentMetadata.extras?.getString("STATION_NAME") ?: "Radio"
+            val stationLogo = currentMetadata.extras?.getString("STATION_LOGO")
             
-            val newMetadata = currentMetadata.buildUpon()
-                .setArtist(artist)
-                .setTitle(trackTitle)
-                .setAlbumTitle(stationName) 
-                .build()
-            
-            Log.i("MyMediaService", "RADIO UPDATE: Station=[$stationName] Artist=[$artist] Title=[$trackTitle]")
-            
-            // Update on Main thread
-            serviceScope.launch(Dispatchers.Main) {
-                player.updateCurrentMetadata(newMetadata)
+            Log.i("MyMediaService", "RADIO UPDATE: Station=[$stationName] Artist=[$artist] Title=[$trackTitle] StreamUrl=[$streamUrl]")
+
+            // Update on background thread for network lookups
+            serviceScope.launch(Dispatchers.IO) {
+                // 1. Artwork URL in metadata (StreamUrl)
+                var artworkUri: Uri? = null
+                if (!streamUrl.isNullOrBlank() && (streamUrl.startsWith("http") || streamUrl.contains("://"))) {
+                    try {
+                        artworkUri = MediaThumbnailProvider.getArtworkUri(applicationContext, streamUrl)
+                    } catch (e: Exception) {
+                        Log.w("MyMediaService", "Failed to parse StreamUrl as Uri: $streamUrl")
+                    }
+                }
+                
+                // 2. Artist + Title -> Artwork lookup
+                if (artworkUri == null && artist.isNotBlank() && trackTitle.isNotBlank()) {
+                    val info = OnlineMetadataManager.getOnlineInfo(applicationContext, artist, trackTitle)
+                    if (!info?.artworkUrl.isNullOrBlank()) {
+                        artworkUri = MediaThumbnailProvider.getArtworkUri(applicationContext, info!!.artworkUrl!!)
+                    }
+                }
+                
+                // 3. Station logo
+                if (artworkUri == null && !stationLogo.isNullOrBlank()) {
+                    artworkUri = MediaThumbnailProvider.getArtworkUri(applicationContext, stationLogo)
+                }
+                
+                // 4. Generic radio icon
+                if (artworkUri == null) {
+                    artworkUri = Uri.parse("android.resource://$packageName/drawable/ic_icecast")
+                }
+
+                val newMetadata = currentMetadata.buildUpon()
+                    .setArtist(artist)
+                    .setTitle(trackTitle)
+                    .setAlbumTitle(stationName)
+                    .setArtworkUri(artworkUri)
+                    .build()
+                
+                withContext(Dispatchers.Main) {
+                    player.updateCurrentMetadata(newMetadata)
+                    updateWidget()
+                }
             }
         }
 
@@ -267,6 +309,11 @@ class MyMediaService : MediaLibraryService() {
                     Log.d("MyMediaService", "Not a network stream, stopping metadata tracker")
                     if (::metadataTracker.isInitialized) metadataTracker.stopTracking()
                 }
+                updateWidget()
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                updateWidget()
             }
         })
 
@@ -289,6 +336,17 @@ class MyMediaService : MediaLibraryService() {
                 Log.d("MyMediaService", "onConnect from: ${controller.packageName}")
                 val connectionResult = super.onConnect(session, controller)
                 val availableSessionCommands = connectionResult.availableSessionCommands.buildUpon()
+                
+                // Add library commands explicitly to ensure MediaBrowser works correctly
+                availableSessionCommands.add(SessionCommand.COMMAND_CODE_LIBRARY_GET_LIBRARY_ROOT)
+                availableSessionCommands.add(SessionCommand.COMMAND_CODE_LIBRARY_GET_CHILDREN)
+                availableSessionCommands.add(SessionCommand.COMMAND_CODE_LIBRARY_GET_ITEM)
+                availableSessionCommands.add(SessionCommand.COMMAND_CODE_LIBRARY_SUBSCRIBE)
+                availableSessionCommands.add(SessionCommand.COMMAND_CODE_LIBRARY_UNSUBSCRIBE)
+                availableSessionCommands.add(SessionCommand.COMMAND_CODE_LIBRARY_SEARCH)
+                availableSessionCommands.add(SessionCommand.COMMAND_CODE_LIBRARY_GET_SEARCH_RESULT)
+
+                // Add custom equalizer and playlist commands
                 availableSessionCommands.add(setVolOnFreq)
                 availableSessionCommands.add(setAllVolOnFreq)
                 availableSessionCommands.add(setDelayCmd)
@@ -378,6 +436,12 @@ class MyMediaService : MediaLibraryService() {
                             serviceScope.launch {
                                 val stations = IceCastManager.fetchStations()
                                 val items = stations.filter { it.url.isNotBlank() }.map { station ->
+                                    val artworkUri = if (!station.logoUrl.isNullOrBlank()) {
+                                        MediaThumbnailProvider.getArtworkUri(applicationContext, station.logoUrl)
+                                    } else {
+                                        "android.resource://$packageName/drawable/ic_icecast".toUri()
+                                    }
+
                                     MediaItem.Builder()
                                         .setMediaId(station.url)
                                         .setUri(station.url.toUri())
@@ -391,12 +455,13 @@ class MyMediaService : MediaLibraryService() {
                                             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
                                             .setTotalDiscCount(station.samplerate)
                                             .setReleaseMonth(station.channels)
-                                            .setArtworkUri("android.resource://$packageName/drawable/ic_icecast".toUri())
+                                            .setArtworkUri(artworkUri)
                                             .setExtras(Bundle().apply {
                                                 putInt("BITRATE", station.bitrate)
                                                 putString("CODEC", "MP3")
                                                 putBoolean("IS_RADIO", true)
                                                 putString("STATION_NAME", station.name)
+                                                putString("STATION_LOGO", station.logoUrl)
                                             })
                                             .build())
                                         .build()
@@ -412,6 +477,12 @@ class MyMediaService : MediaLibraryService() {
                                 
                                 val stations = IceCastManager.fetchStations()
                                 val stationItems = stations.filter { it.url.isNotBlank() }.map { station ->
+                                    val artworkUri = if (!station.logoUrl.isNullOrBlank()) {
+                                        MediaThumbnailProvider.getArtworkUri(applicationContext, station.logoUrl)
+                                    } else {
+                                        "android.resource://$packageName/drawable/ic_icecast".toUri()
+                                    }
+
                                     MediaItem.Builder()
                                         .setMediaId(station.url)
                                         .setUri(station.url.toUri())
@@ -423,11 +494,12 @@ class MyMediaService : MediaLibraryService() {
                                             .setIsBrowsable(false)
                                             .setIsPlayable(true)
                                             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
-                                            .setArtworkUri("android.resource://com.equalizer.mymediaplayer/drawable/ic_icecast".toUri())
+                                            .setArtworkUri(artworkUri)
                                             .setExtras(Bundle().apply {
                                                 putInt("BITRATE", station.bitrate)
                                                 putBoolean("IS_RADIO", true)
                                                 putString("STATION_NAME", station.name)
+                                                putString("STATION_LOGO", station.logoUrl)
                                             })
                                             .build())
                                         .build()
@@ -713,6 +785,13 @@ class MyMediaService : MediaLibraryService() {
         session.sessionExtras = extras
     }
 
+    private fun updateWidget() {
+        Log.d("MyMediaService", "Sending UPDATE_WIDGET broadcast")
+        val intent = Intent("com.equalizer.mymediaplayer.UPDATE_WIDGET")
+        intent.setPackage(packageName)
+        sendBroadcast(intent)
+    }
+
     override fun onDestroy() {
         if (::metadataTracker.isInitialized) metadataTracker.stopTracking()
         mediaSession?.run {
@@ -736,5 +815,23 @@ class MyMediaService : MediaLibraryService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? {
         return mediaSession
+    }
+
+    @UnstableApi
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val action = intent?.action
+        if (action != null) {
+            val player = mediaSession?.player
+            if (player != null) {
+                when (action) {
+                    "ACTION_PLAY_PAUSE" -> {
+                        if (player.isPlaying) player.pause() else player.play()
+                    }
+                    "ACTION_NEXT" -> player.seekToNext()
+                    "ACTION_PREV" -> player.seekToPrevious()
+                }
+            }
+        }
+        return super.onStartCommand(intent, flags, startId)
     }
 }
