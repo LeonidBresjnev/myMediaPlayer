@@ -52,8 +52,6 @@ namespace equalizer {
             _stream->close();
             _stream.reset();
         }
-        // notify the AudioSource that the playback stopped
-        _source->onPlaybackStopped();
     }
 
     DataCallbackResult

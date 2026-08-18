@@ -96,6 +96,8 @@ object IceCastManager {
                             samplerate = 44100,
                             channels = 2
                         )
+                    }.filter {
+                        !it.name.contains(other="ukraine", ignoreCase = true)
                     }
                     return@withContext result
                 }
