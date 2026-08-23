@@ -144,6 +144,13 @@ namespace equalizer {
         }
 
         currentChannel = (currentChannel + 1) % numChannels;
+
+        auto params = reverbParams.load(std::memory_order_relaxed);
+        if (params.enabled) {
+            float reverbWet = reverbFilters[currentChannel].process(sample, params.r, params.g);
+            sample = (1.0f - params.balance) * sample + params.balance * reverbWet;
+        }
+
         myDelay[currentChannel].setSample(sample);
         return myDelay[currentChannel].getSample();
     }
@@ -158,6 +165,10 @@ namespace equalizer {
         } else if (freqInterval < 16) {
             amplitude[1][freqInterval - 8] = newAmplitude;
         }
+    }
+
+    void FilterSource::setReverbParams(bool enabled, float balance, float r, float g) {
+        reverbParams.store({enabled, balance, r, g}, std::memory_order_relaxed);
     }
 
     double FilterSource::lossfunction(int pairIndex, std::complex<double> pole) const {

@@ -110,4 +110,10 @@ namespace equalizer {
         this -> delay = { leftDelay, rightDelay };
         // Implementation will follow in next iteration
     }
+
+    void Equalizer::setReverbParams(bool enabled, float balance, float r, float g) {
+        if (_filterSource) {
+            _filterSource->setReverbParams(enabled, balance, sin(M_PI*0.5*r), sin(M_PI*0.5* g));
+        }
+    }
 }

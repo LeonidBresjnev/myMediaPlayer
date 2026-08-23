@@ -53,6 +53,7 @@ class MyMediaService : MediaLibraryService() {
     private val setVolOnFreq = SessionCommand("setVolOnFreq", Bundle())
     private val setAllVolOnFreq = SessionCommand("setAllVolOnFreq", Bundle())
     private val setDelayCmd = SessionCommand("setDelay", Bundle())
+    private val setReverbCmd = SessionCommand("setReverb", Bundle())
     private val setEqModeCmd = SessionCommand("setEqMode", Bundle())
     private val toggleFavouriteCmd = SessionCommand("toggleFavourite", Bundle())
     private val createPlaylistCmd = SessionCommand("createPlaylist", Bundle())
@@ -350,6 +351,7 @@ class MyMediaService : MediaLibraryService() {
                 availableSessionCommands.add(setVolOnFreq)
                 availableSessionCommands.add(setAllVolOnFreq)
                 availableSessionCommands.add(setDelayCmd)
+                availableSessionCommands.add(setReverbCmd)
                 availableSessionCommands.add(setEqModeCmd)
                 availableSessionCommands.add(toggleFavouriteCmd)
                 availableSessionCommands.add(createPlaylistCmd)
@@ -666,6 +668,16 @@ class MyMediaService : MediaLibraryService() {
                     val player = session.player
                     if (player is Equalizer) {
                         player.setDelay(left, right)
+                    }
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                } else if (customCommand.customAction == "setReverb") {
+                    val enabled = args.getBoolean("KEY_REVERB_ENABLED")
+                    val balance = args.getFloat("KEY_REVERB_BALANCE")
+                    val r = args.getFloat("KEY_REVERB_R")
+                    val g = args.getFloat("KEY_REVERB_G")
+                    val player = session.player
+                    if (player is Equalizer) {
+                        player.setReverbParams(enabled, balance, r, g)
                     }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 } else if (customCommand.customAction == "setEqMode") {

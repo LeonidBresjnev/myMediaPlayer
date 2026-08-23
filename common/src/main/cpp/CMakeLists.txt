@@ -22,7 +22,8 @@ message(STATUS "JUCE found: ${JUCE_FOUND}")
 add_library(${CMAKE_PROJECT_NAME} SHARED
         receiver.cpp
         Oscillator.cpp
-        equalizer.cpp
+        Equalizer.cpp
+        Reverb.cpp
         Delayfilter.cpp
         FilterElement.cpp
         FilterSource.cpp

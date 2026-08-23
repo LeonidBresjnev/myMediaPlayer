@@ -30,6 +30,26 @@ import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
 
 @UnstableApi
+enum class EqPreset(val displayName: String) {
+    FLAT("Flat"),
+    BASS_BOOST("Bass Boost"),
+    TREBLE_BOOST("Treble Boost"),
+    VOCAL("Vocal"),
+    ROCK("Rock"),
+    CUSTOM("Custom")
+}
+
+@UnstableApi
+enum class ReverbPreset(val displayName: String) {
+    OFF("Off"),
+    ROOM("Room"),
+    CONCERT("Concert"),
+    HALL("Hall"),
+    ECHO_VALLEY("Echo-valley"),
+    CUSTOM("Custom")
+}
+
+@UnstableApi
 class AudioModel: ViewModel() {
     /*companion object {
         private const val MEDIA_ITEM_ID_KEY = "MEDIA_ITEM_ID_KEY"
@@ -64,6 +84,82 @@ class AudioModel: ViewModel() {
 
     private val _rightDelayMs = MutableLiveData(0.0f)
     val rightDelayMs: LiveData<Float> = _rightDelayMs
+
+    private val _isReverbEnabled = MutableLiveData(false)
+    val isReverbEnabled: LiveData<Boolean> = _isReverbEnabled
+
+    private val _reverbBalance = MutableLiveData(0.0f)
+    val reverbBalance: LiveData<Float> = _reverbBalance
+
+    private val _reverbR = MutableLiveData(1.0f)
+    val reverbR: LiveData<Float> = _reverbR
+
+    private val _reverbG = MutableLiveData(1.0f)
+    val reverbG: LiveData<Float> = _reverbG
+
+    private val _selectedReverbPreset = MutableLiveData(ReverbPreset.OFF)
+    val selectedReverbPreset: LiveData<ReverbPreset> = _selectedReverbPreset
+
+    data class ReverbSettings(val enabled: Boolean, val balance: Float, val r: Float, val g: Float)
+
+    val reverbPresets = mapOf(
+        ReverbPreset.OFF to ReverbSettings(false, balance=0.0f, 1.0f, 1.0f),
+        ReverbPreset.ROOM to ReverbSettings(true, balance=0.5f, 0.4f, 0.5f),
+        ReverbPreset.CONCERT to ReverbSettings(true, balance=0.75f, 0.6f, 0.6f),
+        ReverbPreset.HALL to ReverbSettings(true, balance=0.85f, 0.85f, 0.75f),
+        ReverbPreset.ECHO_VALLEY to ReverbSettings(true, balance=0.9f, 0.95f, 0.9f),
+        ReverbPreset.CUSTOM to null
+    )
+
+    fun applyReverbPreset(preset: ReverbPreset) {
+        val settings = reverbPresets[preset]
+        _selectedReverbPreset.value = preset
+        
+        if (settings != null) {
+            _isReverbEnabled.value = settings.enabled
+            _reverbBalance.value = settings.balance
+            _reverbR.value = settings.r
+            _reverbG.value = settings.g
+            syncReverbWithController()
+        } else if (preset == ReverbPreset.CUSTOM) {
+            // If user explicitly selects Custom, we keep current settings but ensure enabled
+            _isReverbEnabled.value = true
+            syncReverbWithController()
+        }
+    }
+
+    fun setReverbBalance(v: Float) {
+        if (_selectedReverbPreset.value != ReverbPreset.CUSTOM) _selectedReverbPreset.value = ReverbPreset.CUSTOM
+        _isReverbEnabled.value = true
+        _reverbBalance.value = v
+        syncReverbWithController()
+    }
+
+    fun setReverbR(v: Float) {
+        if (_selectedReverbPreset.value != ReverbPreset.CUSTOM) _selectedReverbPreset.value = ReverbPreset.CUSTOM
+        _isReverbEnabled.value = true
+        _reverbR.value = v
+        syncReverbWithController()
+    }
+
+    fun setReverbG(v: Float) {
+        if (_selectedReverbPreset.value != ReverbPreset.CUSTOM) _selectedReverbPreset.value = ReverbPreset.CUSTOM
+        _isReverbEnabled.value = true
+        _reverbG.value = v
+        syncReverbWithController()
+    }
+
+    private fun syncReverbWithController() {
+        if (::controller.isInitialized) {
+            val extras = Bundle().apply {
+                putBoolean("KEY_REVERB_ENABLED", _isReverbEnabled.value ?: false)
+                putFloat("KEY_REVERB_BALANCE", _reverbBalance.value ?: 0.0f)
+                putFloat("KEY_REVERB_R", _reverbR.value ?: 1.0f)
+                putFloat("KEY_REVERB_G", _reverbG.value ?: 1.0f)
+            }
+            controller.sendCustomCommand(SessionCommand("setReverb", Bundle()), extras)
+        }
+    }
 
     fun setDelayUnit(unit: DelayUnit) {
         _delayUnit.value = unit
@@ -152,26 +248,26 @@ class AudioModel: ViewModel() {
         }
     }
 
-    private val _selectedPreset = MutableLiveData("Flat")
-    val selectedPreset: LiveData<String> = _selectedPreset
+    private val _selectedPreset = MutableLiveData(EqPreset.FLAT)
+    val selectedPreset: LiveData<EqPreset> = _selectedPreset
 
     val presets = mapOf(
-        "Flat" to List(8) { 1.0f },
-        "Bass Boost" to listOf(1.5f, 1.4f, 1.2f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f),
-        "Treble Boost" to listOf(1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.2f, 1.4f, 1.6f),
-        "Vocal" to listOf(0.8f, 0.9f, 1.0f, 1.3f, 1.4f, 1.2f, 1.0f, 0.9f),
-        "Rock" to listOf(1.3f, 1.2f, 1.1f, 1.0f, 0.9f, 1.1f, 1.2f, 1.3f),
-        "Custom" to emptyList() // Handled specially
+        EqPreset.FLAT to List(8) { 1.0f },
+        EqPreset.BASS_BOOST to listOf(1.5f, 1.4f, 1.2f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f),
+        EqPreset.TREBLE_BOOST to listOf(1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.2f, 1.4f, 1.6f),
+        EqPreset.VOCAL to listOf(0.8f, 0.9f, 1.0f, 1.3f, 1.4f, 1.2f, 1.0f, 0.9f),
+        EqPreset.ROCK to listOf(1.3f, 1.2f, 1.1f, 1.0f, 0.9f, 1.1f, 1.2f, 1.3f),
+        EqPreset.CUSTOM to emptyList() // Handled specially
     )
 
-    fun applyPreset(name: String) {
-        if (name == "Custom") {
-            _selectedPreset.value = "Custom"
+    fun applyPreset(preset: EqPreset) {
+        if (preset == EqPreset.CUSTOM) {
+            _selectedPreset.value = EqPreset.CUSTOM
             return
         }
         
-        val values = presets[name] ?: return
-        _selectedPreset.value = name
+        val values = presets[preset] ?: return
+        _selectedPreset.value = preset
         
         // Apply preset to both L and R channels (0-7 and 8-15)
         val fullValues = values + values
@@ -196,8 +292,8 @@ class AudioModel: ViewModel() {
 
     fun setVolumen(volumeInDb: Float, index: Int) {
         // Switch to Custom if user adjusts a slider manually
-        if (_selectedPreset.value != "Custom") {
-            _selectedPreset.value = "Custom"
+        if (_selectedPreset.value != EqPreset.CUSTOM) {
+            _selectedPreset.value = EqPreset.CUSTOM
         }
 
         // Update local state immediately for better responsiveness
@@ -233,7 +329,7 @@ class AudioModel: ViewModel() {
 
     fun resetEqualizer() {
         Log.d("AudioModel", "resetEqualizer called")
-        applyPreset("Flat")
+        applyPreset(EqPreset.FLAT)
     }
 
 

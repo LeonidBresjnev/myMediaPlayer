@@ -103,6 +103,12 @@ Java_com_equalizer_common_Equalizer_nativeSetDelay(JNIEnv *env, jobject thiz, jl
     if (equalizer) equalizer->setDelay(left_delay, right_delay);
 }
 
+JNIEXPORT void JNICALL
+Java_com_equalizer_common_Equalizer_nativeSetReverbParams(JNIEnv *env, jobject thiz, jlong equalizer_handle, jboolean enabled, jfloat balance, jfloat r, jfloat g) {
+    auto *equalizer = reinterpret_cast<equalizer::Equalizer *>(equalizer_handle);
+    if (equalizer) equalizer->setReverbParams(enabled == JNI_TRUE, balance, r, g);
+}
+
 JNIEXPORT jfloatArray JNICALL
 Java_com_equalizer_common_Equalizer_nativeGetFilterDesign(JNIEnv *env, jobject thiz, jlong equalizer_handle) {
     auto *equalizer = reinterpret_cast<equalizer::Equalizer *>(equalizer_handle);

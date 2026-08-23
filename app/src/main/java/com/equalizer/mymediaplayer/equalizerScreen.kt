@@ -171,7 +171,7 @@ fun ControlPanel(modifier: Modifier = Modifier,
                  equalizerViewModel: AudioModel) {
 
     val volumenLow by equalizerViewModel.volumenLow.observeAsState(List(16) { 1.0f })
-    val selectedPreset by equalizerViewModel.selectedPreset.observeAsState("Flat")
+    val selectedPreset by equalizerViewModel.selectedPreset.observeAsState(EqPreset.FLAT)
     val isAdvancedMode by equalizerViewModel.isAdvancedMode.observeAsState(false)
     val leftDelayRaw by equalizerViewModel.leftDelayRaw.observeAsState(0.0f)
     val rightDelayRaw by equalizerViewModel.rightDelayRaw.observeAsState(0.0f)
@@ -274,11 +274,11 @@ fun ControlPanel(modifier: Modifier = Modifier,
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.Start
             ) {
-                equalizerViewModel.presets.keys.forEach { presetName ->
+                EqPreset.entries.forEach { preset ->
                     PresetRadioButton(
-                        name = presetName,
-                        isSelected = selectedPreset == presetName,
-                        onClick = { equalizerViewModel.applyPreset(presetName) }
+                        name = preset.displayName,
+                        isSelected = selectedPreset == preset,
+                        onClick = { equalizerViewModel.applyPreset(preset) }
                     )
                 }
             }
@@ -322,7 +322,7 @@ fun ControlPanel(modifier: Modifier = Modifier,
         Spacer(Modifier.height(8.dp))
         
         Text(
-            text = if (isAdvancedMode) "Advanced Mode: Independent L/R" else if (selectedPreset == "Custom") "Manual mode active" else "Profile: $selectedPreset",
+            text = if (isAdvancedMode) "Advanced Mode: Independent L/R" else if (selectedPreset == EqPreset.CUSTOM) "Manual mode active" else "Profile: ${selectedPreset.displayName}",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold,
@@ -399,6 +399,79 @@ fun ControlPanel(modifier: Modifier = Modifier,
                 unitLabel = unitLabel,
                 enabled = isDelayEnabled,
                 onValueChange = { equalizerViewModel.setRightDelay(it) }
+            )
+        }
+
+        Spacer(Modifier.height(32.dp))
+        HorizontalDivider(modifier = Modifier.padding(horizontal = 32.dp))
+        Spacer(Modifier.height(24.dp))
+
+        // --- REVERB SECTION ---
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Text(
+                text = "Reverb",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Add spatial depth to your music",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Gray
+            )
+
+            val selectedReverbPreset by equalizerViewModel.selectedReverbPreset.observeAsState(ReverbPreset.OFF)
+
+            Spacer(Modifier.height(16.dp))
+
+            // REVERB PRESETS
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.Start
+            ) {
+                ReverbPreset.entries.forEach { preset ->
+                    PresetRadioButton(
+                        name = preset.displayName,
+                        isSelected = selectedReverbPreset == preset,
+                        onClick = { equalizerViewModel.applyReverbPreset(preset) }
+                    )
+                }
+            }
+
+            val isReverbEnabled by equalizerViewModel.isReverbEnabled.observeAsState(false)
+            val reverbBalance by equalizerViewModel.reverbBalance.observeAsState(0f)
+            val reverbR by equalizerViewModel.reverbR.observeAsState(1f)
+            val reverbG by equalizerViewModel.reverbG.observeAsState(1f)
+
+            Spacer(Modifier.height(16.dp))
+
+            ReverbControlRow(
+                label = "Balance (Dry/Wet)",
+                value = reverbBalance,
+                enabled = isReverbEnabled,
+                onValueChange = { equalizerViewModel.setReverbBalance(it) }
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            ReverbControlRow(
+                label = "Feedback (R)",
+                value = reverbR,
+                enabled = isReverbEnabled,
+                onValueChange = { equalizerViewModel.setReverbR(it) }
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            ReverbControlRow(
+                label = "High Frequency Damper (g)",
+                value = reverbG,
+                enabled = isReverbEnabled,
+                onValueChange = { equalizerViewModel.setReverbG(it) }
             )
         }
 
@@ -677,6 +750,45 @@ fun FilterDesignPlot(design: Equalizer.FilterDesignData) {
             .background(Color.White),
         computationMessagesHandler = { }
     )
+}
+
+@Composable
+fun ReverbControlRow(
+    label: String,
+    value: Float,
+    enabled: Boolean,
+    onValueChange: (Float) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { alpha = if (enabled) 1f else 0.5f }
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = String.format(java.util.Locale.US, "%.2f", value),
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (enabled) MaterialTheme.colorScheme.primary else Color.Gray,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = 0f..1f,
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
 }
 
 @Composable
