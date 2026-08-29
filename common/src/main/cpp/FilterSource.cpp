@@ -147,7 +147,8 @@ namespace equalizer {
 
         auto params = reverbParams.load(std::memory_order_relaxed);
         if (params.enabled) {
-            float reverbWet = reverbFilters[currentChannel].process(sample, params.r, params.g);
+            reverbFilters[currentChannel].setSample(sample);
+            float reverbWet = reverbFilters[currentChannel].getSample();
             sample = (1.0f - params.balance) * sample + params.balance * reverbWet;
         }
 
@@ -167,8 +168,13 @@ namespace equalizer {
         }
     }
 
-    void FilterSource::setReverbParams(bool enabled, float balance, float r, float g) {
-        reverbParams.store({enabled, balance, r, g}, std::memory_order_relaxed);
+    void FilterSource::setReverbParams(bool enabled, float balance, float r, float g, float d) {
+        reverbParams.store({enabled, balance, d}, std::memory_order_relaxed);
+        for (auto & reverbFilter : reverbFilters) {
+            reverbFilter.setGmult(g);
+            reverbFilter.setRmult(r);
+            reverbFilter.setD(d);
+        }
     }
 
     double FilterSource::lossfunction(int pairIndex, std::complex<double> pole) const {
@@ -183,7 +189,7 @@ namespace equalizer {
         double fStep = static_cast<double>(fEnd - fStart) / 40.0;
         if (fStep < 1.0) fStep = 1.0;
 
-        for (double f = static_cast<double>(fStart); f < static_cast<double>(fEnd); f += 1.0) {
+        for (auto f = static_cast<double>(fStart); f < static_cast<double>(fEnd); f += 1.0) {
             std::complex<double> z = std::exp(std::complex<double>(0.0, f * c_const));
 
             // Optimization: Only consider the two bands adjacent to the current crossover.

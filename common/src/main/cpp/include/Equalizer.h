@@ -24,7 +24,7 @@ namespace equalizer {
         void seekTo(double positionSeconds);
         void setVolumenLow(float , int);
         void setDelay(float leftDelay, float rightDelay);
-        void setReverbParams(bool enabled, float balance, float r, float g);
+        void setReverbParams(bool enabled, float balance, float r, float g, float d);
         float getNextSample() { return _filterSource->getSample(); }
         int getAvailableSamples() { return _oscillator->getAvailableSamples(); }
 

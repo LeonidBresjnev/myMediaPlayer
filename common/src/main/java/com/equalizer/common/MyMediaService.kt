@@ -264,6 +264,7 @@ class MyMediaService : MediaLibraryService() {
                     try {
                         artworkUri = MediaThumbnailProvider.getArtworkUri(applicationContext, streamUrl)
                     } catch (e: Exception) {
+                        e.message?.let { Log.e("MyMediaService", it)}
                         Log.w("MyMediaService", "Failed to parse StreamUrl as Uri: $streamUrl")
                     }
                 }
@@ -272,7 +273,9 @@ class MyMediaService : MediaLibraryService() {
                 if (artworkUri == null && artist.isNotBlank() && trackTitle.isNotBlank()) {
                     val info = OnlineMetadataManager.getOnlineInfo(applicationContext, artist, trackTitle)
                     if (!info?.artworkUrl.isNullOrBlank()) {
-                        artworkUri = MediaThumbnailProvider.getArtworkUri(applicationContext, info!!.artworkUrl!!)
+                        artworkUri = MediaThumbnailProvider.getArtworkUri(applicationContext,
+                            info.artworkUrl
+                        )
                     }
                 }
                 
@@ -283,7 +286,7 @@ class MyMediaService : MediaLibraryService() {
                 
                 // 4. Generic radio icon
                 if (artworkUri == null) {
-                    artworkUri = Uri.parse("android.resource://$packageName/drawable/ic_icecast")
+                    artworkUri = "android.resource://$packageName/drawable/ic_icecast".toUri()
                 }
 
                 val newMetadata = currentMetadata.buildUpon()
@@ -475,8 +478,8 @@ class MyMediaService : MediaLibraryService() {
                             serviceScope.launch {
                                 val musicDir = getMusicLibraryRoot()
                                 val folders = musicDir.listFiles()?.filter { it.isDirectory && !it.name.startsWith(".") }?.sortedBy { it.name } ?: emptyList()
-                                val folderItems = folders.map { createMediaItemFromFile(it) }.filterNotNull()
-                                
+                                val folderItems = folders.mapNotNull { createMediaItemFromFile(it) }
+
                                 val stations = IceCastManager.fetchStations()
                                 val stationItems = stations.filter { it.url.isNotBlank() }.map { station ->
                                     val artworkUri = if (!station.logoUrl.isNullOrBlank()) {
@@ -675,9 +678,10 @@ class MyMediaService : MediaLibraryService() {
                     val balance = args.getFloat("KEY_REVERB_BALANCE")
                     val r = args.getFloat("KEY_REVERB_R")
                     val g = args.getFloat("KEY_REVERB_G")
+                    val d = args.getFloat("KEY_REVERB_D", 0.5f)
                     val player = session.player
                     if (player is Equalizer) {
-                        player.setReverbParams(enabled, balance, r, g)
+                        player.setReverbParams(enabled, balance, r, g, d)
                     }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 } else if (customCommand.customAction == "setEqMode") {

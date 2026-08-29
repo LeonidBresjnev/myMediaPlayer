@@ -59,8 +59,8 @@ namespace equalizer {
     }
 
     void FilterElement::setAllpass(std::complex<double> p) {
-        float re = static_cast<float>(p.real());
-        float norm2 = static_cast<float>(std::norm(p));
+        auto re = static_cast<float>(p.real());
+        auto norm2 = static_cast<float>(std::norm(p));
 
         this->numerator[0] = norm2;
         this->numerator[1] = -2.0f * re;

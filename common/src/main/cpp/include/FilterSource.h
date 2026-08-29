@@ -57,7 +57,7 @@ namespace equalizer {
         void onPlaybackStopped() override;
         void setFilter(int,int);
         void setDelay(int,int);
-        void setReverbParams(bool enabled, float balance, float r, float g);
+        void setReverbParams(bool enabled, float balance, float r, float g, float d);
         virtual void setAmplitude(float newAmplitude, int freqInterval);
         std::shared_ptr<AudioSource> _source;
 
@@ -86,7 +86,7 @@ namespace equalizer {
         std::vector<std::shared_ptr<AllpassFilter>> allpassChains;
 
         ReverbFilter reverbFilters[2];
-        std::atomic<ReverbParams> reverbParams{{false, 0.0f, 1.0f, 1.0f}};
+        std::atomic<ReverbParams> reverbParams{{false, 0.0f}};
 
         std::complex<double> h(double f) const;
         std::complex<double> hUnoptimized(double f) const;

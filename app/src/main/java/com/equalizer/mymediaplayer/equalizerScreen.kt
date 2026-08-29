@@ -446,6 +446,7 @@ fun ControlPanel(modifier: Modifier = Modifier,
             val reverbBalance by equalizerViewModel.reverbBalance.observeAsState(0f)
             val reverbR by equalizerViewModel.reverbR.observeAsState(1f)
             val reverbG by equalizerViewModel.reverbG.observeAsState(1f)
+            val reverbD by equalizerViewModel.reverbD.observeAsState(0.5f)
 
             Spacer(Modifier.height(16.dp))
 
@@ -472,6 +473,15 @@ fun ControlPanel(modifier: Modifier = Modifier,
                 value = reverbG,
                 enabled = isReverbEnabled,
                 onValueChange = { equalizerViewModel.setReverbG(it) }
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            ReverbControlRow(
+                label = "Diffusion",
+                value = reverbD,
+                enabled = isReverbEnabled,
+                onValueChange = { equalizerViewModel.setReverbD(it) }
             )
         }
 

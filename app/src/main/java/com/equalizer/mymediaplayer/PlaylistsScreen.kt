@@ -1,5 +1,6 @@
 package com.equalizer.mymediaplayer
 
+import androidx.annotation.OptIn
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -30,7 +31,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.MediaItem
+import androidx.media3.common.util.UnstableApi
 
+@OptIn(UnstableApi::class)
 @Composable
 fun PlaylistsScreen(
     modifier: Modifier = Modifier,

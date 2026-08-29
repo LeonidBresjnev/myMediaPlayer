@@ -80,7 +80,7 @@ class Equalizer(
     private external fun nativeGetCurrentPosition(synthesizerHandle: Long): Double
     private external fun nativeSeekTo(synthesizerHandle: Long, positionSeconds: Double)
     private external fun nativeSetDelay(synthesizerHandle: Long, leftDelay: Float, rightDelay: Float)
-    private external fun nativeSetReverbParams(synthesizerHandle: Long, enabled: Boolean, balance: Float, r: Float, g: Float)
+    private external fun nativeSetReverbParams(synthesizerHandle: Long, enabled: Boolean, balance: Float, r: Float, g: Float, d: Float)
     private external fun nativeGetFilterDesign(synthesizerHandle: Long): FloatArray?
     private external fun nativeGetAnalysisResponse(synthesizerHandle: Long, start: Double, end: Double, step: Double): FloatArray?
     private external fun nativeGetUnoptimizedAnalysisResponse(synthesizerHandle: Long, start: Double, end: Double, step: Double): FloatArray?
@@ -178,11 +178,11 @@ class Equalizer(
         }
     }
 
-    fun setReverbParams(enabled: Boolean, balance: Float, r: Float, g: Float) {
+    fun setReverbParams(enabled: Boolean, balance: Float, r: Float, g: Float, d: Float) {
         scope.launch(Dispatchers.IO) {
             synchronized(equalizerMutex) {
                 createNativeHandleIfNotExists()
-                nativeSetReverbParams(equalizerHandle, enabled, balance, r, g)
+                nativeSetReverbParams(equalizerHandle, enabled, balance, r, g, d)
             }
         }
     }

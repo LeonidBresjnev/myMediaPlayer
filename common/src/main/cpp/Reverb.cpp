@@ -3,18 +3,34 @@
 namespace equalizer {
 
 SingleReverbFilter::SingleReverbFilter(float g0, float r0, size_t L0)
-    : baseG(g0), baseR(r0), L(L0) {
+    : baseG(g0), baseR(r0), L(L0)  {
+    g.store(0.f);
+    r.store(0.f);
     inputHistory.resize(2);
     outputHistory.resize(L0);
 }
 
-float SingleReverbFilter::process(float inputSample, float r_mult, float g_mult) {
-    const float g = baseG * g_mult;
-    const float r = baseR * r_mult;
+void SingleReverbFilter::setG(float g_mult) {
+    g.store(baseG*g_mult);
+}
 
-    inputHistory.push(inputSample);
 
-    float out = (inputSample - g * inputHistory.sampleAtDelay(1)) +
+void SingleReverbFilter::setR(float r_mult) {
+    r.store(baseR*r_mult);
+}
+
+void SingleReverbFilter::setSample(float x) {
+    inputHistory.push(x);
+}
+
+void SingleReverbFilter::onPlaybackStopped() {
+
+}
+
+float SingleReverbFilter::getSample() {
+
+
+    float out = (inputHistory.sampleAtDelay(0) - g * inputHistory.sampleAtDelay(1)) +
                 g * outputHistory.sampleAtDelay(0) +
                 r * outputHistory.sampleAtDelay(L - 1);
 
@@ -56,14 +72,54 @@ ReverbFilter::ReverbFilter() : reverbs([]() {
         SingleReverbFilter(base[6].g * factor, base[6].r, base[6].L),
         SingleReverbFilter(base[7].g * factor, base[7].r, base[7].L)
     };
-}()) {}
+}()) {
+    rMult.store(0.0f);
+    gMult.store(0.0f);
+    d.store(0.5f);
 
-float ReverbFilter::process(float inputSample, float r_mult, float g_mult) {
-    float out = 0.0f;
-    for (auto& reverb : reverbs) {
-        out += reverb.process(inputSample, r_mult, g_mult);
-    }
-    return out / static_cast<float>(reverbs.size());
+    inputHistory.resize(221);
+    outputHistory.resize(220);
 }
+
+    void ReverbFilter::onPlaybackStopped() {
+
+    }
+
+    void ReverbFilter::setD(float newD) {
+    d.store(newD);
+}
+
+void ReverbFilter::setSample(float inputSample) {
+    for (auto& reverb : reverbs) {
+        reverb.setSample(inputSample);
+    }
+}
+
+
+    float ReverbFilter::getSample() {
+        float out = 0.0f;
+        for (auto& reverb : reverbs) {
+            out += reverb.getSample();
+        }
+        inputHistory.push(out / static_cast<float>(reverbs.size()));
+        float rc = d*inputHistory.sampleAtDelay(0)+inputHistory.sampleAtDelay(220)-d*outputHistory.sampleAtDelay(219);
+        outputHistory.push(rc);
+        return rc;
+    }
+
+    void  ReverbFilter::setGmult(float g) {
+        gMult.store(g);
+        for (auto & reverb : reverbs) {
+            reverb.setG(g);
+        }
+    }
+
+
+    void  ReverbFilter::setRmult(float r) {
+        rMult.store(r);
+        for (auto & reverb : reverbs) {
+            reverb.setR(r);
+        }
+    }
 
 } // namespace equalizer

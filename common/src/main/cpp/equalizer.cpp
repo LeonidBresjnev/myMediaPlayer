@@ -111,9 +111,9 @@ namespace equalizer {
         // Implementation will follow in next iteration
     }
 
-    void Equalizer::setReverbParams(bool enabled, float balance, float r, float g) {
+    void Equalizer::setReverbParams(bool enabled, float balance, float r, float g, float d) {
         if (_filterSource) {
-            _filterSource->setReverbParams(enabled, balance, sin(M_PI*0.5*r), sin(M_PI*0.5* g));
+            _filterSource->setReverbParams(enabled, balance, sin(M_PI*0.5*r), sin(M_PI*0.5* g), d);
         }
     }
 }

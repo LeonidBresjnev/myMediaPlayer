@@ -104,9 +104,9 @@ Java_com_equalizer_common_Equalizer_nativeSetDelay(JNIEnv *env, jobject thiz, jl
 }
 
 JNIEXPORT void JNICALL
-Java_com_equalizer_common_Equalizer_nativeSetReverbParams(JNIEnv *env, jobject thiz, jlong equalizer_handle, jboolean enabled, jfloat balance, jfloat r, jfloat g) {
+Java_com_equalizer_common_Equalizer_nativeSetReverbParams(JNIEnv *env, jobject thiz, jlong equalizer_handle, jboolean enabled, jfloat balance, jfloat r, jfloat g, jfloat d) {
     auto *equalizer = reinterpret_cast<equalizer::Equalizer *>(equalizer_handle);
-    if (equalizer) equalizer->setReverbParams(enabled == JNI_TRUE, balance, r, g);
+    if (equalizer) equalizer->setReverbParams(enabled == JNI_TRUE, balance, r, g, d);
 }
 
 JNIEXPORT jfloatArray JNICALL

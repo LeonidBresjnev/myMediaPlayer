@@ -2,6 +2,8 @@ package com.equalizer.mymediaplayer
 
 import android.content.ComponentName
 import android.content.Context
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -48,6 +50,17 @@ enum class ReverbPreset(val displayName: String) {
     ECHO_VALLEY("Echo-valley"),
     CUSTOM("Custom")
 }
+
+@UnstableApi
+enum class AudioDeviceType {
+    PHONE, CAR, SPEAKER, HEADSET
+}
+
+@UnstableApi
+data class ConnectedDeviceInfo(
+    val type: AudioDeviceType,
+    val name: String
+)
 
 @UnstableApi
 class AudioModel: ViewModel() {
@@ -97,17 +110,68 @@ class AudioModel: ViewModel() {
     private val _reverbG = MutableLiveData(1.0f)
     val reverbG: LiveData<Float> = _reverbG
 
+    private val _reverbD = MutableLiveData(0.5f)
+    val reverbD: LiveData<Float> = _reverbD
+
+    private val _connectedDevice = MutableLiveData(ConnectedDeviceInfo(AudioDeviceType.PHONE, "Phone Speaker"))
+    val connectedDevice: LiveData<ConnectedDeviceInfo> = _connectedDevice
+
+    @OptIn(UnstableApi::class)
+    fun updateConnectedDevice(context: Context) {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        
+        var bestDevice = ConnectedDeviceInfo(AudioDeviceType.PHONE, "Phone Speaker")
+        
+        for (device in devices) {
+            when (device.type) {
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> {
+                    val name = device.productName.toString()
+                    val type = when {
+                        name.contains("car", ignoreCase = true) || 
+                        name.contains("auto", ignoreCase = true) ||
+                        name.contains("mazda", ignoreCase = true) ||
+                        name.contains("toyota", ignoreCase = true) -> AudioDeviceType.CAR
+                        name.contains("speaker", ignoreCase = true) || 
+                        name.contains("boom", ignoreCase = true) -> AudioDeviceType.SPEAKER
+                        else -> AudioDeviceType.HEADSET
+                    }
+                    
+                    // Priority: CAR > HEADSET > SPEAKER
+                    if (type == AudioDeviceType.CAR) {
+                        bestDevice = ConnectedDeviceInfo(type, name)
+                        break 
+                    } else if (type == AudioDeviceType.HEADSET && bestDevice.type != AudioDeviceType.CAR) {
+                        bestDevice = ConnectedDeviceInfo(type, name)
+                    } else if (type == AudioDeviceType.SPEAKER && (bestDevice.type == AudioDeviceType.PHONE || bestDevice.type == AudioDeviceType.SPEAKER)) {
+                        bestDevice = ConnectedDeviceInfo(type, name)
+                    }
+                }
+                AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                AudioDeviceInfo.TYPE_USB_HEADSET -> {
+                    if (bestDevice.type != AudioDeviceType.CAR) {
+                        bestDevice = ConnectedDeviceInfo(AudioDeviceType.HEADSET, device.productName.toString())
+                    }
+                }
+                else -> {}
+            }
+        }
+        _connectedDevice.postValue(bestDevice)
+    }
+
     private val _selectedReverbPreset = MutableLiveData(ReverbPreset.OFF)
     val selectedReverbPreset: LiveData<ReverbPreset> = _selectedReverbPreset
 
-    data class ReverbSettings(val enabled: Boolean, val balance: Float, val r: Float, val g: Float)
+    data class ReverbSettings(val enabled: Boolean, val balance: Float, val r: Float, val g: Float, val d: Float)
 
     val reverbPresets = mapOf(
-        ReverbPreset.OFF to ReverbSettings(false, balance=0.0f, 1.0f, 1.0f),
-        ReverbPreset.ROOM to ReverbSettings(true, balance=0.5f, 0.4f, 0.5f),
-        ReverbPreset.CONCERT to ReverbSettings(true, balance=0.75f, 0.6f, 0.6f),
-        ReverbPreset.HALL to ReverbSettings(true, balance=0.85f, 0.85f, 0.75f),
-        ReverbPreset.ECHO_VALLEY to ReverbSettings(true, balance=0.9f, 0.95f, 0.9f),
+        ReverbPreset.OFF to ReverbSettings(false, balance=0.0f, 1.0f, 1.0f, 0.5f),
+        ReverbPreset.ROOM to ReverbSettings(true, balance=0.5f, 0.4f, 0.5f, 0.5f),
+        ReverbPreset.CONCERT to ReverbSettings(true, balance=0.75f, 0.6f, 0.6f, 0.5f),
+        ReverbPreset.HALL to ReverbSettings(true, balance=0.85f, 0.85f, 0.75f, 0.5f),
+        ReverbPreset.ECHO_VALLEY to ReverbSettings(true, balance=0.9f, 0.95f, 0.9f, 0.5f),
         ReverbPreset.CUSTOM to null
     )
 
@@ -120,6 +184,7 @@ class AudioModel: ViewModel() {
             _reverbBalance.value = settings.balance
             _reverbR.value = settings.r
             _reverbG.value = settings.g
+            _reverbD.value = settings.d
             syncReverbWithController()
         } else if (preset == ReverbPreset.CUSTOM) {
             // If user explicitly selects Custom, we keep current settings but ensure enabled
@@ -149,6 +214,13 @@ class AudioModel: ViewModel() {
         syncReverbWithController()
     }
 
+    fun setReverbD(v: Float) {
+        if (_selectedReverbPreset.value != ReverbPreset.CUSTOM) _selectedReverbPreset.value = ReverbPreset.CUSTOM
+        _isReverbEnabled.value = true
+        _reverbD.value = v
+        syncReverbWithController()
+    }
+
     private fun syncReverbWithController() {
         if (::controller.isInitialized) {
             val extras = Bundle().apply {
@@ -156,6 +228,7 @@ class AudioModel: ViewModel() {
                 putFloat("KEY_REVERB_BALANCE", _reverbBalance.value ?: 0.0f)
                 putFloat("KEY_REVERB_R", _reverbR.value ?: 1.0f)
                 putFloat("KEY_REVERB_G", _reverbG.value ?: 1.0f)
+                putFloat("KEY_REVERB_D", _reverbD.value ?: 0.5f)
             }
             controller.sendCustomCommand(SessionCommand("setReverb", Bundle()), extras)
         }

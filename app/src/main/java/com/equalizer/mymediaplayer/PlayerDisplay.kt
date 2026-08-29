@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -123,6 +124,7 @@ fun PlayerDisplay(
         color = Color.White // Set white background for artwork
     ) {
         if (controller != null) {
+            val isLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
             Box(modifier = Modifier.fillMaxSize()) {
                 // LAYER 1: Artwork via Coil (Observes currentMetadata)
                 AsyncImage(
@@ -133,7 +135,9 @@ fun PlayerDisplay(
                         .error(android.R.drawable.ic_menu_report_image)
                         .build(),
                     contentDescription = "Album Art",
-                    modifier = Modifier.fillMaxSize().padding(32.dp), // More padding for logos
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(if (isLandscape) 8.dp else 32.dp), // Less padding in landscape
                     contentScale = ContentScale.Fit,
                     alignment = Alignment.Center
                 )
